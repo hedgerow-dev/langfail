@@ -1,0 +1,35 @@
+[project]
+name = "dvml"
+version = "0.1.0"
+description = "ModelForge — a self-hosted MLOps platform (model registry, AutoML, experiment tracking, inference, and an LLM assistant)."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "Flask>=3.0",
+    "Flask-SQLAlchemy>=3.1",
+    "PyJWT>=2.8",
+    "PyYAML>=6.0",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+# Heavy numerical stack. Optional so the platform boots on minimal installs;
+# feature engineering and native model formats degrade gracefully without it.
+ml = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "joblib>=1.3",
+]
+dev = [
+    "pytest>=8.0",
+]
+
+[project.scripts]
+modelforge = "dvml.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["dvml", "dvml.core", "dvml.api", "dvml.services", "dvml.ml", "dvml.workers", "dvml.agent"]

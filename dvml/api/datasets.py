@@ -1,0 +1,57 @@
+"""Dataset ingestion endpoints."""
+from __future__ import annotations
+
+import base64
+import tempfile
+
+from flask import Blueprint, g, jsonify, request
+
+from ..core.db import db
+from ..models import Dataset
+from ..ml.dataset import count_rows, extract_archive, find_table
+from ..workers.queue import enqueue
+from .deps import require_auth
+
+bp = Blueprint("datasets", __name__, url_prefix="/api/datasets")
+
+
+@bp.post("")
+@require_auth
+def create_dataset():
+    data = request.get_json(force=True, silent=True) or {}
+    name = data.get("name") or "dataset"
+
+    ds = Dataset(name=name, owner_id=g.user_id, source_url=data.get("source_url"))
+    db.session.add(ds)
+    db.session.commit()
+
+    if data.get("source_url"):
+        # Remote imports run in the background worker.
+        enqueue("import_dataset", {"dataset_id": ds.id}, owner_id=g.user_id)
+        ds.status = "importing"
+        db.session.commit()
+        return jsonify(id=ds.id, status=ds.status), 202
+
+    archive_b64 = data.get("archive_b64")
+    if archive_b64:
+        with tempfile.NamedTemporaryFile(suffix=".arc", delete=False) as tmp:
+            tmp.write(base64.b64decode(archive_b64))
+            tmp_path = tmp.name
+        dest = extract_archive(tmp_path, f"ds_{ds.id}")
+        table = find_table(dest)
+        ds.storage_path = str(dest)
+        ds.rows = count_rows(table) if table else 0
+        ds.status = "ready"
+        db.session.commit()
+
+    return jsonify(id=ds.id, status=ds.status), 201
+
+
+@bp.get("/<int:dataset_id>")
+@require_auth
+def get_dataset(dataset_id: int):
+    ds = db.session.get(Dataset, dataset_id)
+    if not ds:
+        return jsonify(error="not found"), 404
+    return jsonify(id=ds.id, name=ds.name, status=ds.status, rows=ds.rows,
+                   source_url=ds.source_url, storage_path=ds.storage_path)
