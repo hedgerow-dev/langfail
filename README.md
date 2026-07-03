@@ -34,6 +34,9 @@ plausible real platform (type hints, docstrings, passing tests) and contains
 **no vulnerability markers**. The labeled answer key is kept entirely separate,
 in [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml).
 
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the layer/data-flow diagrams and the
+cross-taint topology.
+
 ## Layout
 
 | Path | Role |
