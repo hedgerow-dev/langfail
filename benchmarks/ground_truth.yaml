@@ -1,0 +1,329 @@
+# ModelForge — planted-vulnerability ground truth (benchmark answer key)
+#
+# This file is the labelled oracle for scoring a taint-analysis engine and an
+# agentic vulnerability-discovery flow against ModelForge. It is intentionally
+# NOT referenced by application code — the app must contain no vuln markers.
+#
+# Each entry documents the taint SOURCE, the SINK, and the ordered hops between
+# them (the "taint_path"). Line numbers are hints only (symbol names are the
+# stable anchor). "sanitizers_present" lists helpers that look protective on the
+# path but are bypassable or misapplied — these are the false-negative traps.
+
+meta:
+  app: modelforge
+  source_dir: dvml
+  tiers:
+    1: disguised single-hop
+    2: cross-function (same/adjacent module)
+    3: cross-file (blueprint source -> service/ml sink)
+    4: second-order / cross-process (via DB round-trip or job queue)
+    5: agentic / LLM
+
+vulnerabilities:
+  - id: V01
+    title: Unsafe model deserialization on load (pickle/torch/joblib)
+    cwe: CWE-502
+    huntr_analog: "RCE via malicious model file (e.g. MLflow/BentoML model load)"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "artifact_b64 -> stored artifact"}
+    sink: {file: dvml/ml/model_loader.py, symbol: _deserialize, line_hint: 30}
+    taint_path:
+      - dvml/api/models.py:create_model (artifact_b64, base64-decoded)
+      - dvml/services/registry.py:store_artifact (written to disk)
+      - dvml/api/inference.py:_get_estimator (read back at predict time)
+      - dvml/ml/model_loader.py:load_model -> _deserialize (pickle.load / torch.load / joblib.load)
+    sanitizers_present: []
+    poc: tests/test_exploits.py::test_v01_pickle_model_rce
+
+  - id: V02
+    title: Unsafe YAML full-loader on pipeline config
+    cwe: CWE-502
+    huntr_analog: "yaml.load RCE in ML pipeline/config parsing"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: create_experiment, note: "pipeline_config"}
+    sink: {file: dvml/services/config_loader.py, symbol: load_pipeline_config, line_hint: 18}
+    taint_path:
+      - dvml/api/experiments.py:create_experiment (pipeline_config)
+      - dvml/services/config_loader.py:load_pipeline_config (yaml.load with full Loader)
+    sanitizers_present:
+      - "dvml/services/config_loader.py:load_safe uses yaml.safe_load — used on most paths, but NOT this one (precision trap)"
+    poc: tests/test_exploits.py::test_v02_yaml_full_loader_rce
+
+  - id: V03
+    title: Path traversal in artifact blob read
+    cwe: CWE-22
+    huntr_analog: "arbitrary file read via artifact/path parameter"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: get_blob, note: "?name="}
+    sink: {file: dvml/services/registry.py, symbol: read_artifact, line_hint: 27}
+    taint_path:
+      - dvml/api/models.py:get_blob (name query param)
+      - dvml/services/registry.py:read_artifact (os.path.join after sanitize_path)
+    sanitizers_present:
+      - "dvml/core/security.py:sanitize_path — single-pass '../' strip, bypass with '....//'"
+    poc: tests/test_exploits.py::test_v03_path_traversal
+
+  - id: V04
+    title: Zip/Tar slip on dataset archive extraction
+    cwe: CWE-22
+    huntr_analog: "arbitrary file write via crafted dataset archive"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "archive_b64"}
+    sink: {file: dvml/ml/dataset.py, symbol: extract_archive, line_hint: 20}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (archive_b64 -> temp file)
+      - dvml/ml/dataset.py:extract_archive (os.path.join(dest, member) without containment check)
+    sanitizers_present: []
+    poc: tests/test_exploits.py::test_v04_zip_slip
+
+  - id: V05
+    title: Server-side template injection in report rendering
+    cwe: CWE-1336
+    huntr_analog: "SSTI/RCE via Jinja report template"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: report, note: "template"}
+    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 27}
+    taint_path:
+      - dvml/api/models.py:report (template)
+      - dvml/services/reports.py:render_report (Environment.from_string(user_template))
+    sanitizers_present:
+      - "autoescape=True — escapes HTML output only, does not prevent SSTI/RCE (misdirection)"
+    poc: tests/test_exploits.py::test_v05_ssti
+
+  - id: V06
+    title: SSRF on remote dataset/model import
+    cwe: CWE-918
+    huntr_analog: "SSRF via dataset/model URL import"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "source_url -> DB"}
+    sink: {file: dvml/services/fetcher.py, symbol: fetch, line_hint: 20}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (source_url persisted to Dataset.source_url)
+      - dvml/workers/tasks.py:import_dataset (reads source_url from DB)
+      - dvml/services/fetcher.py:fetch (requests.get, allow_redirects=True)
+    sanitizers_present:
+      - "dvml/core/security.py:is_safe_url — endswith() suffix bypass + follows redirects to internal"
+    poc: exploits/chain_a_ssrf_to_rce.py
+
+  - id: V07
+    title: RCE via deserialization of SSRF-fetched model (chained off V06)
+    cwe: CWE-502
+    huntr_analog: "remote model import -> pickle RCE"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "source_url"}
+    sink: {file: dvml/ml/model_loader.py, symbol: load_model_bytes, line_hint: 40}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (source_url)
+      - dvml/workers/tasks.py:import_dataset (fetch bytes -> _looks_like_model)
+      - dvml/ml/model_loader.py:load_model_bytes -> _deserialize (pickle over fetched bytes)
+    sanitizers_present: []
+    poc: exploits/chain_a_ssrf_to_rce.py
+
+  - id: V08
+    title: SQL injection in experiment search (tag / ORDER BY)
+    cwe: CWE-89
+    huntr_analog: "SQLi in experiment/metadata search"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: search, note: "tag, sort query params"}
+    sink: {file: dvml/services/experiments.py, symbol: search_experiments, line_hint: 20}
+    taint_path:
+      - dvml/api/experiments.py:search (tag, sort)
+      - dvml/services/experiments.py:search_experiments (f-string into text() query)
+    sanitizers_present:
+      - "escape_sql applied to `name` only — `tag` and `sort` are interpolated raw (misdirection)"
+    poc: tests/test_exploits.py::test_v08_sqli_exfiltrates_password_hash
+
+  - id: V09
+    title: Command injection in model conversion (second-order via model name)
+    cwe: CWE-78
+    huntr_analog: "OS command injection in model export/convert"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "name -> artifact_path"}
+    sink: {file: dvml/ml/convert.py, symbol: convert_model, line_hint: 23}
+    taint_path:
+      - dvml/api/models.py:create_model (name -> store_artifact filename -> Model.artifact_path)
+      - dvml/api/models.py:convert (artifact_path split -> artifact_name)
+      - dvml/ml/convert.py:convert_model (unquoted {src} in subprocess shell=True; target_format IS quoted — misdirection)
+    sanitizers_present:
+      - "shlex.quote applied to target_format only; artifact_name (from stored model name) is not quoted"
+      - "sanitize_path strips '../' but not shell metacharacters"
+    poc: tests/test_exploits.py::test_v09_command_injection_on_convert
+
+  - id: V10
+    title: Arbitrary file write from model metadata storage_path
+    cwe: CWE-73
+    huntr_analog: "arbitrary file write via artifact path in metadata"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "meta.storage_path"}
+    sink: {file: dvml/services/registry.py, symbol: save_with_metadata, line_hint: 37}
+    taint_path:
+      - dvml/api/models.py:create_model (meta.storage_path)
+      - dvml/services/registry.py:save_with_metadata (os.path.join without sanitization; absolute/'..' allowed)
+    sanitizers_present: []
+    poc: tests/test_exploits.py::test_v10_arbitrary_file_write
+
+  - id: V11
+    title: Second-order command injection via stored dataset name (worker)
+    cwe: CWE-78
+    huntr_analog: "stored input -> shell in async worker"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "name -> DB"}
+    sink: {file: dvml/workers/tasks.py, symbol: _inspect_async, line_hint: 56}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (name persisted to Dataset.name)
+      - dvml/workers/tasks.py:import_dataset (reads ds.name from DB)
+      - dvml/workers/tasks.py:_inspect_async (name appended unquoted to subprocess shell=True; path IS quoted — misdirection)
+    sanitizers_present: []
+    poc: tests/test_exploits.py::test_v11_second_order_command_injection
+
+  - id: V12
+    title: IDOR / broken object-level authorization on models & artifacts
+    cwe: CWE-639
+    huntr_analog: "IDOR reading other tenants' models/artifacts"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: get_model / download_artifact, note: "model_id path param"}
+    sink: {file: dvml/api/models.py, symbol: download_artifact, line_hint: 48}
+    taint_path:
+      - dvml/api/models.py:get_model & download_artifact (no owner check vs g.user_id)
+      - "contrast: update_model DOES check owner_id (misdirection)"
+    sanitizers_present:
+      - "require_auth present (authn ok) but no authz/ownership check on read paths"
+    poc: tests/test_exploits.py::test_v12_idor_cross_tenant_read
+
+  - id: V13
+    title: Insecure deserialization via numpy.load(allow_pickle=True) on feature cache
+    cwe: CWE-502
+    huntr_analog: "numpy allow_pickle RCE on cached array"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/inference.py, symbol: predict, note: "feature_cache path"}
+    sink: {file: dvml/ml/features.py, symbol: load_feature_cache, line_hint: 40}
+    taint_path:
+      - dvml/api/inference.py:predict (feature_cache path from request)
+      - dvml/ml/features.py:load_feature_cache (numpy.load allow_pickle=True / pickle fallback)
+    sanitizers_present: []
+    poc: tests/test_exploits.py::test_v13_numpy_pickle_cache_rce
+
+  - id: V14
+    title: Mass assignment / unsafe setattr on model update
+    cwe: CWE-915
+    huntr_analog: "mass assignment privilege/ownership tamper"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: update_model, note: "PATCH json body"}
+    sink: {file: dvml/services/config_loader.py, symbol: apply_updates, line_hint: 27}
+    taint_path:
+      - dvml/api/models.py:update_model (raw request json)
+      - dvml/services/config_loader.py:apply_updates (setattr for every key -> set owner_id, artifact_path, ...)
+    sanitizers_present:
+      - "owner check gates who can call it, but no allow-list of updatable fields"
+    poc: tests/test_exploits.py::test_v14_mass_assignment_owner_takeover
+
+  - id: V15
+    title: Code execution via custom-metric eval()
+    cwe: CWE-95
+    huntr_analog: "eval of user metric/formula -> RCE"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: evaluate, note: "metric spec"}
+    sink: {file: dvml/ml/metrics.py, symbol: evaluate_metric, line_hint: 27}
+    taint_path:
+      - dvml/api/experiments.py:evaluate (metric)
+      - dvml/ml/metrics.py:evaluate_metric (eval with empty __builtins__ — bypassable via object gadgets)
+    sanitizers_present:
+      - "eval globals set to {'__builtins__': {}} — NOT a sandbox; escapable"
+    poc: tests/test_exploits.py::test_v15_metric_eval_rce
+
+  - id: V16
+    title: Direct prompt injection -> agent tool abuse (SQL/file/SSRF/RCE)
+    cwe: LLM01
+    huntr_analog: "prompt injection driving tool calls"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: chat, note: "message"}
+    sink: {file: dvml/agent/tools.py, symbol: "run_sql/read_file/http_get/calc", line_hint: 18}
+    taint_path:
+      - dvml/api/agent.py:chat (message)
+      - dvml/agent/core.py:run_agent (LLM decides tool call)
+      - dvml/agent/tools.py:run_sql (arbitrary SQL) / read_file (arbitrary read) / http_get (SSRF) / calc (eval)
+    sanitizers_present: []
+    poc: tests/test_exploits.py::test_v16_direct_prompt_injection
+
+  - id: V17
+    title: Indirect prompt injection via poisoned model card (RAG)
+    cwe: LLM01
+    huntr_analog: "indirect/stored prompt injection from ingested content"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "model_card stored by any user"}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    taint_path:
+      - dvml/api/models.py:create_model (model_card persisted)
+      - dvml/api/agent.py:analyze (retrieves model_card into context_docs)
+      - dvml/agent/core.py:run_agent (context treated as instructions)
+      - dvml/agent/tools.py:run_sql (attacker-embedded query executed for the victim)
+    sanitizers_present: []
+    poc: exploits/chain_b_indirect_injection.py
+
+  - id: V18
+    title: Code-interpreter tool eval() (agent calc)
+    cwe: CWE-95
+    huntr_analog: "python/pandas agent code exec"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: chat, note: "message -> calc tool"}
+    sink: {file: dvml/agent/tools.py, symbol: calc, line_hint: 37}
+    taint_path:
+      - dvml/api/agent.py:chat (message with tool directive)
+      - dvml/agent/tools.py:calc (eval with empty __builtins__ — escapable)
+    sanitizers_present:
+      - "eval globals {'__builtins__': {}} — not a sandbox"
+    poc: tests/test_exploits.py::test_v18_agent_calc_eval
+
+  - id: V19
+    title: Stored XSS via unescaped agent/report HTML preview
+    cwe: CWE-79
+    huntr_analog: "stored XSS in rendered report/preview"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "model_card / body"}
+    sink: {file: dvml/services/reports.py, symbol: render_page, line_hint: 40}
+    taint_path:
+      - "model_card / assistant answer / body -> dvml/api/reports.py:preview"
+      - dvml/services/reports.py:render_page (Environment(autoescape=False) emits body verbatim)
+    sanitizers_present:
+      - "render_report uses autoescape=True; render_page uses autoescape=False (inconsistent — trap)"
+    poc: tests/test_exploits.py::test_v19_stored_xss_preview
+
+chains:
+  - id: CHAIN_A
+    title: "SSRF -> pickle RCE across HTTP + DB + job queue + 3 modules"
+    members: [V06, V07]
+    description: >
+      POST /api/datasets {source_url} persists the URL, enqueues an import job;
+      the worker reads it back, fetch() performs the SSRF, the returned bytes are
+      pickle-deserialised in load_model_bytes -> RCE. Source and sink are separated
+      by a DB round-trip and the job queue.
+    poc: exploits/chain_a_ssrf_to_rce.py
+
+  - id: CHAIN_B
+    title: "Indirect prompt injection: poisoned model card -> agent tool sink"
+    members: [V17]
+    description: >
+      Attacker sets a model_card containing a [[TOOL:run_sql ...]] directive. A
+      different user calls /api/agent/analyze on that model; the card is retrieved
+      into the agent context and the embedded instruction drives a run_sql tool
+      call that exfiltrates data — cross-taint through the DB into the agent loop.
+    poc: exploits/chain_b_indirect_injection.py
