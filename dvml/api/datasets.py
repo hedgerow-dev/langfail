@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import tempfile
 
+import requests
 from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
@@ -21,7 +22,8 @@ def create_dataset():
     data = request.get_json(force=True, silent=True) or {}
     name = data.get("name") or "dataset"
 
-    ds = Dataset(name=name, owner_id=g.user_id, source_url=data.get("source_url"))
+    ds = Dataset(name=name, owner_id=g.user_id, source_url=data.get("source_url"),
+                 webhook_url=data.get("webhook_url"))
     db.session.add(ds)
     db.session.commit()
 
@@ -43,6 +45,13 @@ def create_dataset():
         ds.rows = count_rows(table) if table else 0
         ds.status = "ready"
         db.session.commit()
+
+        # Notify the caller's registered completion webhook, if any.
+        if ds.webhook_url:
+            try:
+                requests.post(ds.webhook_url, json={"dataset_id": ds.id, "status": "ready"}, timeout=5)
+            except Exception:
+                pass
 
     return jsonify(id=ds.id, status=ds.status), 201
 

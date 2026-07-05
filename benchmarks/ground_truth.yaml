@@ -18,6 +18,8 @@ meta:
     3: cross-file (blueprint source -> service/ml sink)
     4: second-order / cross-process (via DB round-trip or job queue)
     5: agentic / LLM
+    6: max — reflection/dynamic-dispatch, carrier laundering, blind/OOB, conditional
+       sanitizers, off-list library sinks, multi-hop agent (plus precision decoys)
 
 vulnerabilities:
   - id: V01
@@ -307,6 +309,156 @@ vulnerabilities:
       - "render_report uses autoescape=True; render_page uses autoescape=False (inconsistent — trap)"
     poc: tests/test_exploits.py::test_v19_stored_xss_preview
 
+  # ----------------------------------------------------------------------
+  # Tier 6 — max difficulty
+  # ----------------------------------------------------------------------
+
+  - id: V20
+    title: Unsafe reflection via dotted-path pipeline callable
+    cwe: CWE-470
+    huntr_analog: "arbitrary callable resolution / import in ML pipeline runner"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: "run / create_experiment", note: "stage op string (body or stored params_json)"}
+    sink: {file: dvml/services/pipeline.py, symbol: _resolve, line_hint: 21}
+    taint_path:
+      - dvml/api/experiments.py:create_experiment (pipeline stages persisted to params_json) OR run (stages in body)
+      - dvml/api/experiments.py:run (reads stored stages back from DB when body omits them — second-order)
+      - dvml/services/pipeline.py:run_pipeline -> _resolve (importlib.import_module + getattr on "module:attr")
+      - "resolved callable invoked with attacker args, e.g. os:system -> command exec"
+    sanitizers_present:
+      - "bare op names are looked up on the transforms allow-module; the ':' branch is unrestricted (dispatch the engine must resolve)"
+    poc: tests/test_exploits_tier6.py::test_v20_pipeline_reflection_rce
+
+  - id: V21
+    title: Second-order SSTI through the scratch cache (base64 laundering)
+    cwe: CWE-1336
+    huntr_analog: "stored template fragment rendered later -> SSTI"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: annotate, note: "note body"}
+    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 27}
+    taint_path:
+      - dvml/api/models.py:annotate (note -> cache.put, base64+json wrapped)
+      - dvml/core/cache.py:put/get (taint laundered through base64 encode/decode across requests)
+      - dvml/api/models.py:render_annotation (later request reads it back via cache.get)
+      - dvml/services/reports.py:render_report (Environment.from_string on the cached value)
+    sanitizers_present:
+      - "value passes through base64/json round-trip in the cache — defeats naive string-identity propagation"
+    poc: tests/test_exploits_tier6.py::test_v21_cache_carrier_ssti
+
+  - id: V22
+    title: Blind boolean SQL injection in experiment count (numeric context)
+    cwe: CWE-89
+    huntr_analog: "blind SQLi in a count/aggregate endpoint"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: count, note: "owner query param"}
+    sink: {file: dvml/services/experiments.py, symbol: count_by_owner, line_hint: 33}
+    taint_path:
+      - dvml/api/experiments.py:count (owner)
+      - dvml/services/experiments.py:count_by_owner (owner interpolated into numeric WHERE, no quotes)
+    sanitizers_present:
+      - "returns only a scalar count — no rows echoed, so exfiltration is boolean/time-based (blind)"
+      - "distinct from V08: numeric (unquoted) context, not a string LIKE clause"
+    poc: tests/test_exploits_tier6.py::test_v22_blind_sqli_count
+
+  - id: V23
+    title: Blind / OOB SSRF via dataset completion webhook (no allow-list)
+    cwe: CWE-918
+    huntr_analog: "SSRF via user-registered completion/notification webhook"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "webhook_url -> Dataset.webhook_url"}
+    sink:
+      - {file: dvml/api/datasets.py, symbol: create_dataset, note: "sync requests.post on local import", line_hint: 49}
+      - {file: dvml/workers/tasks.py, symbol: _notify, line_hint: 60, note: "cross-process on remote import"}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (webhook_url persisted)
+      - dvml/workers/tasks.py:import_dataset -> _notify (worker POSTs on completion) OR sync POST on archive import
+      - "requests.post(webhook_url) with NO is_safe_url gate — unlike fetch()"
+    sanitizers_present:
+      - "fetch() enforces is_safe_url; the webhook egress path has no allow-list at all (asymmetry the engine must notice)"
+      - "response never returned to caller -> blind"
+    poc: tests/test_exploits_tier6.py::test_v23_webhook_blind_ssrf
+
+  - id: V24
+    title: Path traversal behind a config-gated sanitizer (default off)
+    cwe: CWE-22
+    huntr_analog: "traversal reachable because hardening flag defaults disabled"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: raw_artifact, note: "?path="}
+    sink: {file: dvml/services/registry.py, symbol: read_raw, line_hint: 34}
+    taint_path:
+      - dvml/api/models.py:raw_artifact (path; sanitize_path applied ONLY if current_app.config STRICT_PATHS)
+      - dvml/services/registry.py:read_raw (os.path.join without containment)
+    sanitizers_present:
+      - "sanitize_path present on the path but guarded by `if STRICT_PATHS` — Config.STRICT_PATHS defaults False (path-sensitive sanitizer)"
+    poc: tests/test_exploits_tier6.py::test_v24_conditional_sanitizer_traversal
+
+  - id: V25
+    title: XXE in XML model descriptor parsing (PMML/ONNX metadata)
+    cwe: CWE-611
+    huntr_analog: "XXE via model/config XML with lxml resolve_entities"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: upload_config, note: "raw XML body"}
+    sink: {file: dvml/ml/modelconfig.py, symbol: parse_model_config, line_hint: 27}
+    taint_path:
+      - dvml/api/models.py:upload_config (request body)
+      - dvml/ml/modelconfig.py:parse_model_config (lxml XMLParser resolve_entities=True, load_dtd=True, no_network=False)
+    sanitizers_present:
+      - "off-list sink: a generic taint engine won't flag lxml unless taught; the flag combo (resolve_entities/load_dtd) is the tell"
+    poc: tests/test_exploits_tier6.py::test_v25_xxe_model_config
+
+  - id: V26
+    title: Multi-hop agent tool chaining (fetched content drives second tool)
+    cwe: LLM01
+    huntr_analog: "indirect injection amplified across multiple agent tool calls"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "model_card poisoned by attacker"}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    taint_path:
+      - dvml/api/models.py:create_model (model_card with [[TOOL:http_get ...]])
+      - dvml/api/agent.py:analyze (victim retrieves card into context — no owner check)
+      - dvml/agent/core.py:run_agent (round 1: http_get tool call -> SSRF)
+      - dvml/agent/tools.py:http_get (fetched body contains [[TOOL:run_sql ...]])
+      - dvml/agent/core.py:run_agent (tool result re-enters context; round 2 executes run_sql)
+      - dvml/agent/tools.py:run_sql (credential exfiltration)
+    sanitizers_present: []
+    poc: tests/test_exploits_tier6.py::test_v26_agent_multihop_injection
+
+# Precision decoys — deliberately SAFE code that closely resembles a planted
+# bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
+decoys:
+  - id: D01
+    resembles: V03/V24 (path traversal)
+    why_safe: "read_artifact_safe() realpath-contains the target under ARTIFACT_DIR and rejects escapes"
+    location: {file: dvml/services/registry.py, symbol: read_artifact_safe}
+    proof: tests/test_exploits_tier6.py::test_d01_safe_download_rejects_traversal
+  - id: D02
+    resembles: V08/V22 (SQLi)
+    why_safe: "search_by_tag() binds :tag as a parameter; payload is treated as a literal"
+    location: {file: dvml/services/experiments.py, symbol: search_by_tag}
+    proof: tests/test_exploits_tier6.py::test_d02_by_tag_is_parameterized
+  - id: D03
+    resembles: V05/V19 (SSTI/XSS)
+    why_safe: "render_report uses autoescape=True; HTML in the context is escaped on output"
+    location: {file: dvml/services/reports.py, symbol: render_report}
+    proof: tests/test_exploits_tier6.py::test_d03_report_html_is_escaped
+  - id: D04
+    resembles: V06/V23 (SSRF)
+    why_safe: "fetch_guarded() resolves the host and blocks private/loopback/link-local/reserved IPs; redirects disabled"
+    location: {file: dvml/services/fetcher.py, symbol: fetch_guarded}
+    proof: tests/test_exploits_tier6.py::test_d04_guarded_fetch_blocks_private
+  - id: D05
+    resembles: V02 (unsafe YAML)
+    why_safe: "load_safe() uses yaml.safe_load — no object construction"
+    location: {file: dvml/services/config_loader.py, symbol: load_safe}
+    proof: "covered indirectly; no dedicated test (static near-miss)"
+
 chains:
   - id: CHAIN_A
     title: "SSRF -> pickle RCE across HTTP + DB + job queue + 3 modules"
@@ -327,3 +479,26 @@ chains:
       into the agent context and the embedded instruction drives a run_sql tool
       call that exfiltrates data — cross-taint through the DB into the agent loop.
     poc: exploits/chain_b_indirect_injection.py
+
+  - id: CHAIN_C
+    title: "Arbitrary file write -> import -> code execution (compose V10 + V20)"
+    members: [V10, V20]
+    description: >
+      V10's metadata storage_path grants arbitrary file write into the package
+      tree; V20's pipeline resolver imports an attacker-named "module:attr". Writing
+      a .py into an importable location and then referencing it as a stage op yields
+      RCE without any single call looking dangerous — the engine must compose a
+      write sink with a later import sink. (V20 alone already reaches os:system;
+      this chain is the stealthier, compose-two-bugs variant.)
+    poc: "documented; test_v20 proves the import-dispatch half directly"
+
+  - id: CHAIN_D
+    title: "Multi-hop agent: poisoned card -> http_get (SSRF) -> run_sql (exfil)"
+    members: [V26]
+    description: >
+      A poisoned model card triggers an http_get tool call; the fetched page body
+      re-enters the agent loop as a tool result and carries a second directive that
+      drives run_sql. Taint crosses the DB (stored card), the agent loop, an
+      outbound HTTP fetch, and back into a SQL sink — undecidable for a static
+      engine (it runs through the LLM), which is exactly what the agentic flow is for.
+    poc: exploits/chain_b_indirect_injection.py  # see also test_v26_agent_multihop_injection

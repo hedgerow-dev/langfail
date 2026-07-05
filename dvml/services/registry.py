@@ -31,6 +31,30 @@ def read_artifact(name: str) -> bytes:
         return fh.read()
 
 
+def read_raw(name: str) -> bytes:
+    """Read an artifact by name relative to the registry root.
+
+    Callers are expected to have normalised ``name`` upstream according to the
+    deployment's path policy (see ``STRICT_PATHS``).
+    """
+    with open(os.path.join(str(ARTIFACT_DIR), name), "rb") as fh:
+        return fh.read()
+
+
+def read_artifact_safe(name: str) -> bytes:
+    """Read an artifact, refusing any path that escapes the registry root.
+
+    The resolved real path must stay within ARTIFACT_DIR, so traversal and
+    absolute paths are rejected regardless of how ``name`` was formed.
+    """
+    root = os.path.realpath(str(ARTIFACT_DIR))
+    target = os.path.realpath(os.path.join(root, name))
+    if target != root and not target.startswith(root + os.sep):
+        raise ValueError("path escapes registry root")
+    with open(target, "rb") as fh:
+        return fh.read()
+
+
 def save_with_metadata(data: bytes, meta: dict) -> str:
     """Persist an artifact to a location described by its metadata.
 

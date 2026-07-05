@@ -4,13 +4,16 @@ from __future__ import annotations
 import base64
 import json
 
-from flask import Blueprint, Response, g, jsonify, request
+from flask import Blueprint, Response, current_app, g, jsonify, request
 
+from ..core.cache import get as cache_get, put as cache_put
 from ..core.db import db
+from ..core.security import sanitize_path
 from ..models import Model
 from ..services import registry, reports
 from ..services.config_loader import apply_updates
 from ..ml.convert import convert_model
+from ..ml.modelconfig import parse_model_config
 from .deps import require_auth
 
 bp = Blueprint("models", __name__, url_prefix="/api/models")
@@ -104,3 +107,58 @@ def convert(model_id: int):
     artifact_name = model.artifact_path.split("artifacts/")[-1]
     out = convert_model(artifact_name, data.get("target_format", "onnx"))
     return jsonify(output=out)
+
+
+@bp.post("/<int:model_id>/annotate")
+@require_auth
+def annotate(model_id: int):
+    """Attach a free-text annotation to a model (kept in the scratch cache)."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    note = (request.get_json(force=True, silent=True) or {}).get("note", "")
+    cache_put(f"annotation:{model_id}", note)
+    return jsonify(ok=True)
+
+
+@bp.get("/<int:model_id>/annotation/render")
+@require_auth
+def render_annotation(model_id: int):
+    """Render a model's cached annotation through the report template engine."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    note = cache_get(f"annotation:{model_id}") or ""
+    return jsonify(rendered=reports.render_report(note, {"model": model, "owner": g.user_id}))
+
+
+@bp.get("/artifact")
+@require_auth
+def raw_artifact():
+    """Stream an artifact by registry path (legacy raw accessor)."""
+    path = request.args.get("path", "")
+    if current_app.config.get("STRICT_PATHS"):
+        path = sanitize_path(path)
+    return Response(registry.read_raw(path), mimetype="application/octet-stream")
+
+
+@bp.get("/<int:model_id>/download_safe")
+@require_auth
+def download_safe(model_id: int):
+    """Download an artifact with strict registry-root containment enforced."""
+    model = db.session.get(Model, model_id)
+    if not model or not model.artifact_path:
+        return jsonify(error="not found"), 404
+    name = model.artifact_path.split("artifacts/")[-1]
+    return Response(registry.read_artifact_safe(name), mimetype="application/octet-stream")
+
+
+@bp.post("/<int:model_id>/config")
+@require_auth
+def upload_config(model_id: int):
+    """Parse an XML model descriptor (PMML / ONNX metadata) and return its fields."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    xml = request.get_data() or b""
+    return jsonify(fields=parse_model_config(xml))

@@ -196,8 +196,25 @@ single-line pattern match. At a glance:
 | Second-order via DB | model name → stored `artifact_path` → convert shell; dataset name → worker shell |
 | Cross-process via queue | `source_url` → `jobs` → worker → `fetch` → pickle |
 | Through the agent | stored model card → retrieval → agent tool call |
+| Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
+| Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
+| Blind / OOB | webhook egress + count-only SQLi — no reflected output, needs a canary/oracle |
 
 Several paths pass through `dvml/core/security.py` helpers that *look*
 protective. Whether a taint engine (or a human) treats them as effective sinks
 of taint or as bypassable is exactly what the benchmark measures — see
 [`SCOREBOARD.md`](SCOREBOARD.md).
+
+### Tier 6 (max difficulty)
+
+The hardest planted flaws add axes a naive engine or a single-shot agent misses:
+**dynamic dispatch** (`services/pipeline.py` resolves a `"module:attr"` callable
+via `importlib`/`getattr`), a **cache carrier** (`core/cache.py` launders taint
+through a base64/JSON round-trip between requests), **blind/OOB** sinks
+(completion-webhook SSRF with no allow-list; a count-only boolean SQLi),
+**config-gated sanitizers** (traversal that only closes when `STRICT_PATHS` is
+on — off by default), an **off-list library sink** (`ml/modelconfig.py` XXE via
+lxml), and **multi-hop agent chaining** (a fetched page re-enters the loop and
+drives a second tool call). Each ships with a runnable proof, and a set of
+**precision decoys** (safe look-alikes such as `read_artifact_safe`,
+`search_by_tag`, `fetch_guarded`) exists so false positives are measurable too.

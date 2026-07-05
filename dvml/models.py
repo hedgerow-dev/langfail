@@ -44,6 +44,8 @@ class Dataset(db.Model):
     storage_path = db.Column(db.String(500))
     status = db.Column(db.String(20), default="pending")
     rows = db.Column(db.Integer, default=0)
+    # Optional URL notified when a background import for this dataset finishes.
+    webhook_url = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=_now)
 
 
