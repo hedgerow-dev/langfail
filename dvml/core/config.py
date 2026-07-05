@@ -29,6 +29,11 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
+    # Hardening toggle for artifact path handling. Off by default so on-prem
+    # deployments with legacy absolute artifact paths keep working; operators
+    # opt in once their registry has been migrated to relative names.
+    STRICT_PATHS = os.environ.get("DVML_STRICT_PATHS", "0") == "1"
+
     # Hosts the platform is allowed to reach when importing remote datasets/models.
     ALLOWED_FETCH_HOSTS = os.environ.get(
         "DVML_ALLOWED_FETCH_HOSTS", "huggingface.co,raw.githubusercontent.com,datasets.modelforge.local"

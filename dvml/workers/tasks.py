@@ -5,6 +5,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import requests
+
 from ..core.config import DATASET_DIR
 from ..core.db import db
 from ..models import Dataset
@@ -47,6 +49,10 @@ def import_dataset(payload: dict) -> str:
     # Kick off async antivirus/format inspection on the freshly imported file.
     _inspect_async(ds.name, out_path)
 
+    # Notify any registered completion webhook (fire-and-forget).
+    if ds.webhook_url:
+        _notify(ds.webhook_url, {"dataset_id": ds.id, "status": "ready", "rows": ds.rows})
+
     db.session.commit()
     return f"imported dataset {ds.id}"
 
@@ -55,6 +61,14 @@ def _inspect_async(dataset_name: str, path: Path) -> None:
     """Queue a lightweight format inspection of an imported file."""
     cmd = f"file '{path}' | grep -q . && echo inspected {dataset_name}"
     subprocess.Popen(cmd, shell=True)
+
+
+def _notify(url: str, body: dict) -> None:
+    """POST a completion notification to a user-registered webhook URL."""
+    try:
+        requests.post(url, json=body, timeout=5)
+    except Exception:
+        pass
 
 
 HANDLERS = {

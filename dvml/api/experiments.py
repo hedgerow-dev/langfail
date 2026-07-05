@@ -9,7 +9,8 @@ from ..core.db import db
 from ..models import Experiment
 from ..ml.metrics import evaluate_metric
 from ..services.config_loader import load_pipeline_config
-from ..services.experiments import search_experiments
+from ..services.experiments import count_by_owner, search_by_tag, search_experiments
+from ..services.pipeline import run_pipeline
 from .deps import require_auth
 
 bp = Blueprint("experiments", __name__, url_prefix="/api/experiments")
@@ -46,6 +47,39 @@ def search():
         sort=request.args.get("sort", "created_at"),
     )
     return jsonify(results=rows)
+
+
+@bp.get("/count")
+@require_auth
+def count():
+    """Return how many experiments a given owner has (dashboard tally)."""
+    total = count_by_owner(request.args.get("owner", str(g.user_id)))
+    return jsonify(count=total)
+
+
+@bp.get("/by_tag")
+@require_auth
+def by_tag():
+    """Return experiments with an exact tag match."""
+    return jsonify(results=search_by_tag(request.args.get("tag", "")))
+
+
+@bp.post("/<int:exp_id>/run")
+@require_auth
+def run(exp_id: int):
+    """Execute the experiment's training pipeline and return the stage log.
+
+    Stages may be supplied directly or, if omitted, are read from the stored
+    pipeline configuration captured when the experiment was created.
+    """
+    exp = db.session.get(Experiment, exp_id)
+    if not exp:
+        return jsonify(error="not found"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    stages = data.get("stages")
+    if stages is None:
+        stages = json.loads(exp.params_json or "{}").get("stages", [])
+    return jsonify(log=run_pipeline(stages))
 
 
 @bp.post("/<int:exp_id>/evaluate")
