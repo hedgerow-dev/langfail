@@ -13,6 +13,7 @@ from ..models import Dataset
 from ..ml import model_loader
 from ..ml.dataset import find_table
 from ..services.fetcher import fetch
+from ..services.retention import purge
 
 
 def _looks_like_model(name: str, data: bytes) -> bool:
@@ -71,8 +72,24 @@ def _notify(url: str, body: dict) -> None:
         pass
 
 
+def cleanup_dataset(payload: dict) -> str:
+    """Run a previously scheduled retention sweep for a dataset.
+
+    ``cleanup_dir`` was set when the dataset was created (a separate, earlier
+    request); ``pattern`` comes from the sweep that was just scheduled. Neither
+    is dangerous by itself — they are only joined together inside ``purge``.
+    """
+    ds = db.session.get(Dataset, payload["dataset_id"])
+    if not ds:
+        return "missing dataset"
+    cleanup_dir = ds.cleanup_dir or str(DATASET_DIR / f"ds_{ds.id}")
+    purge(cleanup_dir, payload.get("pattern", "*.tmp"))
+    return f"cleaned {ds.id}"
+
+
 HANDLERS = {
     "import_dataset": import_dataset,
+    "cleanup_dataset": cleanup_dataset,
 }
 
 

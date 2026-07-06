@@ -1,12 +1,12 @@
 """Administrative endpoints (job status, platform config)."""
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
-from ..models import Job
+from ..models import Job, ToolNote
 from ..services.config_loader import load_safe
-from .deps import require_admin
+from .deps import require_admin, require_auth
 
 bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 
@@ -25,3 +25,27 @@ def settings():
     """Apply a YAML settings patch (trusted admin input)."""
     patch = load_safe(request.get_data(as_text=True))
     return jsonify(applied=patch)
+
+
+@bp.get("/tool_notes")
+@require_admin
+def list_tool_notes():
+    """List the current per-tool deployment notes (admin-only, for auditing)."""
+    rows = ToolNote.query.order_by(ToolNote.id.desc()).all()
+    return jsonify(notes=[{"id": n.id, "tool_name": n.tool_name, "note": n.note} for n in rows])
+
+
+@bp.post("/tool_notes")
+@require_auth
+def set_tool_note():
+    """Set the deployment note shown alongside an MCP tool's description.
+
+    Curated notes give connecting agents deployment-specific guidance (e.g.
+    "run_sql is read-only, prefer LIMIT 50") without needing to redeploy.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    note = ToolNote(tool_name=data.get("tool_name", ""), note=data.get("note", ""),
+                     updated_by=g.user_id)
+    db.session.add(note)
+    db.session.commit()
+    return jsonify(id=note.id), 201

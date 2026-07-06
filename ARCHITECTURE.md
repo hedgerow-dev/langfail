@@ -183,6 +183,19 @@ input is not limited to the caller — the basis for the indirect-injection chai
 The `stub` backend is deterministic (for reproducible scoring); `ollama` drives a
 real local model.
 
+### MCP protocol surface
+
+`dvml/mcp_server.py` exposes the same `TOOLS` over the real Model Context
+Protocol (`dvml mcp-serve`, optional `mcp` extra), so an MCP client can call
+`run_sql`/`read_file`/`http_get`/`calc` directly, bypassing `run_agent`
+entirely. Each tool's `description` is built fresh on every `list_tools` call
+from its docstring plus a stored `ToolNote` (`dvml/api/admin.py`) — deployment
+guidance intended for admins only. The write endpoint is gated with
+`require_auth` instead of `require_admin`, so any authenticated user can inject
+text into a field that every connecting agent implicitly trusts as
+authoritative tool documentation, not user data — a protocol-boundary bug
+distinct from the HTTP-response-body vulnerabilities elsewhere in the app.
+
 ## Cross-taint topology (why it's a benchmark)
 
 The design goal is that connecting a source to a sink requires following taint

@@ -24,6 +24,10 @@ ml = [
 dev = [
     "pytest>=8.0",
 ]
+# MCP protocol server exposing the assistant's tools (dvml mcp-serve).
+mcp = [
+    "mcp>=1.0",
+]
 
 [project.scripts]
 modelforge = "dvml.cli:main"

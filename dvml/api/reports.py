@@ -5,7 +5,7 @@ from flask import Blueprint, Response, g, jsonify, request
 
 from ..core.db import db
 from ..models import Model
-from ..services.reports import render_page, render_report
+from ..services.reports import render_builtin_report, render_custom_report, render_page, render_report
 from ..agent.core import run_agent
 from .deps import require_auth
 
@@ -35,6 +35,30 @@ def preview():
     template = data.get("template", "")
     if template:
         body = render_report(template, {"model": model, "owner": g.user_id})
+
+    html = render_page(title=model.name, body_html=body)
+    return Response(html, mimetype="text/html")
+
+
+@bp.post("/custom")
+@require_auth
+def custom_report():
+    """Render a report from either a built-in kind or a custom template file.
+
+    ``kind`` selects one of the small fixed set of built-in report styles.
+    Power users can instead pass ``template_name`` to point at their own
+    ``.tpl`` file placed alongside the built-ins.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    model = db.session.get(Model, data.get("model_id"))
+    if not model:
+        return jsonify(error="not found"), 404
+
+    context = {"model": model, "owner": g.user_id}
+    if data.get("template_name"):
+        body = render_custom_report(data["template_name"], context)
+    else:
+        body = render_builtin_report(data.get("kind", "summary"), context)
 
     html = render_page(title=model.name, body_html=body)
     return Response(html, mimetype="text/html")
