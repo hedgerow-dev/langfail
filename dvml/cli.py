@@ -14,6 +14,7 @@ from .core.security import hash_password
 def register_cli(app: Flask) -> None:
     app.cli.add_command(seed_command)
     app.cli.add_command(worker_command)
+    app.cli.add_command(mcp_serve_command)
 
 
 @click.command("seed")
@@ -43,6 +44,17 @@ def worker_command():
     from .workers.runner import run_forever
 
     run_forever()
+
+
+@click.command("mcp-serve")
+def mcp_serve_command():
+    """Serve the assistant's tools over MCP (stdio). Requires the 'mcp' extra."""
+    try:
+        from .mcp_server import main as mcp_main
+    except ImportError:
+        click.echo("MCP support not installed: pip install -e '.[mcp]'")
+        raise SystemExit(1)
+    mcp_main()
 
 
 def main() -> None:

@@ -35,6 +35,9 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V24 | 6 | 22 | Traversal behind config-gated sanitizer | `if STRICT_PATHS` defaults off |
 | V25 | 6 | 611 | XXE in XML model descriptor | off-list `lxml` sink |
 | V26 | 6 | LLM01 | Multi-hop agent tool chaining | fetched content drives 2nd tool |
+| V27 | 6 | 22 | Call-site-sensitive traversal in custom report templates | same sink fn, one literal call site + one tainted call site |
+| V28 | 6 | 78 | Taint-diluted command injection via split retention config | two independent values (DB column + queue payload), joined only by a foreign key, concatenated at the sink |
+| V29 | 6 | 862 | MCP tool-description poisoning via broken authorization | write path missing `require_admin`; impact lands on the MCP protocol boundary, not HTTP |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -45,6 +48,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D03 | V05/V19 | `render_report` `autoescape=True` escapes HTML output |
 | D04 | V06/V23 | `fetch_guarded` blocks private IPs, disables redirects |
 | D05 | V02 | `load_safe` uses `yaml.safe_load` |
+| D06 | V27 | `render_builtin_report` resolves `kind` through a dict, always passing one of two hardcoded literal filenames to the same sink `load_template_file` — a call-site-sensitivity test, not just a different code path |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -85,8 +89,86 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # 26 exploit proofs + 4 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # 29 exploit proofs + 5 decoy precision checks + 8 functional
+# (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
 If a PoC fails, the corresponding vulnerability has regressed (or the app was
 fixed) — reconcile against `ground_truth.yaml`.
+
+## Noise floor: generic SAST baselines
+
+Before trusting a taint engine's score, know what a tool with *no* taint
+tracking at all — just pattern-matching on dangerous calls — already gets for
+free. Measured against the current tree with **Bandit 1.9.4** (default checks)
+and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
+`p/flask`, 228 community rules, default config, no custom taint rules):
+
+| Tier | Vulns | Full hits | Sink-located only* | Clean misses |
+|------|-------|-----------|---------------------|---------------|
+| 1 | V01, V02 | 2/2 | 0 | 0 |
+| 2 | V03, V04, V05 | 0/3 | 0 | 3 |
+| 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
+| 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
+| 5 | V16–V19 | 2/4 (V18, V19) | 0 | 2 |
+| 6 | V20–V29 | 1/10 (V22) | 1 (V28) | 8 |
+| **Total** | **29** | **7** | **3** | **19** |
+
+Decoys: **0/6 false positives** — neither tool flagged any of D01–D06.
+
+\* *"Sink-located only"* means the tool flagged the exact sink line (e.g. any
+`subprocess(..., shell=True)`) but has no notion of whether the arguments are
+actually attacker-reachable — it would flag the same line whether the string
+were a hardcoded constant or fully attacker-controlled. Don't count these as
+genuine taint-tracking successes: V09, V11, and V28 all reduce to the same
+"`shell=True` is inherently reported" pattern match, regardless of whether the
+tainted value took one hop (V09) or crossed two independent storage backends
+(V28) to get there — the tool cannot tell the difference, which is exactly the
+point of V28.
+
+Takeaways for interpreting any engine's score against this baseline:
+
+- **Tier 1 is free.** A single dangerous call on a directly-passed argument
+  needs no dataflow analysis at all.
+- **"Blind" isn't a SAST difficulty axis.** V22 (blind SQLi) is caught by the
+  identical rule that catches V08 (reflected) — blind vs. reflected only
+  matters once you're testing exploitability (an agentic/DAST concern), not
+  for a syntactic scanner.
+- **Cross-file/cross-DB/cross-process taint (Tier 3–4) is where pattern
+  matching falls off a cliff** — neither tool does real interprocedural
+  dataflow, so anything requiring a trace through a service call, a DB
+  round-trip, or the job queue is invisible unless the sink itself is also
+  syntactically obvious in isolation.
+- **Tier 6 is a near-total wipeout** (1 full hit, and it's only there because
+  it happens to share V08's exact syntactic shape). Reflection, cache
+  laundering, taint dilution, call-site sensitivity, XXE, and the MCP
+  protocol-boundary bug are all outside what a rule-based scanner without
+  custom taint rules can see.
+- **Precision was clean**, but that's partly a low-recall artifact — a tool
+  bold enough to catch more of Tier 3–6 needs to be re-checked against the
+  decoys too.
+
+Regenerate this baseline any time with:
+
+```bash
+pip install bandit semgrep
+bandit -r dvml -f txt
+semgrep --config p/python --config p/security-audit --config p/owasp-top-ten --config p/flask dvml
+```
+
+## Keeping the ground truth honest
+
+`benchmarks/ground_truth.yaml` says line numbers are hints and symbol names
+are the stable anchor — but nothing enforced that until now. Run:
+
+```bash
+python benchmarks/check_ground_truth.py
+```
+
+This AST-parses every file the manifest references and confirms each declared
+`source`/`sink`/`location` symbol still exists (exit 1 if one doesn't — a
+renamed or deleted function the manifest silently stopped tracking), and flags
+stale `line_hint`s as informational drift. Run it after any refactor that
+touches the vulnerable modules, and whenever a scoring run's numbers look off
+— an inflated or deflated score is sometimes the manifest, not the tool being
+scored.

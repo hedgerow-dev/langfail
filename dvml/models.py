@@ -46,6 +46,8 @@ class Dataset(db.Model):
     rows = db.Column(db.Integer, default=0)
     # Optional URL notified when a background import for this dataset finishes.
     webhook_url = db.Column(db.String(500))
+    # Directory a later retention sweep is allowed to clean up (see workers/tasks.cleanup_dataset).
+    cleanup_dir = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=_now)
 
 
@@ -60,6 +62,22 @@ class Experiment(db.Model):
     params_json = db.Column(db.Text, default="{}")
     metrics_json = db.Column(db.Text, default="{}")
     tags = db.Column(db.String(255), default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class ToolNote(db.Model):
+    """A deployment-specific usage note appended to an MCP tool's description.
+
+    Intended to be admin-curated (e.g. "run_sql is read-only, prefer LIMIT 50")
+    so connecting agents get deployment-specific guidance alongside each tool's
+    static docstring.
+    """
+    __tablename__ = "tool_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tool_name = db.Column(db.String(80), nullable=False)
+    note = db.Column(db.Text, default="")
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=_now)
 
 

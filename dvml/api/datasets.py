@@ -23,7 +23,7 @@ def create_dataset():
     name = data.get("name") or "dataset"
 
     ds = Dataset(name=name, owner_id=g.user_id, source_url=data.get("source_url"),
-                 webhook_url=data.get("webhook_url"))
+                 webhook_url=data.get("webhook_url"), cleanup_dir=data.get("cleanup_dir"))
     db.session.add(ds)
     db.session.commit()
 
@@ -64,3 +64,21 @@ def get_dataset(dataset_id: int):
         return jsonify(error="not found"), 404
     return jsonify(id=ds.id, name=ds.name, status=ds.status, rows=ds.rows,
                    source_url=ds.source_url, storage_path=ds.storage_path)
+
+
+@bp.post("/<int:dataset_id>/schedule_cleanup")
+@require_auth
+def schedule_cleanup(dataset_id: int):
+    """Schedule a retention sweep of a dataset's cleanup directory.
+
+    ``pattern`` selects which files in the directory (registered when the
+    dataset was created) the sweep removes.
+    """
+    ds = db.session.get(Dataset, dataset_id)
+    if not ds:
+        return jsonify(error="not found"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    job_id = enqueue("cleanup_dataset",
+                     {"dataset_id": dataset_id, "pattern": data.get("pattern", "*.tmp")},
+                     owner_id=g.user_id)
+    return jsonify(job_id=job_id), 202

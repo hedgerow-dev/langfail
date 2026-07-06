@@ -6,7 +6,7 @@ SQLite and a pluggable local LLM backend.
 
 > ### ⚠️ This application is deliberately vulnerable
 > ModelForge is a **security benchmark target**, not production software. It
-> contains 26 planted vulnerabilities (plus precision decoys) spanning the classes
+> contains 29 planted vulnerabilities (plus precision decoys) spanning the classes
 > commonly reported against real ML/AI open source on [huntr.com](https://huntr.com)
 > — unsafe model deserialization, SSRF (incl. blind/OOB), path traversal, zip/tar
 > slip, SQL (incl. blind) and command injection, SSTI, IDOR, unsafe reflection,
@@ -49,6 +49,7 @@ cross-taint topology.
 | `dvml/ml/` | model load/save, dataset extraction, conversion, metrics |
 | `dvml/workers/` | DB-backed job queue + worker — **cross-process / second-order** sinks |
 | `dvml/agent/` | LLM backends, tools, agent loop — prompt-injection surface |
+| `dvml/mcp_server.py` | exposes the same tools over MCP — protocol-boundary surface |
 | `dvml/core/` | config, db, auth/JWT, the incomplete sanitizers |
 | `benchmarks/ground_truth.yaml` | labeled oracle: every vuln + full taint path |
 | `exploits/` | runnable PoCs (chains) + pointer to the per-vuln PoC tests |
@@ -63,6 +64,7 @@ export DVML_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
 flask --app dvml seed                              # demo users: admin/admin123, alice/alice123, bob/bob123
 flask --app dvml run                               # http://127.0.0.1:5000
 flask --app dvml worker                            # in another shell: drains the job queue
+flask --app dvml mcp-serve                         # optional: pip install -e ".[mcp]"; MCP tools over stdio
 ```
 
 Health check: `curl localhost:5000/health`.
@@ -80,7 +82,7 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 8 functional + 26 exploits + 4 decoy checks
+PYTHONPATH=. pytest -q                     # 8 functional + 29 exploits + 5 decoy checks
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # SSRF -> RCE across DB + queue
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # indirect prompt injection
 ```

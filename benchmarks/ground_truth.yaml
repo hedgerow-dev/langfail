@@ -19,7 +19,8 @@ meta:
     4: second-order / cross-process (via DB round-trip or job queue)
     5: agentic / LLM
     6: max — reflection/dynamic-dispatch, carrier laundering, blind/OOB, conditional
-       sanitizers, off-list library sinks, multi-hop agent (plus precision decoys)
+       sanitizers, off-list library sinks, call-site sensitivity, taint dilution,
+       multi-hop agent, MCP protocol boundary (plus precision decoys)
 
 vulnerabilities:
   - id: V01
@@ -89,7 +90,7 @@ vulnerabilities:
     tier: 2
     exploitable: true
     source: {file: dvml/api/models.py, symbol: report, note: "template"}
-    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 27}
+    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 31}
     taint_path:
       - dvml/api/models.py:report (template)
       - dvml/services/reports.py:render_report (Environment.from_string(user_template))
@@ -120,7 +121,7 @@ vulnerabilities:
     tier: 3
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "source_url"}
-    sink: {file: dvml/ml/model_loader.py, symbol: load_model_bytes, line_hint: 40}
+    sink: {file: dvml/ml/model_loader.py, symbol: load_model_bytes, line_hint: 43}
     taint_path:
       - dvml/api/datasets.py:create_dataset (source_url)
       - dvml/workers/tasks.py:import_dataset (fetch bytes -> _looks_like_model)
@@ -167,7 +168,7 @@ vulnerabilities:
     tier: 3
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "meta.storage_path"}
-    sink: {file: dvml/services/registry.py, symbol: save_with_metadata, line_hint: 37}
+    sink: {file: dvml/services/registry.py, symbol: save_with_metadata, line_hint: 67}
     taint_path:
       - dvml/api/models.py:create_model (meta.storage_path)
       - dvml/services/registry.py:save_with_metadata (os.path.join without sanitization; absolute/'..' allowed)
@@ -181,7 +182,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "name -> DB"}
-    sink: {file: dvml/workers/tasks.py, symbol: _inspect_async, line_hint: 56}
+    sink: {file: dvml/workers/tasks.py, symbol: _inspect_async, line_hint: 64}
     taint_path:
       - dvml/api/datasets.py:create_dataset (name persisted to Dataset.name)
       - dvml/workers/tasks.py:import_dataset (reads ds.name from DB)
@@ -196,7 +197,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/models.py, symbol: get_model / download_artifact, note: "model_id path param"}
-    sink: {file: dvml/api/models.py, symbol: download_artifact, line_hint: 48}
+    sink: {file: dvml/api/models.py, symbol: download_artifact, line_hint: 66}
     taint_path:
       - dvml/api/models.py:get_model & download_artifact (no owner check vs g.user_id)
       - "contrast: update_model DOES check owner_id (misdirection)"
@@ -211,7 +212,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/inference.py, symbol: predict, note: "feature_cache path"}
-    sink: {file: dvml/ml/features.py, symbol: load_feature_cache, line_hint: 40}
+    sink: {file: dvml/ml/features.py, symbol: load_feature_cache, line_hint: 37}
     taint_path:
       - dvml/api/inference.py:predict (feature_cache path from request)
       - dvml/ml/features.py:load_feature_cache (numpy.load allow_pickle=True / pickle fallback)
@@ -240,7 +241,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/experiments.py, symbol: evaluate, note: "metric spec"}
-    sink: {file: dvml/ml/metrics.py, symbol: evaluate_metric, line_hint: 27}
+    sink: {file: dvml/ml/metrics.py, symbol: evaluate_metric, line_hint: 26}
     taint_path:
       - dvml/api/experiments.py:evaluate (metric)
       - dvml/ml/metrics.py:evaluate_metric (eval with empty __builtins__ — bypassable via object gadgets)
@@ -286,7 +287,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/agent.py, symbol: chat, note: "message -> calc tool"}
-    sink: {file: dvml/agent/tools.py, symbol: calc, line_hint: 37}
+    sink: {file: dvml/agent/tools.py, symbol: calc, line_hint: 35}
     taint_path:
       - dvml/api/agent.py:chat (message with tool directive)
       - dvml/agent/tools.py:calc (eval with empty __builtins__ — escapable)
@@ -301,7 +302,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "model_card / body"}
-    sink: {file: dvml/services/reports.py, symbol: render_page, line_hint: 40}
+    sink: {file: dvml/services/reports.py, symbol: render_page, line_hint: 72}
     taint_path:
       - "model_card / assistant answer / body -> dvml/api/reports.py:preview"
       - dvml/services/reports.py:render_page (Environment(autoescape=False) emits body verbatim)
@@ -337,7 +338,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/models.py, symbol: annotate, note: "note body"}
-    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 27}
+    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 31}
     taint_path:
       - dvml/api/models.py:annotate (note -> cache.put, base64+json wrapped)
       - dvml/core/cache.py:put/get (taint laundered through base64 encode/decode across requests)
@@ -371,8 +372,8 @@ vulnerabilities:
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "webhook_url -> Dataset.webhook_url"}
     sink:
-      - {file: dvml/api/datasets.py, symbol: create_dataset, note: "sync requests.post on local import", line_hint: 49}
-      - {file: dvml/workers/tasks.py, symbol: _notify, line_hint: 60, note: "cross-process on remote import"}
+      - {file: dvml/api/datasets.py, symbol: create_dataset, note: "sync requests.post on local import", line_hint: 52}
+      - {file: dvml/workers/tasks.py, symbol: _notify, line_hint: 70, note: "cross-process on remote import"}
     taint_path:
       - dvml/api/datasets.py:create_dataset (webhook_url persisted)
       - dvml/workers/tasks.py:import_dataset -> _notify (worker POSTs on completion) OR sync POST on archive import
@@ -404,7 +405,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/models.py, symbol: upload_config, note: "raw XML body"}
-    sink: {file: dvml/ml/modelconfig.py, symbol: parse_model_config, line_hint: 27}
+    sink: {file: dvml/ml/modelconfig.py, symbol: parse_model_config, line_hint: 24}
     taint_path:
       - dvml/api/models.py:upload_config (request body)
       - dvml/ml/modelconfig.py:parse_model_config (lxml XMLParser resolve_entities=True, load_dtd=True, no_network=False)
@@ -429,6 +430,88 @@ vulnerabilities:
       - dvml/agent/tools.py:run_sql (credential exfiltration)
     sanitizers_present: []
     poc: tests/test_exploits_tier6.py::test_v26_agent_multihop_injection
+
+  - id: V27
+    title: Call-site-sensitive path traversal in custom report templates
+    cwe: CWE-22
+    huntr_analog: "arbitrary file read via a template/theme-file selector param"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/reports.py, symbol: custom_report, note: "template_name (JSON body)"}
+    sink: {file: dvml/services/reports.py, symbol: load_template_file, line_hint: 37}
+    taint_path:
+      - dvml/api/reports.py:custom_report (data.template_name, passed only when present)
+      - dvml/services/reports.py:render_custom_report (passthrough, no validation)
+      - dvml/services/reports.py:load_template_file (os.path.join(TEMPLATE_DIR, template_name), no containment check)
+    sanitizers_present: []
+    notes: >
+      load_template_file is called from TWO sites: render_builtin_report resolves
+      the filename through the BUILTIN_KINDS dict (always one of two hardcoded
+      literals, regardless of the caller-supplied `kind` string — see D06) and
+      render_custom_report passes template_name straight through. A
+      context/call-site-insensitive engine that summarises taint per-function
+      rather than per-call-site will either miss this (having "seen" the safe
+      literal call site and concluded the sink is fine) or flag both call sites
+      indiscriminately (a false positive on D06). Reading a file containing
+      Jinja syntax also gets rendered as a template, so this composes with an
+      arbitrary-write primitive (e.g. V10) into SSTI/RCE.
+    poc: tests/test_exploits_tier6.py::test_v27_custom_template_traversal
+
+  - id: V28
+    title: Taint-diluted command injection via split retention config
+    cwe: CWE-78
+    huntr_analog: "shell command built from two independently-supplied config fragments"
+    tier: 6
+    exploitable: true
+    source:
+      - {file: dvml/api/datasets.py, symbol: create_dataset, note: "cleanup_dir (request 1, persisted to Dataset.cleanup_dir)"}
+      - {file: dvml/api/datasets.py, symbol: schedule_cleanup, note: "pattern (request 2, later & unrelated, persisted to Job.payload_json only)"}
+    sink: {file: dvml/services/retention.py, symbol: purge, line_hint: 15}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (cleanup_dir -> Dataset.cleanup_dir column)
+      - dvml/api/datasets.py:schedule_cleanup (pattern -> enqueue("cleanup_dataset", {..., pattern}) -> Job.payload_json)
+      - dvml/workers/tasks.py:cleanup_dataset (reads ds.cleanup_dir from the DB AND payload["pattern"] from the queue -- two independent reads joined only by dataset_id)
+      - dvml/services/retention.py:purge (f"rm -f {cleanup_dir}/{pattern}", subprocess shell=True)
+    sanitizers_present: []
+    notes: >
+      Neither half is dangerous alone and each is supplied in a separate HTTP
+      request through a separate storage mechanism (an ORM column vs. a JSON
+      blob in the job queue) -- there is no single request, and no single
+      stored field, whose value alone reaches the sink. An engine must
+      correlate two independently-tainted values across two different taint
+      carriers, keyed only by a shared foreign key (dataset_id), and recognize
+      their string-formatted concatenation as reaching a shell sink. This is a
+      harder version of the second-order pattern already used in V06/V07/V11
+      (which route a single tainted value through one DB/queue hop) --  here
+      the dangerous string does not exist anywhere in storage until the two
+      halves are concatenated at the sink.
+    poc: tests/test_exploits_tier6.py::test_v28_taint_dilution_cleanup_rce
+
+  - id: V29
+    title: MCP tool-description poisoning via broken authorization
+    cwe: CWE-862
+    huntr_analog: "MCP tool-poisoning attack: untrusted content trusted as server-authored tool metadata"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/admin.py, symbol: set_tool_note, note: "note (JSON body) -- decorated with require_auth, not require_admin"}
+    sink: {file: dvml/mcp_server.py, symbol: _tool_description, line_hint: 20}
+    taint_path:
+      - dvml/api/admin.py:set_tool_note (any authenticated user's note -> ToolNote row)
+      - dvml/mcp_server.py:_tool_description (reads ToolNote fresh on every list_tools call)
+      - dvml/mcp_server.py:build_tool_list (embeds the note into the MCP Tool.description every connecting client/agent receives)
+    sanitizers_present:
+      - "list_tool_notes (GET) correctly uses require_admin -- only the write path (POST) was left on require_auth (misdirection: the read is properly gated, the write is not)"
+    notes: >
+      This is a protocol-boundary bug, not a classic web one: the vulnerable
+      value never renders as HTML and is never returned to the attacker's own
+      HTTP response. It crosses into the MCP tool-description field, which any
+      connecting agent implicitly trusts as authoritative server documentation
+      (the real-world "MCP tool poisoning" pattern) -- so the impact lands on
+      a different trust boundary (agent tool-selection reasoning) than the one
+      the write endpoint sits behind (a regular authenticated user). Exercises
+      the MCP protocol surface directly via `dvml mcp-serve` (optional `mcp`
+      extra) rather than the in-process agent loop.
+    poc: tests/test_exploits_tier6.py::test_v29_mcp_tool_description_poisoning
 
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
@@ -458,6 +541,11 @@ decoys:
     why_safe: "load_safe() uses yaml.safe_load — no object construction"
     location: {file: dvml/services/config_loader.py, symbol: load_safe}
     proof: "covered indirectly; no dedicated test (static near-miss)"
+  - id: D06
+    resembles: V27 (path traversal) — SAME sink function, different call site
+    why_safe: "render_builtin_report() resolves the filename via BUILTIN_KINDS.get(kind, 'summary.tpl'); the value passed to load_template_file is always one of two hardcoded literals no matter what `kind` is"
+    location: {file: dvml/services/reports.py, symbol: render_builtin_report}
+    proof: tests/test_exploits_tier6.py::test_d06_builtin_kind_ignores_traversal
 
 chains:
   - id: CHAIN_A
