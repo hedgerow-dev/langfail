@@ -38,6 +38,9 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V27 | 6 | 22 | Call-site-sensitive traversal in custom report templates | same sink fn, one literal call site + one tainted call site |
 | V28 | 6 | 78 | Taint-diluted command injection via split retention config | two independent values (DB column + queue payload), joined only by a foreign key, concatenated at the sink |
 | V29 | 6 | 862 | MCP tool-description poisoning via broken authorization | write path missing `require_admin`; impact lands on the MCP protocol boundary, not HTTP |
+| V30 | 6 | LLM01 | Agent long-term memory poisoning (persistent, cross-user) | write to `AgentMemory` → unscoped `recall()` into a different user's later session |
+| V31 | 5 | 200 | Markdown-image data exfiltration in rendered preview | LLM/card Markdown → `<img src>` off-origin, zero-click egress channel |
+| V32 | 6 | LLM01 | Unicode/ASCII-smuggling prompt injection | tag-block/zero-width directive slips past an ASCII-only `[[TOOL:]]` filter |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -49,6 +52,9 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D04 | V06/V23 | `fetch_guarded` blocks private IPs, disables redirects |
 | D05 | V02 | `load_safe` uses `yaml.safe_load` |
 | D06 | V27 | `render_builtin_report` resolves `kind` through a dict, always passing one of two hardcoded literal filenames to the same sink `load_template_file` — a call-site-sensitivity test, not just a different code path |
+| D07 | V30 | `recall_scoped` filters `AgentMemory` by `owner_id`, so the per-user notes view never returns another user's memory |
+| D08 | V31 | `render_markdown_safe` only emits same-origin `<img src>` and drops off-origin images to alt text — no egress channel |
+| D09 | V32 | `strip_directives` **does** remove a plainly-visible `[[TOOL:...]]` — it's a real (if incomplete) control; flag the missing Unicode normalization, not the filter |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -89,7 +95,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # 29 exploit proofs + 5 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V32; V07 shares V06's chain PoC)
+                           # + 8 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -110,11 +117,19 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
-| 5 | V16–V19 | 2/4 (V18, V19) | 0 | 2 |
-| 6 | V20–V29 | 1/10 (V22) | 1 (V28) | 8 |
-| **Total** | **29** | **7** | **3** | **19** |
+| 5 | V16–V19, V31 | 2/5 (V18, V19) | 0 | 3 |
+| 6 | V20–V30, V32 | 1/12 (V22) | 1 (V28) | 10 |
+| **Total** | **32** | **7** | **3** | **22** |
 
-Decoys: **0/6 false positives** — neither tool flagged any of D01–D06.
+Decoys: **0/9 false positives** — neither tool flagged any of D01–D09.
+
+The three newest bugs (V30–V32) are clean misses for a syntactic scanner: memory
+poisoning is a semantic authz/isolation gap with no dangerous call to match, the
+markdown-image sink is an ordinary `re.sub`/string build, and the Unicode-smuggling
+directive is invisible to a rule that greps for ASCII `[[TOOL:]]`. V32 is,
+however, the cheapest of the whole set to catch with a *dedicated* presence rule
+(regex for U+E00xx / zero-width codepoints in prompt-bound strings) — its
+difficulty is entirely in the taint framing, not the pattern.
 
 \* *"Sink-located only"* means the tool flagged the exact sink line (e.g. any
 `subprocess(..., shell=True)`) but has no notion of whether the arguments are

@@ -81,6 +81,22 @@ class ToolNote(db.Model):
     created_at = db.Column(db.DateTime, default=_now)
 
 
+class AgentMemory(db.Model):
+    """A fact the assistant remembers across sessions (mem0-style long-term memory).
+
+    ``owner_id`` records which user's session created the memory, but the shared
+    assistant recalls memories globally (see dvml.agent.memory.recall) so that
+    org-wide knowledge — naming conventions, model quirks — is available to every
+    session without being re-explained.
+    """
+    __tablename__ = "agent_memory"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    content = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
 class Job(db.Model):
     __tablename__ = "jobs"
 
