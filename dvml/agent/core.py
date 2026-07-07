@@ -17,12 +17,19 @@ SYSTEM_PROMPT = (
 MAX_TOOL_ROUNDS = 3
 
 
-def run_agent(user_message: str, context_docs: list[str] | None = None) -> dict:
+def run_agent(user_message: str, context_docs: list[str] | None = None,
+              use_memory: bool = False) -> dict:
     """Answer ``user_message``, optionally grounded in ``context_docs``.
 
-    Returns the final answer plus a trace of any tool calls that were made.
+    When ``use_memory`` is set, the assistant's saved long-term memories are
+    recalled and prepended to the conversation so context carries across
+    sessions. Returns the final answer plus a trace of any tool calls made.
     """
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    if use_memory:
+        from .memory import recall
+        for mem in recall():
+            messages.append({"role": "user", "content": f"[memory]\n{mem}"})
     for doc in context_docs or []:
         messages.append({"role": "user", "content": f"[context]\n{doc}"})
     messages.append({"role": "user", "content": user_message})

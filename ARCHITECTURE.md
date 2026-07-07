@@ -45,6 +45,8 @@ flowchart TD
         core_a[core\nagent loop]
         llm[llm\nstub / ollama]
         tools[tools\nrun_sql/read_file/http_get/calc]
+        mem[memory\ncross-session recall]
+        san[sanitize\nINCOMPLETE directive filter]
     end
 
     subgraph workers["dvml/workers/ — queue + worker (CROSS-PROCESS SINKS)"]
@@ -91,7 +93,10 @@ flowchart TD
   it. Work enqueued by one request is executed later in a different process,
   producing **second-order / cross-process** flows.
 - **`dvml/agent/`** — the LLM assistant: a backend abstraction (`stub`/`ollama`),
-  a set of real tools, and an agent loop that may call them.
+  a set of real tools, an agent loop that may call them, a persistent
+  cross-session `memory` store, and a `sanitize` directive filter that is
+  intentionally incomplete (it normalizes nothing, so invisible-Unicode
+  directives slip through). LLM/tool output is itself a taint **source** here.
 - **`dvml/core/`** — config, the SQLAlchemy handle, and `security.py`, which
   holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
   `escape_sql`, `is_safe_url`). These helpers appear on many taint paths and are
@@ -209,6 +214,9 @@ single-line pattern match. At a glance:
 | Second-order via DB | model name → stored `artifact_path` → convert shell; dataset name → worker shell |
 | Cross-process via queue | `source_url` → `jobs` → worker → `fetch` → pickle |
 | Through the agent | stored model card → retrieval → agent tool call |
+| Through persistent memory | one user's `AgentMemory` write → unscoped `recall()` → another user's later session → tool call |
+| Through invisible Unicode | tag-block/zero-width directive → past an ASCII-only filter → LLM reads it as ASCII → tool call |
+| LLM output → render sink | model card / assistant Markdown → `services/markdown` → off-origin `<img>` egress |
 | Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
 | Blind / OOB | webhook egress + count-only SQLi — no reflected output, needs a canary/oracle |
@@ -227,7 +235,12 @@ through a base64/JSON round-trip between requests), **blind/OOB** sinks
 (completion-webhook SSRF with no allow-list; a count-only boolean SQLi),
 **config-gated sanitizers** (traversal that only closes when `STRICT_PATHS` is
 on — off by default), an **off-list library sink** (`ml/modelconfig.py` XXE via
-lxml), and **multi-hop agent chaining** (a fetched page re-enters the loop and
-drives a second tool call). Each ships with a runnable proof, and a set of
+lxml), **multi-hop agent chaining** (a fetched page re-enters the loop and
+drives a second tool call), **persistent cross-user memory poisoning**
+(`agent/memory.py` recalls every user's saved memories into every session, so a
+stored directive fires in a victim's later turn), and a **Unicode/ASCII-smuggling
+filter bypass** (`agent/sanitize.py` strips only literal ASCII `[[TOOL:]]`, so a
+tag-block-encoded directive — invisible in review — reaches the agent). Each
+ships with a runnable proof, and a set of
 **precision decoys** (safe look-alikes such as `read_artifact_safe`,
 `search_by_tag`, `fetch_guarded`) exists so false positives are measurable too.

@@ -24,6 +24,31 @@ from ..core.config import Config
 _ACTION_RE = re.compile(r"\[\[TOOL:(\w+)\s+(.*?)\]\]", re.DOTALL)
 
 
+# Zero-width / joiner characters that carry no glyph but survive in text.
+_ZERO_WIDTH = "\u200b\u200c\u200d\u2060\ufeff"
+
+
+def _deobfuscate(text: str) -> str:
+    """Fold invisible-Unicode "ASCII smuggling" back to plain ASCII.
+
+    Characters in the Unicode Tags block (U+E0020–U+E007E) render as nothing but
+    encode ordinary ASCII; zero-width characters likewise carry no glyph. A
+    capable model reads both as the underlying instruction, so the stub does the
+    same before scanning for directives — otherwise the backends would disagree
+    on what the "same" prompt says.
+    """
+    out = []
+    for ch in text:
+        cp = ord(ch)
+        if 0xE0020 <= cp <= 0xE007E:      # Unicode Tags block -> ASCII
+            out.append(chr(cp - 0xE0000))
+        elif ch in _ZERO_WIDTH:            # zero-width formatting -> drop
+            continue
+        else:
+            out.append(ch)
+    return "".join(out)
+
+
 def _parse_args(raw: str) -> dict:
     raw = raw.strip()
     try:
@@ -36,7 +61,7 @@ def _parse_args(raw: str) -> dict:
 
 
 def _stub_chat(messages: list[dict], tools: list[dict] | None) -> dict:
-    conversation = "\n".join(m.get("content", "") for m in messages)
+    conversation = _deobfuscate("\n".join(m.get("content", "") for m in messages))
     calls = []
     for name, raw in _ACTION_RE.findall(conversation):
         calls.append({"name": name, "arguments": _parse_args(raw)})
