@@ -48,6 +48,8 @@ class Dataset(db.Model):
     webhook_url = db.Column(db.String(500))
     # Directory a later retention sweep is allowed to clean up (see workers/tasks.cleanup_dataset).
     cleanup_dir = db.Column(db.String(500))
+    # Optional custom loading script, run at prepare time (see ml/dataset.py:run_loader_script).
+    loader_script = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=_now)
 
 

@@ -9,7 +9,7 @@ from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
 from ..models import Dataset
-from ..ml.dataset import count_rows, extract_archive, find_table, load_rows
+from ..ml.dataset import count_rows, extract_archive, find_table, load_rows, run_loader_script
 from ..services.analysis import run_analysis
 from ..workers.queue import enqueue
 from .deps import require_auth
@@ -24,7 +24,8 @@ def create_dataset():
     name = data.get("name") or "dataset"
 
     ds = Dataset(name=name, owner_id=g.user_id, source_url=data.get("source_url"),
-                 webhook_url=data.get("webhook_url"), cleanup_dir=data.get("cleanup_dir"))
+                 webhook_url=data.get("webhook_url"), cleanup_dir=data.get("cleanup_dir"),
+                 loader_script=data.get("loader_script"))
     db.session.add(ds)
     db.session.commit()
 
@@ -81,6 +82,19 @@ def analyze_dataset(dataset_id: int):
     question = (request.get_json(force=True, silent=True) or {}).get("question", "")
     rows = load_rows(ds.storage_path) if ds.storage_path else []
     return jsonify(answer=run_analysis(question, rows))
+
+
+@bp.post("/<int:dataset_id>/prepare")
+@require_auth
+def prepare_dataset(dataset_id: int):
+    """Run the dataset's custom loading script (see ml/dataset.py:run_loader_script),
+    for formats too irregular for a plain CSV/TSV table."""
+    ds = db.session.get(Dataset, dataset_id)
+    if not ds:
+        return jsonify(error="not found"), 404
+    if not ds.loader_script:
+        return jsonify(error="no loader_script registered for this dataset"), 400
+    return jsonify(run_loader_script(ds.loader_script))
 
 
 @bp.post("/<int:dataset_id>/schedule_cleanup")

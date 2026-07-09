@@ -702,6 +702,32 @@ vulnerabilities:
       does).
     poc: tests/test_exploits_tier6.py::test_v36_unbounded_agent_iteration
 
+  - id: V37
+    title: Arbitrary code execution via untrusted dataset loading script (trust_remote_code class)
+    cwe: CWE-94
+    huntr_analog: "datasets.load_dataset(..., trust_remote_code=True) / Keras Lambda-layer & enable_unsafe_deserialization() -- arbitrary code runs at dataset/model load time, not just on deserialization of the artifact itself (CVE-2024-3660 class)"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "loader_script (JSON body) -> Dataset.loader_script"}
+    sink: {file: dvml/ml/dataset.py, symbol: run_loader_script, line_hint: 85}
+    taint_path:
+      - dvml/api/datasets.py:create_dataset (loader_script persisted to Dataset.loader_script, not executed yet)
+      - dvml/api/datasets.py:prepare_dataset (a LATER, separate request reads ds.loader_script back from the DB)
+      - dvml/ml/dataset.py:run_loader_script (exec(script_src, scope) with trust_remote_code defaulting to True)
+    sanitizers_present:
+      - "trust_remote_code defaults to True -- mirrors the historical default of several popular dataset-loading libraries before they made trust an explicit opt-in; nothing in create_dataset or prepare_dataset ever passes trust_remote_code=False"
+    notes: >
+      Distinct from V01/V07/V13 (which deserialize a data format -- pickle/
+      torch/joblib/numpy -- where the vulnerability is in interpreting bytes
+      as an object graph): here the artifact IS source code, and the "load"
+      step is a literal exec(). This is exactly the trust_remote_code /
+      Keras-Lambda class of bug, which people underestimate relative to
+      classic pickle RCE because "just loading a dataset" sounds inert. Also
+      second-order like V06/V11: the script is stored in one request and only
+      runs when a later, separate request calls prepare_dataset -- nothing
+      in create_dataset itself is dangerous in isolation.
+    poc: tests/test_exploits_tier6.py::test_v37_trust_remote_code_rce
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -770,6 +796,11 @@ decoys:
     why_safe: "run_agent_capped() clamps the requested max_rounds to MAX_ITERATE_ROUNDS (10) before ever calling run_agent_unbounded, regardless of what the caller asks for"
     location: {file: dvml/agent/core.py, symbol: run_agent_capped}
     proof: tests/test_exploits_tier6.py::test_d13_capped_agent_ignores_requested_budget
+  - id: D14
+    resembles: V37 (trust_remote_code RCE) — SAME feature (custom dataset loading), never executes instead of trusting by default
+    why_safe: "run_loader_script_safe() never execs anything -- custom loading scripts are simply unsupported, the secure equivalent of trust_remote_code=False"
+    location: {file: dvml/ml/dataset.py, symbol: run_loader_script_safe}
+    proof: tests/test_exploits_tier6.py::test_d14_safe_loader_never_execs
 
 chains:
   - id: CHAIN_A

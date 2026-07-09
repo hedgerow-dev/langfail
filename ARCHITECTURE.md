@@ -88,7 +88,9 @@ flowchart TD
   the filesystem, and the template engine. Most **sinks** live here, one file
   removed from the source (cross-file taint).
 - **`dvml/ml/`** — model (de)serialization, dataset archive extraction, the
-  feature cache, format conversion, and metric evaluation. More sinks.
+  feature cache, format conversion, metric evaluation, and a custom dataset
+  "loading script" runner (`trust_remote_code`-style: the artifact IS code,
+  not a data format to deserialize). More sinks.
 - **`dvml/workers/`** — a database-backed job queue and the worker that drains
   it. Work enqueued by one request is executed later in a different process,
   producing **second-order / cross-process** flows.
@@ -215,7 +217,7 @@ single-line pattern match. At a glance:
 |----------|--------------|
 | Same/adjacent function | report template → `render_report` |
 | Cross-file (blueprint → service/ml) | search params → `services/experiments` SQL; convert → `ml/convert` subprocess |
-| Second-order via DB | model name → stored `artifact_path` → convert shell; dataset name → worker shell |
+| Second-order via DB | model name → stored `artifact_path` → convert shell; dataset name → worker shell; `loader_script` → later `prepare` request → `exec` |
 | Cross-process via queue | `source_url` → `jobs` → worker → `fetch` → pickle |
 | Through the agent | stored model card → retrieval → agent tool call |
 | Through persistent memory | one user's `AgentMemory` write → unscoped `recall()` → another user's later session → tool call |

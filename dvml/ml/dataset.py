@@ -67,3 +67,29 @@ def load_rows(root: str | Path, limit: int = 500) -> list[dict]:
         return []
     with open(table, newline="") as fh:
         return [dict(r) for r in list(csv.DictReader(fh))[:limit]]
+
+
+def run_loader_script(script_src: str, trust_remote_code: bool = True) -> dict:
+    """Run a dataset's custom loading script (the ``datasets.load_dataset(...,
+    trust_remote_code=True)`` pattern): a Python file shipped alongside a
+    dataset that builds its rows programmatically, for formats too irregular
+    for a plain CSV/TSV.
+
+    Defaults to trusting the script, matching the historical default of
+    several popular dataset-loading libraries before they made trust an
+    explicit opt-in.
+    """
+    if not trust_remote_code:
+        return {"error": "trust_remote_code is disabled; refusing to run the loading script"}
+    scope: dict = {}
+    exec(script_src, scope)  # the dataset's own loading script, run at prepare time
+    return {"rows": scope.get("rows", [])}
+
+
+def run_loader_script_safe(script_src: str) -> dict:
+    """Never executes a loading script -- datasets must be plain CSV/TSV.
+
+    The secure default (``trust_remote_code=False``): a custom loader is
+    simply unsupported rather than run.
+    """
+    return {"error": "custom loading scripts are not supported; provide a CSV/TSV table instead"}
