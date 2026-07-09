@@ -7,6 +7,7 @@ from ..core.db import db
 from ..models import Dataset, Model
 from ..agent.core import run_agent
 from ..agent.memory import recall_scoped, remember
+from ..agent.native import run_native_loop
 from ..agent.sanitize import strip_directives
 from .deps import require_auth
 
@@ -65,6 +66,16 @@ def session():
     message = data.get("message", "")
     result = run_agent(message, use_memory=True)
     remember(message, owner_id=g.user_id)
+    return jsonify(**result)
+
+
+@bp.post("/native")
+@require_auth
+def native():
+    """A lightweight, non-framework tool-use assistant for looking up model
+    and experiment info (see :mod:`dvml.agent.native`)."""
+    data = request.get_json(force=True, silent=True) or {}
+    result = run_native_loop(data.get("message", ""))
     return jsonify(**result)
 
 

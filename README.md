@@ -6,7 +6,7 @@ SQLite and a pluggable local LLM backend.
 
 > ### ⚠️ This application is deliberately vulnerable
 > ModelForge is a **security benchmark target**, not production software. It
-> contains 34 planted vulnerabilities (plus precision decoys) spanning the classes
+> contains 35 planted vulnerabilities (plus precision decoys) spanning the classes
 > commonly reported against real ML/AI open source on [huntr.com](https://huntr.com)
 > — unsafe model deserialization, SSRF (incl. blind/OOB), path traversal, zip/tar
 > slip, SQL (incl. blind) and command injection, SSTI, IDOR, unsafe reflection,
@@ -86,7 +86,7 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V34) + 10 decoy checks
+PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V35) + 11 decoy checks
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # SSRF -> RCE across DB + queue
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # indirect prompt injection
 ```

@@ -94,9 +94,12 @@ flowchart TD
   producing **second-order / cross-process** flows.
 - **`dvml/agent/`** — the LLM assistant: a backend abstraction (`stub`/`ollama`),
   a set of real tools, an agent loop that may call them, a persistent
-  cross-session `memory` store, and a `sanitize` directive filter that is
+  cross-session `memory` store, a `sanitize` directive filter that is
   intentionally incomplete (it normalizes nothing, so invisible-Unicode
-  directives slip through). LLM/tool output is itself a taint **source** here.
+  directives slip through), and a `native` module modeling the raw (non-
+  framework) OpenAI/Anthropic tool-use pattern — a model-chosen name resolved
+  via bare `getattr`, contrasted with `core.py`'s explicit `TOOLS` allow-list
+  dict. LLM/tool output is itself a taint **source** here.
 - **`dvml/core/`** — config, the SQLAlchemy handle, and `security.py`, which
   holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
   `escape_sql`, `is_safe_url`). These helpers appear on many taint paths and are
@@ -221,6 +224,7 @@ single-line pattern match. At a glance:
 | LLM output → code exec sink | natural-language question → `agent/llm.py:generate_code` → `services/analysis.py` `exec` (PandasAI class) |
 | Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
+| Through model-chosen dispatch | LLM tool-call names a method → `agent/native.py` bare `getattr(self, name)`, no allow-list check |
 | Blind / OOB | webhook egress + count-only SQLi — no reflected output, needs a canary/oracle |
 
 Several paths pass through `dvml/core/security.py` helpers that *look*
@@ -240,9 +244,13 @@ on — off by default), an **off-list library sink** (`ml/modelconfig.py` XXE vi
 lxml), **multi-hop agent chaining** (a fetched page re-enters the loop and
 drives a second tool call), **persistent cross-user memory poisoning**
 (`agent/memory.py` recalls every user's saved memories into every session, so a
-stored directive fires in a victim's later turn), and a **Unicode/ASCII-smuggling
+stored directive fires in a victim's later turn), a **Unicode/ASCII-smuggling
 filter bypass** (`agent/sanitize.py` strips only literal ASCII `[[TOOL:]]`, so a
-tag-block-encoded directive — invisible in review — reaches the agent). Each
-ships with a runnable proof, and a set of
+tag-block-encoded directive — invisible in review — reaches the agent), and a
+second **reflection** variant distinct from the pipeline one (`agent/native.py`
+resolves an LLM-chosen action name via bare `getattr` with no check against its
+own advertised allow-list, reaching a never-advertised internal method — no
+import or file write required, unlike `services/pipeline.py`'s). Each ships
+with a runnable proof, and a set of
 **precision decoys** (safe look-alikes such as `read_artifact_safe`,
 `search_by_tag`, `fetch_guarded`) exists so false positives are measurable too.
