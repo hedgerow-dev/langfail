@@ -94,3 +94,28 @@ def chat(messages: list[dict], tools: list[dict] | None = None) -> dict:
     if Config.LLM_BACKEND == "ollama":
         return _ollama_chat(messages, tools)
     return _stub_chat(messages, tools)
+
+
+def generate_sql(question: str, table: str = "experiments") -> str:
+    """Text-to-SQL: ask the model to translate a natural-language question into
+    a SQL WHERE-clause condition against ``table``, and return the full query.
+
+    Mirrors the shape of LangChain's ``SQLDatabaseChain`` / Vanna.ai: the model
+    is trusted to author a syntactically-valid SQL fragment, which the caller
+    then runs directly. The stub backend mimics an under-constrained model that
+    reproduces the request's SQL-like phrasing verbatim into the condition.
+    """
+    if Config.LLM_BACKEND == "ollama":
+        reply = chat([
+            {"role": "system", "content": (
+                f"Write a single SQL WHERE-clause condition (no SELECT, no "
+                f"semicolons) against the '{table}' table that answers the "
+                f"user's request. Reply with only the raw condition.")},
+            {"role": "user", "content": question},
+        ])
+        condition = (reply.get("content") or "").strip()
+    else:
+        condition = (question or "").strip()
+    condition = condition or "1=1"
+    return (f"SELECT id, name, owner_id, tags, metrics_json FROM {table} "
+            f"WHERE {condition} LIMIT 200")

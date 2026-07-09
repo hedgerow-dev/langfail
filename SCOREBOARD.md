@@ -41,6 +41,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V30 | 6 | LLM01 | Agent long-term memory poisoning (persistent, cross-user) | write to `AgentMemory` → unscoped `recall()` into a different user's later session |
 | V31 | 5 | 200 | Markdown-image data exfiltration in rendered preview | LLM/card Markdown → `<img src>` off-origin, zero-click egress channel |
 | V32 | 6 | LLM01 | Unicode/ASCII-smuggling prompt injection | tag-block/zero-width directive slips past an ASCII-only `[[TOOL:]]` filter |
+| V33 | 5 | 89 | Text-to-SQL agent executes model-generated SQL directly | LLM completion (not a tool call, not a user param) → raw `db.session.execute` |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -55,6 +56,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D07 | V30 | `recall_scoped` filters `AgentMemory` by `owner_id`, so the per-user notes view never returns another user's memory |
 | D08 | V31 | `render_markdown_safe` only emits same-origin `<img src>` and drops off-origin images to alt text — no egress channel |
 | D09 | V32 | `strip_directives` **does** remove a plainly-visible `[[TOOL:...]]` — it's a real (if incomplete) control; flag the missing Unicode normalization, not the filter |
+| D10 | V33 | `ask_experiments_safe` only accepts allow-listed `column=value` questions and always binds the value as a parameter — the model never authors raw SQL |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -95,8 +97,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V32; V07 shares V06's chain PoC)
-                           # + 8 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V33; V07 shares V06's chain PoC)
+                           # + 9 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -107,31 +109,59 @@ fixed) — reconcile against `ground_truth.yaml`.
 
 Before trusting a taint engine's score, know what a tool with *no* taint
 tracking at all — just pattern-matching on dangerous calls — already gets for
-free. Measured against the current tree with **Bandit 1.9.4** (default checks)
+free. Measured against the current tree with **Bandit 1.8.6** (default checks)
 and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
-`p/flask`, 228 community rules, default config, no custom taint rules):
+`p/flask`, default config, no custom taint rules):
 
-| Tier | Vulns | Full hits | Sink-located only* | Clean misses |
-|------|-------|-----------|---------------------|---------------|
+| Tier | Vulns | Full hits (at the declared sink) | Sink-located only† | Clean misses |
+|------|-------|-----------------------------------|---------------------|---------------|
 | 1 | V01, V02 | 2/2 | 0 | 0 |
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
-| 5 | V16–V19, V31 | 2/5 (V18, V19) | 0 | 3 |
+| 5 | V16–V19, V31, V33 | 2/6 (V18, V19) | 0 | 4 (V16, V17, V31, V33‡) |
 | 6 | V20–V30, V32 | 1/12 (V22) | 1 (V28) | 10 |
-| **Total** | **32** | **7** | **3** | **22** |
+| **Total** | **33** | **7** | **3** | **23** |
 
-Decoys: **0/9 false positives** — neither tool flagged any of D01–D09.
+Decoys: **1/10 false positives** — both tools flag **D10** (see below); D01–D09
+are clean.
 
-The three newest bugs (V30–V32) are clean misses for a syntactic scanner: memory
-poisoning is a semantic authz/isolation gap with no dangerous call to match, the
-markdown-image sink is an ordinary `re.sub`/string build, and the Unicode-smuggling
-directive is invisible to a rule that greps for ASCII `[[TOOL:]]`. V32 is,
-however, the cheapest of the whole set to catch with a *dedicated* presence rule
-(regex for U+E00xx / zero-width codepoints in prompt-bound strings) — its
-difficulty is entirely in the taint framing, not the pattern.
+‡ V33 is a clean miss **at its declared sink** (`services/experiments.py:
+ask_experiments`, `db.session.execute(text(sql))`) — `sql` is an opaque
+variable there, so neither tool's SQL-injection heuristic fires. Bandit's
+B608 rule *does* fire one hop upstream, inside `agent/llm.py:generate_sql`,
+where the return value is itself an f-string that looks like SQL — but that's
+the taint **source**, not the sink the ground truth credits, and no engine
+gets credit for flagging a string-building line it never connects to an
+execute call. This is the sharpest illustration in the whole suite of why
+"LLM output as source" needs its own rule family: the dangerous-looking
+syntax and the actual injectable sink are in different files, and a
+line-level pattern match can find one or the other but not the connection
+between them.
 
-\* *"Sink-located only"* means the tool flagged the exact sink line (e.g. any
+The other three Tier 5/6 additions (V30, V31, V32) are clean misses for a
+syntactic scanner: memory poisoning is a semantic authz/isolation gap with no
+dangerous call to match, the markdown-image sink is an ordinary
+`re.sub`/string build, and the Unicode-smuggling directive is invisible to a
+rule that greps for ASCII `[[TOOL:]]`. V32 is, however, the cheapest of the
+whole set to catch with a *dedicated* presence rule (regex for U+E00xx /
+zero-width codepoints in prompt-bound strings) — its difficulty is entirely in
+the taint framing, not the pattern.
+
+**D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
+builds its query with an f-string that interpolates a **column name already
+validated against an allow-list** (`_ASK_ALLOWED_COLUMNS`), while the actual
+value is still bound as a SQLAlchemy parameter (`:value`). Both Bandit
+(B608) and Semgrep (`avoid-sqlalchemy-text`) key off the presence of
+string-formatting syntax inside a `text()` call and cannot tell "interpolates
+an allow-listed identifier" from "interpolates attacker-controlled data" — so
+they flag the same line as V08/V22's real injections. Left in deliberately
+rather than rewritten to dodge the rule: the point of a decoy is to measure
+precision honestly, and this one shows that even the *safe* text-to-SQL
+pattern (bind the value, allow-list the identifier) still trips today's
+noise floor.
+
+† *"Sink-located only"* means the tool flagged the exact sink line (e.g. any
 `subprocess(..., shell=True)`) but has no notion of whether the arguments are
 actually attacker-reachable — it would flag the same line whether the string
 were a hardcoded constant or fully attacker-controlled. Don't count these as
@@ -159,9 +189,18 @@ Takeaways for interpreting any engine's score against this baseline:
   laundering, taint dilution, call-site sensitivity, XXE, and the MCP
   protocol-boundary bug are all outside what a rule-based scanner without
   custom taint rules can see.
-- **Precision was clean**, but that's partly a low-recall artifact — a tool
-  bold enough to catch more of Tier 3–6 needs to be re-checked against the
-  decoys too.
+- **Precision is nearly clean (9/10) but not free.** D10 shows that "bind the
+  value, but still format the identifier" — a common, genuinely-safe pattern
+  for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
+  heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
+  re-checked against the decoys too; D10 is a preview of that cost.
+- **The LLM-output-as-source class (V30–V33) is where these tools have the
+  least traction of the whole suite** — 0 full hits at the declared sink out
+  of 4. The one near-hit (V33, via Bandit's B608 firing on the *source* line
+  in `agent/llm.py` rather than the sink) shows why: the dangerous string is
+  built in one function and executed in another, so a scanner needs to
+  connect "LLM completion" to "raw SQL execute" across a file boundary — the
+  exact rule family this batch of vulnerabilities was planted to motivate.
 
 Regenerate this baseline any time with:
 

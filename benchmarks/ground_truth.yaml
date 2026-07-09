@@ -593,6 +593,31 @@ vulnerabilities:
       presence rule over instruction/config files.
     poc: tests/test_exploits_tier6.py::test_v32_unicode_smuggling_injection
 
+  - id: V33
+    title: Text-to-SQL agent executes model-generated SQL directly (Vanna.ai class)
+    cwe: CWE-89
+    huntr_analog: "Vanna.ai CVE-2024-5565 -- LLM-generated SQL from a text-to-SQL chain executed directly"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: ask, note: "question (JSON body)"}
+    sink: {file: dvml/services/experiments.py, symbol: ask_experiments, line_hint: 68}
+    taint_path:
+      - dvml/api/experiments.py:ask (question)
+      - dvml/services/experiments.py:ask_experiments (calls generate_sql, then executes the FULL returned string)
+      - dvml/agent/llm.py:generate_sql (stub reproduces `question` verbatim into the WHERE clause -- no tool dispatch, no allowlist)
+      - dvml/services/experiments.py:ask_experiments (db.session.execute(text(sql)) on the model's own generated SQL)
+    sanitizers_present: []
+    notes: >
+      Distinct from V16 (agent tool-call SQLi) and V08/V22 (parameter
+      interpolation): here the taint SOURCE is the model's own completion
+      (agent/llm.py:generate_sql's return value), not a user-supplied query
+      parameter, and the SINK is reached with no tool-dispatch/allowlist layer
+      in between -- the pattern most rules miss because they only model
+      "LLM output -> agent tool -> sink", not "LLM output -> sink" directly.
+      Mirrors LangChain's SQLDatabaseChain / Vanna.ai, where the chain trusts
+      the model to author safe SQL and runs it as-is.
+    poc: tests/test_exploits_tier6.py::test_v33_text_to_sql_injection
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -641,6 +666,11 @@ decoys:
     why_safe: "strip_directives() correctly removes a plainly-visible [[TOOL:...]] directive on /api/agent/ask; it is a real (if incomplete) control, not a no-op — flag the missing Unicode normalization, not the filter itself"
     location: {file: dvml/agent/sanitize.py, symbol: strip_directives}
     proof: tests/test_exploits_tier6.py::test_d09_visible_directive_is_filtered
+  - id: D10
+    resembles: V33 (text-to-SQL injection) — SAME feature (NL experiment search), constrained instead of freeform
+    why_safe: "ask_experiments_safe() only accepts 'column=value' against an allow-list of columns and always binds the value as a parameter -- the model never authors raw SQL to execute"
+    location: {file: dvml/services/experiments.py, symbol: ask_experiments_safe}
+    proof: tests/test_exploits_tier6.py::test_d10_ask_safe_rejects_raw_sql
 
 chains:
   - id: CHAIN_A

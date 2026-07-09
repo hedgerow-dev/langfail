@@ -9,7 +9,8 @@ from ..core.db import db
 from ..models import Experiment
 from ..ml.metrics import evaluate_metric
 from ..services.config_loader import load_pipeline_config
-from ..services.experiments import count_by_owner, search_by_tag, search_experiments
+from ..services.experiments import (ask_experiments, ask_experiments_safe, count_by_owner,
+                                    search_by_tag, search_experiments)
 from ..services.pipeline import run_pipeline
 from .deps import require_auth
 
@@ -62,6 +63,27 @@ def count():
 def by_tag():
     """Return experiments with an exact tag match."""
     return jsonify(results=search_by_tag(request.args.get("tag", "")))
+
+
+@bp.post("/ask")
+@require_auth
+def ask():
+    """Natural-language experiment search, powered by text-to-SQL.
+
+    The assistant translates ``question`` into SQL and it is run directly
+    against the tracking database.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    return jsonify(results=ask_experiments(data.get("question", "")))
+
+
+@bp.post("/ask_safe")
+@require_auth
+def ask_safe():
+    """Constrained natural-language search (``column=value`` only, allow-listed
+    columns, bound parameters) — no model-authored SQL is ever executed."""
+    data = request.get_json(force=True, silent=True) or {}
+    return jsonify(results=ask_experiments_safe(data.get("question", "")))
 
 
 @bp.post("/<int:exp_id>/run")

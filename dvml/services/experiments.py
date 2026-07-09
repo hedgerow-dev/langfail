@@ -6,10 +6,15 @@ tables.
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import text
 
 from ..core.db import db
 from ..core.security import escape_sql
+
+# Columns the constrained natural-language search is allowed to filter on.
+_ASK_ALLOWED_COLUMNS = {"owner_id", "tags", "name"}
 
 
 def search_experiments(name: str = "", tag: str = "", sort: str = "created_at") -> list[dict]:
@@ -48,4 +53,34 @@ def search_by_tag(tag: str = "") -> list[dict]:
         "WHERE tags = :tag ORDER BY id DESC LIMIT 200"
     )
     rows = db.session.execute(query, {"tag": tag}).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def ask_experiments(question: str) -> list[dict]:
+    """Natural-language experiment search.
+
+    Asks the assistant to translate ``question`` into a SQL condition
+    (:func:`dvml.agent.llm.generate_sql`) and runs the model's SQL directly —
+    the text-to-SQL agent pattern (LangChain ``SQLDatabaseChain`` / Vanna.ai).
+    """
+    from ..agent.llm import generate_sql
+
+    sql = generate_sql(question, table="experiments")
+    rows = db.session.execute(text(sql)).mappings().all()
+    return [dict(r) for r in rows]
+
+
+def ask_experiments_safe(question: str) -> list[dict]:
+    """Constrained natural-language search: only ``column=value`` questions
+    against an allow-list of columns are accepted, and the value is always
+    bound as a parameter — the model never authors raw SQL to execute."""
+    match = re.match(r"^\s*(\w+)\s*=\s*(.+?)\s*$", question or "")
+    if not match or match.group(1) not in _ASK_ALLOWED_COLUMNS:
+        return []
+    column, value = match.group(1), match.group(2)
+    query = text(
+        f"SELECT id, name, owner_id, tags, metrics_json FROM experiments "
+        f"WHERE {column} = :value LIMIT 200"
+    )
+    rows = db.session.execute(query, {"value": value}).mappings().all()
     return [dict(r) for r in rows]
