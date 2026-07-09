@@ -46,6 +46,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V35 | 6 | 470 | Unsafe reflection dispatch on a model-chosen action name | `getattr(self, tool_call.function.name)(...)`, no allow-list — raw tool-use pattern |
 | V36 | 5 | 400 | Unbounded agent iteration budget (denial of wallet) | caller-supplied `max_rounds` → uncapped billed-LLM-call loop (OWASP LLM10) |
 | V37 | 4 | 94 | RCE via untrusted dataset loading script (`trust_remote_code` class) | `loader_script` → DB → later `prepare` request → `exec` (HF datasets / Keras Lambda) |
+| V38 | 5 | 359 | PII flows into the third-party LLM API call with no redaction | `user.email` → agent context → `requests.post` to the LLM backend, unredacted |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -65,6 +66,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D12 | V35 | `dispatch_safe` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` — the un-advertised method is unreachable regardless of what the model returns |
 | D13 | V36 | `run_agent_capped` clamps the requested `max_rounds` to `MAX_ITERATE_ROUNDS` (10) before calling the same uncapped loop primitive |
 | D14 | V37 | `run_loader_script_safe` never execs anything — custom loading scripts are simply unsupported, the secure equivalent of `trust_remote_code=False` |
+| D15 | V38 | `draft_support_reply_safe` regex-redacts email addresses from the account context before it ever reaches `run_agent`/the LLM call |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -105,8 +107,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V37; V07 shares V06's chain PoC)
-                           # + 13 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V38; V07 shares V06's chain PoC)
+                           # + 14 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -127,12 +129,12 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15, V37 | 2/6 (V15, V37) | 1 (V11) | 3 |
-| 5 | V16–V19, V31, V33, V34, V36 | 3/8 (V18, V19, V34§) | 0 | 5 (V16, V17, V31, V33‡, V36¶) |
+| 5 | V16–V19, V31, V33, V34, V36, V38 | 3/9 (V18, V19, V34§) | 0 | 6 (V16, V17, V31, V33‡, V36¶, V38‖) |
 | 6 | V20–V30, V32, V35 | 1/13 (V22) | 1 (V28) | 11 |
-| **Total** | **37** | **9** | **3** | **25** |
+| **Total** | **38** | **9** | **3** | **26** |
 
-Decoys: **1/14 false positives** — both tools flag **D10** (see below); D01–D09
-and D11–D14 are clean.
+Decoys: **1/15 false positives** — both tools flag **D10** (see below); D01–D09
+and D11–D15 are clean.
 
 § V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
 (B102) and Semgrep (`exec-detected`) flag the `exec()` call at
@@ -209,6 +211,20 @@ single-line pattern match at all — it would flag this identically whether
 across the two requests is exactly the part neither tool reasons about; it
 just got lucky that the reachable line also happens to be denylisted.
 
+‖ V38 is a clean miss of a different flavor than any other entry: there is no
+*execution* sink at all, dangerous or otherwise. `_account_context` is a plain
+f-string; the actual sink, `requests.post(...)` in `agent/llm.py:_ollama_chat`,
+is a completely ordinary network call that every other outbound HTTP request
+in this codebase also makes (`fetcher.py`, the webhook POST, etc.) — nothing
+about *that* line is special. What makes it dangerous here is purely the
+*kind* of data reaching it (a PII-shaped field) and the *kind* of endpoint on
+the other end (an LLM provider). Neither Bandit nor Semgrep model "outbound
+call to an LLM API" as a sink category at all, let alone one sensitive to
+PII-shaped source fields — this is arguably the single clearest case in the
+suite of a rule family that doesn't exist yet in either tool's default rule
+set, as opposed to one that exists but fails to connect source and sink
+(V33/V35) or one with no resource-cost concept to model (V36).
+
 **D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
 builds its query with an f-string that interpolates a **column name already
 validated against an allow-list** (`_ASK_ALLOWED_COLUMNS`), while the actual
@@ -256,7 +272,7 @@ Takeaways for interpreting any engine's score against this baseline:
   V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
   dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
   all outside what a rule-based scanner without custom taint rules can see.
-- **Precision is nearly clean (13/14) but not free.** D10 shows that "bind the
+- **Precision is nearly clean (14/15) but not free.** D10 shows that "bind the
   value, but still format the identifier" — a common, genuinely-safe pattern
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
@@ -288,6 +304,16 @@ Takeaways for interpreting any engine's score against this baseline:
   (OWASP LLM10) is fundamentally outside what call-pattern-matching can ever
   catch, no matter how the rule is written, short of reasoning about resource
   cost directly.
+- **V38 flips the LLM-output-as-source family around: here the LLM call is
+  the *sink*, not the source.** PII flowing into a completion call is
+  invisible for the same underlying reason V36 is — an outbound POST to an
+  LLM provider isn't a conventionally "dangerous" sink category the way a
+  shell or file-write call is, so no denylist has an entry for it, and
+  neither tool has any notion of "PII-shaped data" as a source category to
+  begin with. Between V30–V38, this benchmark's LLM-boundary bugs now cover
+  the full round trip: LLM output reaching dangerous sinks (V30–V35) *and*
+  sensitive data reaching the LLM boundary itself (V38), plus the resource
+  dimension that sits orthogonal to both (V36).
 
 Regenerate this baseline any time with:
 

@@ -28,6 +28,7 @@ def register():
         password_hash=hash_password(password),
         role=data.get("role", "user"),
         api_token=secrets.token_hex(16),
+        email=data.get("email"),
     )
     db.session.add(user)
     db.session.commit()
