@@ -93,13 +93,14 @@ flowchart TD
   it. Work enqueued by one request is executed later in a different process,
   producing **second-order / cross-process** flows.
 - **`dvml/agent/`** — the LLM assistant: a backend abstraction (`stub`/`ollama`),
-  a set of real tools, an agent loop that may call them, a persistent
-  cross-session `memory` store, a `sanitize` directive filter that is
-  intentionally incomplete (it normalizes nothing, so invisible-Unicode
-  directives slip through), and a `native` module modeling the raw (non-
-  framework) OpenAI/Anthropic tool-use pattern — a model-chosen name resolved
-  via bare `getattr`, contrasted with `core.py`'s explicit `TOOLS` allow-list
-  dict. LLM/tool output is itself a taint **source** here.
+  a set of real tools, an agent loop that may call them (`run_agent`, capped at
+  `MAX_TOOL_ROUNDS`, plus a caller-parameterized `run_agent_unbounded` that
+  isn't), a persistent cross-session `memory` store, a `sanitize` directive
+  filter that is intentionally incomplete (it normalizes nothing, so
+  invisible-Unicode directives slip through), and a `native` module modeling
+  the raw (non-framework) OpenAI/Anthropic tool-use pattern — a model-chosen
+  name resolved via bare `getattr`, contrasted with `core.py`'s explicit
+  `TOOLS` allow-list dict. LLM/tool output is itself a taint **source** here.
 - **`dvml/core/`** — config, the SQLAlchemy handle, and `security.py`, which
   holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
   `escape_sql`, `is_safe_url`). These helpers appear on many taint paths and are
@@ -222,6 +223,7 @@ single-line pattern match. At a glance:
 | LLM output → render sink | model card / assistant Markdown → `services/markdown` → off-origin `<img>` egress |
 | LLM output → SQL sink (no tool dispatch) | natural-language question → `agent/llm.py:generate_sql` → `services/experiments.py` raw `db.session.execute` |
 | LLM output → code exec sink | natural-language question → `agent/llm.py:generate_code` → `services/analysis.py` `exec` (PandasAI class) |
+| Unbounded resource consumption | caller-supplied `max_rounds` → `agent/core.py:run_agent_unbounded`'s loop bound, one billed LLM call per iteration |
 | Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
 | Through model-chosen dispatch | LLM tool-call names a method → `agent/native.py` bare `getattr(self, name)`, no allow-list check |

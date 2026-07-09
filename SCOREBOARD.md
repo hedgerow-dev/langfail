@@ -44,6 +44,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V33 | 5 | 89 | Text-to-SQL agent executes model-generated SQL directly | LLM completion (not a tool call, not a user param) → raw `db.session.execute` |
 | V34 | 5 | 95 | Code-interpreter RCE via `exec` of model-generated code | NL question → LLM writes Python → `exec` (PandasAI CVE-2024-12366 class) |
 | V35 | 6 | 470 | Unsafe reflection dispatch on a model-chosen action name | `getattr(self, tool_call.function.name)(...)`, no allow-list — raw tool-use pattern |
+| V36 | 5 | 400 | Unbounded agent iteration budget (denial of wallet) | caller-supplied `max_rounds` → uncapped billed-LLM-call loop (OWASP LLM10) |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -61,6 +62,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D10 | V33 | `ask_experiments_safe` only accepts allow-listed `column=value` questions and always binds the value as a parameter — the model never authors raw SQL |
 | D11 | V34 | `run_analysis_safe` maps the question to a fixed set of aggregate ops by keyword — never `exec`s model-generated code |
 | D12 | V35 | `dispatch_safe` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` — the un-advertised method is unreachable regardless of what the model returns |
+| D13 | V36 | `run_agent_capped` clamps the requested `max_rounds` to `MAX_ITERATE_ROUNDS` (10) before calling the same uncapped loop primitive |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -101,8 +103,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V35; V07 shares V06's chain PoC)
-                           # + 11 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V36; V07 shares V06's chain PoC)
+                           # + 12 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -123,12 +125,12 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
-| 5 | V16–V19, V31, V33, V34 | 3/7 (V18, V19, V34§) | 0 | 4 (V16, V17, V31, V33‡) |
+| 5 | V16–V19, V31, V33, V34, V36 | 3/8 (V18, V19, V34§) | 0 | 5 (V16, V17, V31, V33‡, V36¶) |
 | 6 | V20–V30, V32, V35 | 1/13 (V22) | 1 (V28) | 11 |
-| **Total** | **35** | **8** | **3** | **24** |
+| **Total** | **36** | **8** | **3** | **25** |
 
-Decoys: **1/12 false positives** — both tools flag **D10** (see below); D01–D09,
-D11, and D12 are clean.
+Decoys: **1/13 false positives** — both tools flag **D10** (see below); D01–D09,
+D11, D12, and D13 are clean.
 
 § V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
 (B102) and Semgrep (`exec-detected`) flag the `exec()` call at
@@ -179,6 +181,19 @@ gates on the same allow-list and is proven safe by
 input" — it flags the gadget, not the vulnerability, and would flag the exact
 same line even in a codebase where `_debug_eval` were provably dead code.
 
+¶ V36 is the purest clean miss in the whole suite: neither tool produces a
+single finding anywhere in `agent/core.py`, because there is no dangerous
+*call* to pattern-match at all — `for _ in range(max_rounds): chat(...)` is
+syntactically indistinguishable from any other bounded loop. The bug is
+entirely semantic (a resource-consumption ceiling that exists on every other
+code path through this module, `MAX_TOOL_ROUNDS`, but not on this
+caller-parameterized one) and has no signature a denylist or regex could ever
+key on. Denial-of-wallet/unbounded-consumption findings require either a
+dedicated rule that recognizes "a request-derived integer reaches a loop
+bound around an LLM/billed-API call" or genuine data-flow modeling of cost —
+pattern matching on syntax alone cannot find this class in principle, not
+just in this instance.
+
 **D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
 builds its query with an f-string that interpolates a **column name already
 validated against an allow-list** (`_ASK_ALLOWED_COLUMNS`), while the actual
@@ -221,7 +236,7 @@ Takeaways for interpreting any engine's score against this baseline:
   V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
   dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
   all outside what a rule-based scanner without custom taint rules can see.
-- **Precision is nearly clean (11/12) but not free.** D10 shows that "bind the
+- **Precision is nearly clean (12/13) but not free.** D10 shows that "bind the
   value, but still format the identifier" — a common, genuinely-safe pattern
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
@@ -246,6 +261,13 @@ Takeaways for interpreting any engine's score against this baseline:
   bugs driven by an LLM-chosen name are effectively invisible to a pattern
   matcher regardless of what happens to live inside the target method — it's
   the *absence* of a check that's the bug, and absence doesn't pattern-match.
+- **V36 goes one step further than V33/V35: there is nothing to even
+  mis-attribute.** No dangerous call exists anywhere on the path — the
+  vulnerability is an absent resource ceiling on a loop around a billed API
+  call. This is the clearest evidence in the suite that denial-of-wallet
+  (OWASP LLM10) is fundamentally outside what call-pattern-matching can ever
+  catch, no matter how the rule is written, short of reasoning about resource
+  cost directly.
 
 Regenerate this baseline any time with:
 
