@@ -45,6 +45,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V34 | 5 | 95 | Code-interpreter RCE via `exec` of model-generated code | NL question → LLM writes Python → `exec` (PandasAI CVE-2024-12366 class) |
 | V35 | 6 | 470 | Unsafe reflection dispatch on a model-chosen action name | `getattr(self, tool_call.function.name)(...)`, no allow-list — raw tool-use pattern |
 | V36 | 5 | 400 | Unbounded agent iteration budget (denial of wallet) | caller-supplied `max_rounds` → uncapped billed-LLM-call loop (OWASP LLM10) |
+| V37 | 4 | 94 | RCE via untrusted dataset loading script (`trust_remote_code` class) | `loader_script` → DB → later `prepare` request → `exec` (HF datasets / Keras Lambda) |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -63,6 +64,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D11 | V34 | `run_analysis_safe` maps the question to a fixed set of aggregate ops by keyword — never `exec`s model-generated code |
 | D12 | V35 | `dispatch_safe` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` — the un-advertised method is unreachable regardless of what the model returns |
 | D13 | V36 | `run_agent_capped` clamps the requested `max_rounds` to `MAX_ITERATE_ROUNDS` (10) before calling the same uncapped loop primitive |
+| D14 | V37 | `run_loader_script_safe` never execs anything — custom loading scripts are simply unsupported, the secure equivalent of `trust_remote_code=False` |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -103,8 +105,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V36; V07 shares V06's chain PoC)
-                           # + 12 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V37; V07 shares V06's chain PoC)
+                           # + 13 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -124,13 +126,13 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 1 | V01, V02 | 2/2 | 0 | 0 |
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
-| 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
+| 4 | V11–V15, V37 | 2/6 (V15, V37) | 1 (V11) | 3 |
 | 5 | V16–V19, V31, V33, V34, V36 | 3/8 (V18, V19, V34§) | 0 | 5 (V16, V17, V31, V33‡, V36¶) |
 | 6 | V20–V30, V32, V35 | 1/13 (V22) | 1 (V28) | 11 |
-| **Total** | **36** | **8** | **3** | **25** |
+| **Total** | **37** | **9** | **3** | **25** |
 
-Decoys: **1/13 false positives** — both tools flag **D10** (see below); D01–D09,
-D11, D12, and D13 are clean.
+Decoys: **1/14 false positives** — both tools flag **D10** (see below); D01–D09
+and D11–D14 are clean.
 
 § V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
 (B102) and Semgrep (`exec-detected`) flag the `exec()` call at
@@ -194,6 +196,19 @@ bound around an LLM/billed-API call" or genuine data-flow modeling of cost —
 pattern matching on syntax alone cannot find this class in principle, not
 just in this instance.
 
+**V37 is a genuine full hit**, and a useful contrast with V33/V35/V36: unlike
+those, where the dangerous call and the taint source live in different
+functions (or there's no dangerous call at all), V37's sink function
+(`run_loader_script`) is *itself* nothing but `exec(script_src, scope)` — the
+same "denylist fires regardless of provenance" mechanism as V18/V34, and this
+time it happens to land exactly on the declared sink. The second-order shape
+(the script is stored in one request and only runs when a later, separate
+`prepare_dataset` request reads it back) doesn't matter to a single-file,
+single-line pattern match at all — it would flag this identically whether
+`loader_script` were fully hardcoded or freshly attacker-supplied. Reachability
+across the two requests is exactly the part neither tool reasons about; it
+just got lucky that the reachable line also happens to be denylisted.
+
 **D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
 builds its query with an f-string that interpolates a **column name already
 validated against an allow-list** (`_ASK_ALLOWED_COLUMNS`), while the actual
@@ -229,14 +244,19 @@ Takeaways for interpreting any engine's score against this baseline:
   matching falls off a cliff** — neither tool does real interprocedural
   dataflow, so anything requiring a trace through a service call, a DB
   round-trip, or the job queue is invisible unless the sink itself is also
-  syntactically obvious in isolation.
+  syntactically obvious in isolation. V37 is the exception that proves the
+  rule: its second-order DB round-trip (store in one request, run in a later,
+  separate one) is exactly this pattern, but it still gets caught — not
+  because the tool traced the round-trip, but because the sink function is
+  nothing but a bare `exec()` call, which is denylisted regardless of where
+  its argument came from.
 - **Tier 6 is a near-total wipeout** (1 full hit out of 13, and it's only
   there because it happens to share V08's exact syntactic shape). Both
   reflection variants (V20's `importlib`+`getattr` on a stored config string,
   V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
   dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
   all outside what a rule-based scanner without custom taint rules can see.
-- **Precision is nearly clean (12/13) but not free.** D10 shows that "bind the
+- **Precision is nearly clean (13/14) but not free.** D10 shows that "bind the
   value, but still format the identifier" — a common, genuinely-safe pattern
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
