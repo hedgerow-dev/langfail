@@ -119,3 +119,25 @@ def generate_sql(question: str, table: str = "experiments") -> str:
     condition = condition or "1=1"
     return (f"SELECT id, name, owner_id, tags, metrics_json FROM {table} "
             f"WHERE {condition} LIMIT 200")
+
+
+def generate_code(question: str, columns: list[str] | None = None) -> str:
+    """Text-to-code: ask the model to write Python that answers ``question``
+    about a dataframe ``df``, assigning its answer to ``result``.
+
+    Mirrors PandasAI / the "chat with your dataframe" agents (see
+    CVE-2024-12366): the model authors a Python snippet that the caller then
+    ``exec``-utes. The stub backend mimics an under-constrained model that emits
+    the request's code-like phrasing verbatim.
+    """
+    if Config.LLM_BACKEND == "ollama":
+        cols = ", ".join(columns or []) or "the provided columns"
+        reply = chat([
+            {"role": "system", "content": (
+                f"You are a data analyst. Write Python that operates on a pandas "
+                f"DataFrame `df` (columns: {cols}) and assigns the answer to a "
+                f"variable named `result`. Reply with only the code.")},
+            {"role": "user", "content": question},
+        ])
+        return (reply.get("content") or "").strip()
+    return (question or "").strip()

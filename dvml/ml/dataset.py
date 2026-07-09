@@ -58,3 +58,12 @@ def find_table(root: str | Path) -> Path | None:
             if f.endswith((".csv", ".tsv")):
                 return Path(base) / f
     return None
+
+
+def load_rows(root: str | Path, limit: int = 500) -> list[dict]:
+    """Load a dataset's first table as a list of row dicts (empty if none)."""
+    table = find_table(root) if root else None
+    if not table:
+        return []
+    with open(table, newline="") as fh:
+        return [dict(r) for r in list(csv.DictReader(fh))[:limit]]

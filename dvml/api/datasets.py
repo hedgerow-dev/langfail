@@ -9,7 +9,8 @@ from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
 from ..models import Dataset
-from ..ml.dataset import count_rows, extract_archive, find_table
+from ..ml.dataset import count_rows, extract_archive, find_table, load_rows
+from ..services.analysis import run_analysis
 from ..workers.queue import enqueue
 from .deps import require_auth
 
@@ -64,6 +65,22 @@ def get_dataset(dataset_id: int):
         return jsonify(error="not found"), 404
     return jsonify(id=ds.id, name=ds.name, status=ds.status, rows=ds.rows,
                    source_url=ds.source_url, storage_path=ds.storage_path)
+
+
+@bp.post("/<int:dataset_id>/analyze")
+@require_auth
+def analyze_dataset(dataset_id: int):
+    """Answer a natural-language question about a dataset ("chat with your data").
+
+    The assistant writes a Python snippet against the dataset's dataframe and it
+    is run to produce the answer.
+    """
+    ds = db.session.get(Dataset, dataset_id)
+    if not ds:
+        return jsonify(error="not found"), 404
+    question = (request.get_json(force=True, silent=True) or {}).get("question", "")
+    rows = load_rows(ds.storage_path) if ds.storage_path else []
+    return jsonify(answer=run_analysis(question, rows))
 
 
 @bp.post("/<int:dataset_id>/schedule_cleanup")
