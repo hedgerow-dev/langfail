@@ -6,7 +6,7 @@ SQLite and a pluggable local LLM backend.
 
 > ### ⚠️ This application is deliberately vulnerable
 > ModelForge is a **security benchmark target**, not production software. It
-> contains 38 planted vulnerabilities (plus precision decoys) spanning the classes
+> contains 41 planted vulnerabilities (plus precision decoys) spanning the classes
 > commonly reported against real ML/AI open source on [huntr.com](https://huntr.com)
 > — unsafe model deserialization, SSRF (incl. blind/OOB), path traversal, zip/tar
 > slip, SQL (incl. blind) and command injection, SSTI, IDOR, unsafe reflection,
@@ -16,7 +16,13 @@ SQLite and a pluggable local LLM backend.
 > prompt injection in the Vanna.ai CVE-2024-5565 / PandasAI CVE-2024-12366
 > classes, OWASP LLM10 denial-of-wallet via an uncapped agent-iteration
 > budget, a `trust_remote_code`-style dataset-loading-script RCE, and
-> unredacted PII flowing into a third-party LLM API call). Difficulty runs from disguised
+> unredacted PII flowing into a third-party LLM API call, MCP sampling-request
+> poisoning, an MCP-over-HTTP transport that binds every interface with no
+> auth by default, and a BentoML-runner-style pickle RCE across an
+> API-server/runner process boundary (CVE-2024-2912 class)) — plus 3
+> serving-infra config/compose misconfigurations (Ollama/TorchServe/Triton) in
+> [`deploy/`](deploy/), a structurally different, presence-only finding
+> category. Difficulty runs from disguised
 > single-hop (Tier 1) up to reflection, cache-laundered, blind, and
 > multi-hop-agent flows (Tier 6). **Do not deploy it,
 > expose it to a network, or run untrusted PoCs against anything you care about.**
@@ -60,6 +66,7 @@ cross-taint topology.
 | `benchmarks/ground_truth.yaml` | labeled oracle: every vuln + full taint path |
 | `exploits/` | runnable PoCs (chains) + pointer to the per-vuln PoC tests |
 | `tests/` | functional (happy-path) tests + one exploit proof per vuln |
+| `deploy/docker-compose.yml` | serving-infra misconfig fixtures (Ollama/TorchServe/Triton) — presence findings, never run by `dvml` |
 
 ## Run it
 
@@ -71,6 +78,7 @@ flask --app dvml seed                              # demo users: admin/admin123,
 flask --app dvml run                               # http://127.0.0.1:5000
 flask --app dvml worker                            # in another shell: drains the job queue
 flask --app dvml mcp-serve                         # optional: pip install -e ".[mcp]"; MCP tools over stdio
+flask --app dvml mcp-serve-http                     # optional: pip install -e ".[mcp,mcp-http]"; MCP over SSE/HTTP
 ```
 
 Health check: `curl localhost:5000/health`.
@@ -88,7 +96,7 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V38) + 14 decoy checks
+PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V41) + 17 decoy checks
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # SSRF -> RCE across DB + queue
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # indirect prompt injection
 ```

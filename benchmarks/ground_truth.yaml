@@ -758,6 +758,92 @@ vulnerabilities:
       process.
     poc: tests/test_exploits_tier6.py::test_v38_pii_to_llm_no_redaction
 
+  - id: V39
+    title: MCP sampling request poisoning (no human-gate assumption)
+    cwe: CWE-20
+    huntr_analog: "MCP 'sampling' capability abused by a server to smuggle attacker content into the connected client's own trusted model context, relying on hosts that auto-approve sampling requests with no human review"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/admin.py, symbol: set_tool_note, note: "note (JSON body) -- decorated with require_auth, not require_admin (same broken authz as V29)"}
+    sink: {file: dvml/mcp_server.py, symbol: summarize_via_sampling, line_hint: 69}
+    taint_path:
+      - dvml/api/admin.py:set_tool_note (any authenticated user's note -> ToolNote row)
+      - dvml/mcp_server.py:summarize_via_sampling (reads the ToolNote fresh)
+      - dvml/mcp_server.py:summarize_via_sampling (embeds the note verbatim into a SamplingMessage, no validation)
+      - "session.create_message(...) -- the note is sent to whatever client is connected, entering that client's own trusted model context; a host that auto-approves sampling requests (no human gate) processes it as if it were legitimate server-authored content"
+    sanitizers_present:
+      - "summarize_via_sampling_safe() exists in the same module and strips_directives() the note before sending -- present and unit-tested (D16), just not used by the vulnerable helper"
+    notes: >
+      A second MCP protocol-boundary bug alongside V29, but a different MCP
+      capability: V29 poisons *tool metadata* (list_tools), read by the
+      client once at connection time; V39 poisons a *sampling request*
+      (create_message), sent whenever this helper runs, landing directly in
+      the conversation the connected client's own model sees -- a more
+      direct and repeatable injection channel than a tool description. Real
+      MCP hosts are expected to show sampling requests to a human before
+      honouring them; a host that doesn't (many minimal/embedded ones don't)
+      has no defense at all against this, since the server-side request
+      construction itself has no validation to catch it first. Same broken
+      authz root cause as V29 (require_auth instead of require_admin on the
+      note-write endpoint) but a structurally distinct sink.
+    poc: tests/test_exploits_tier6.py::test_v39_mcp_sampling_poisoning
+
+  - id: V40
+    title: MCP-over-HTTP transport binds every interface with no auth by default
+    cwe: CWE-306
+    huntr_analog: "MCP servers exposed over SSE/HTTP with no authentication and bound to 0.0.0.0 -- the 2025 MCP-server attack-surface class (any host on the network reaches every tool the server exposes)"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/mcp_server.py, symbol: serve_http, note: "Config.MCP_HTTP_HOST/MCP_HTTP_REQUIRE_AUTH consumed with no override required to be vulnerable"}
+    sink: {file: dvml/mcp_server.py, symbol: check_http_auth, line_hint: 138}
+    taint_path:
+      - dvml/core/config.py:Config.MCP_HTTP_HOST / MCP_HTTP_REQUIRE_AUTH (insecure defaults, no env override required to be vulnerable)
+      - dvml/mcp_server.py:serve_http (binds Config.MCP_HTTP_HOST:MCP_HTTP_PORT -- every interface by default)
+      - dvml/mcp_server.py:check_http_auth (require_auth defaults to Config.MCP_HTTP_REQUIRE_AUTH; when falsy, returns True unconditionally with no header inspected)
+      - "any request reaching the bound host:port -- i.e. any host on the network, since 0.0.0.0 is every interface -- gets full access to every tool in TOOLS (run_sql/read_file/http_get/calc)"
+    sanitizers_present:
+      - "check_http_auth(headers, require_auth=True) does correctly enforce a bearer token -- the gate exists and works, it is simply off by default and never turned on by serve_http() itself (same config-gated-defaults-off pattern as V24's STRICT_PATHS)"
+    notes: >
+      Not a taint-to-code-execution bug -- this is a presence/configuration
+      finding, the kind a regex over compose/config/env defaults catches
+      cheaply (the huntr_analog list explicitly calls out Ollama-on-0.0.0.0,
+      TorchServe, and Triton as siblings of this exact pattern). Planted here
+      as the one member of that config-misconfiguration family that fits
+      naturally as real, runnable Python (an actual ASGI transport with an
+      actual auth gate) rather than a standalone compose/YAML fixture, since
+      this repo already has a real MCP server to attach it to.
+    poc: tests/test_exploits_tier6.py::test_v40_mcp_http_no_auth_by_default
+
+  - id: V41
+    title: Runner-protocol pickle RCE across the API-server/runner process boundary (BentoML class)
+    cwe: CWE-502
+    huntr_analog: "BentoML runner-server pickle deserialization RCE (CVE-2024-2912) -- inference frameworks that split serving into an API server + separate runner process, with call args pickled across that boundary"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/inference.py, symbol: predict_remote, note: "runner_call_b64 (JSON body)"}
+    sink: {file: dvml/ml/runner.py, symbol: handle_runner_call, line_hint: 24}
+    taint_path:
+      - dvml/api/inference.py:predict_remote (runner_call_b64, base64-decoded)
+      - dvml/ml/runner.py:handle_runner_call (pickle.loads(payload), no validation of origin)
+    sanitizers_present:
+      - "handle_runner_call_safe() exists in the same module and uses json.loads instead -- present and unit-tested (D18), just not used by this endpoint"
+    notes: >
+      Distinct from V01/V07/V13's deserialization sinks (which reconstruct a
+      MODEL artifact) and from V41's own peer in the serving-infra CVE
+      family: this one is about the CALL PROTOCOL between two processes of
+      the same serving stack, not the model file. Split-process model
+      serving (API layer + a separate runner/worker that holds the loaded
+      weights) is common precisely because it lets the model load once and
+      be shared across requests -- and pickling the call arguments to cross
+      that boundary is a frequent, under-scrutinised choice, since numpy
+      arrays and dataframes don't survive a JSON round-trip. Planted as a
+      disguised single-hop (tier 1) specifically to show that "serving
+      infrastructure" bugs aren't always deep multi-hop chains -- sometimes
+      the RPC boundary between two of your OWN processes is exactly as
+      dangerous as a model file upload, and just as easy to miss because it
+      doesn't look like a file-loading code path at all.
+    poc: tests/test_exploits_tier6.py::test_v41_runner_protocol_pickle_rce
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -836,6 +922,21 @@ decoys:
     why_safe: "draft_support_reply_safe() strips email addresses from the account context with a regex substitution before the context ever reaches run_agent/the LLM call"
     location: {file: dvml/services/support.py, symbol: draft_support_reply_safe}
     proof: tests/test_exploits_tier6.py::test_d15_support_reply_safe_redacts_email
+  - id: D16
+    resembles: V39 (MCP sampling poisoning) — SAME helper/note source, directive-stripped instead of raw
+    why_safe: "summarize_via_sampling_safe() runs the note through agent/sanitize.py:strip_directives before it is ever embedded in the sampling request"
+    location: {file: dvml/mcp_server.py, symbol: summarize_via_sampling_safe}
+    proof: tests/test_exploits_tier6.py::test_d16_sampling_safe_strips_directives
+  - id: D17
+    resembles: V40 (MCP-over-HTTP no-auth default) — SAME gate function, explicitly enabled instead of left at its default
+    why_safe: "check_http_auth(headers, require_auth=True) correctly rejects both a missing Authorization header and an incorrect bearer token -- the gate itself is sound, only its default is insecure"
+    location: {file: dvml/mcp_server.py, symbol: check_http_auth}
+    proof: tests/test_exploits_tier6.py::test_d17_mcp_http_auth_enforced_when_enabled
+  - id: D18
+    resembles: V41 (runner-protocol pickle RCE) — SAME call-protocol feature, JSON-only instead of pickle
+    why_safe: "handle_runner_call_safe() uses json.loads instead of pickle.loads -- arbitrary Python objects (and pickle's object-graph reconstruction) are simply not supported across this boundary"
+    location: {file: dvml/ml/runner.py, symbol: handle_runner_call_safe}
+    proof: tests/test_exploits_tier6.py::test_d18_runner_call_safe_rejects_pickle
 
 chains:
   - id: CHAIN_A
@@ -880,3 +981,50 @@ chains:
       outbound HTTP fetch, and back into a SQL sink — undecidable for a static
       engine (it runs through the LLM), which is exactly what the agentic flow is for.
     poc: exploits/chain_b_indirect_injection.py  # see also test_v26_agent_multihop_injection
+
+  - id: CHAIN_E
+    title: "Persistent agent memory poisoning: attacker session -> shared memory -> victim session -> run_sql (exfil)"
+    members: [V30]
+    description: >
+      Attacker calls POST /api/agent/memory with a directive-bearing note in
+      their OWN session; nothing fires for them -- the write is inert by
+      itself, since recall() is never called on the write path. A different
+      user's later, unrelated /api/agent/session call recalls the shared
+      memory (unscoped by owner) into their context, and the embedded
+      directive drives a run_sql tool call that exfiltrates credentials in
+      the victim's own session. Cross-taint through the DB, across a user
+      boundary, AND across a session boundary that may span days -- the
+      persistence upgrade of CHAIN_B's single-retrieval indirect injection.
+    poc: tests/test_exploits_tier6.py::test_v30_agent_memory_poisoning
+
+# ----------------------------------------------------------------------
+# Config/compose findings — a STRUCTURALLY DIFFERENT category from
+# everything above. These are serving-infrastructure misconfigurations for
+# tools ModelForge itself never runs or embeds (Ollama, TorchServe, Triton
+# are external processes an operator deploys alongside it) -- unlike V01-V41,
+# there is no source, no sink, no taint_path, and no PoC test, because there
+# is no code path to execute: the finding IS the presence of the
+# misconfigured flag/binding in deploy/docker-compose.yml. A rule for this
+# class is a regex/config scan, not a taint rule, and should be scored as a
+# presence/absence check against that one fixture file, not against
+# benchmarks/check_ground_truth.py's function-symbol resolution (which only
+# understands Python source).
+config_findings:
+  - id: CF01
+    title: Ollama bound to every interface with no authentication ("Probllama" class)
+    cwe: CWE-306
+    huntr_analog: "Ollama exposed on 0.0.0.0 with no auth -- CVE-2024-37032 and the broader 'Probllama' pattern of unauthenticated network-reachable model-pull/inference APIs"
+    location: {file: deploy/docker-compose.yml, service: ollama}
+    finding: "OLLAMA_HOST=0.0.0.0 + a published port, with no reverse-proxy auth in front"
+  - id: CF02
+    title: TorchServe management API exposed with token auth disabled (ShellTorch class)
+    cwe: CWE-306
+    huntr_analog: "TorchServe management API (8081) reachable with --disable-token-auth -- CVE-2023-43654 and related ShellTorch findings: unauthenticated remote model registration from an arbitrary URL"
+    location: {file: deploy/docker-compose.yml, service: torchserve}
+    finding: "--disable-token-auth --enable-model-api, with both the inference (8080) and management (8081) ports published"
+  - id: CF03
+    title: Triton explicit model-control API published with no auth in front
+    cwe: CWE-306
+    huntr_analog: "Triton Inference Server --model-control-mode=explicit's load/unload HTTP endpoint reachable with no gateway auth -- lets any caller load an arbitrary model into the server"
+    location: {file: deploy/docker-compose.yml, service: triton}
+    finding: "--model-control-mode=explicit --allow-http=true, with port 8000 published and no auth layer in front of the load/unload endpoint"

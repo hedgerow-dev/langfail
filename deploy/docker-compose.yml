@@ -1,0 +1,50 @@
+# Deliberately-misconfigured serving-infra fixtures (config_findings CF01-CF03
+# in benchmarks/ground_truth.yaml). These are NOT part of ModelForge's own
+# runtime and are never started by `dvml` -- they exist purely so a config/
+# compose-scanning rule has something real to match. Unlike every other file
+# in this repo, there is no source->sink taint path and no PoC test: the
+# finding IS the presence of the misconfiguration itself.
+#
+# docker compose -f deploy/docker-compose.yml config   # validate only; do not run
+
+services:
+  # CF01: Ollama bound to every interface with no authentication ("Probllama"
+  # class). OLLAMA_HOST=0.0.0.0 plus a published port means any host on the
+  # network reaches the inference API -- and, on vulnerable Ollama versions,
+  # the model-pull path traversal / RCE bugs that API has shipped.
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    ports:
+      - "11434:11434"
+
+  # CF02: TorchServe with its management API published alongside inference,
+  # and no token auth configured (ShellTorch class, CVE-2023-43654 and
+  # related). The management API can register a model from an arbitrary URL
+  # with no credential check -- an unauthenticated path to loading (and thus
+  # executing) an attacker-supplied model archive.
+  torchserve:
+    image: pytorch/torchserve:latest
+    command: >
+      torchserve --start
+      --disable-token-auth
+      --enable-model-api
+    ports:
+      - "8080:8080"   # inference API
+      - "8081:8081"   # management API -- register/unregister models, no auth
+
+  # CF03: Triton Inference Server with the explicit model-control API exposed
+  # publicly. --model-control-mode=explicit is the RIGHT setting for
+  # controlled deployments, but only if the load/unload HTTP endpoint it
+  # enables is itself gated -- publishing 8000/8001 with no reverse-proxy
+  # auth in front lets any caller load an arbitrary model into the server.
+  triton:
+    image: nvcr.io/nvidia/tritonserver:latest
+    command: >
+      tritonserver --model-repository=/models
+      --model-control-mode=explicit
+      --allow-http=true
+    ports:
+      - "8000:8000"   # HTTP inference + explicit model-control (load/unload)
+      - "8001:8001"   # gRPC

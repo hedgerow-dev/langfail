@@ -28,6 +28,11 @@ dev = [
 mcp = [
     "mcp>=1.0",
 ]
+# MCP-over-SSE/HTTP transport (dvml mcp-serve-http), on top of the mcp extra.
+mcp-http = [
+    "starlette>=0.37",
+    "uvicorn>=0.27",
+]
 
 [project.scripts]
 modelforge = "dvml.cli:main"

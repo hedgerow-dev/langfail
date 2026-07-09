@@ -50,6 +50,43 @@ async def call_tool(name: str, arguments: dict) -> list["types.TextContent"]:  #
     return [types.TextContent(type="text", text=str(result))]
 
 
+async def summarize_via_sampling(session, tool_name: str):  # -> types.CreateMessageResult
+    """Ask the connecting client's own model (via MCP sampling) to summarise
+    a tool's current deployment note -- handy when this server has no local
+    LLM configured of its own.
+
+    The note (see :mod:`dvml.api.admin` -- writable by any authenticated user,
+    per V29) is embedded in the sampling request exactly as stored, with no
+    validation. If the connecting client auto-approves sampling requests
+    without a human in the loop (as many minimal MCP hosts do), whatever the
+    note says is sent, verbatim, into the client's own trusted model context.
+    """
+    from mcp import types
+    from .models import ToolNote
+
+    note = ToolNote.query.filter_by(tool_name=tool_name).order_by(ToolNote.id.desc()).first()
+    content = note.note if note else ""
+    return await session.create_message(
+        messages=[types.SamplingMessage(role="user", content=types.TextContent(type="text", text=content))],
+        max_tokens=200,
+    )
+
+
+async def summarize_via_sampling_safe(session, tool_name: str):  # -> types.CreateMessageResult
+    """Like :func:`summarize_via_sampling`, but strips inline ``[[TOOL:...]]``
+    directives from the note before it ever reaches the sampling request."""
+    from mcp import types
+    from .agent.sanitize import strip_directives
+    from .models import ToolNote
+
+    note = ToolNote.query.filter_by(tool_name=tool_name).order_by(ToolNote.id.desc()).first()
+    content = strip_directives(note.note if note else "")
+    return await session.create_message(
+        messages=[types.SamplingMessage(role="user", content=types.TextContent(type="text", text=content))],
+        max_tokens=200,
+    )
+
+
 def build_server():
     """Construct the low-level MCP ``Server`` (requires the optional ``mcp`` extra)."""
     from mcp import types
@@ -84,6 +121,58 @@ def main() -> None:
                 await server.run(read_stream, write_stream, server.create_initialization_options())
 
     anyio.run(_run)
+
+
+def check_http_auth(headers: dict, require_auth: bool | None = None) -> bool:
+    """Return whether an incoming MCP-over-HTTP/SSE request is authorized.
+
+    ``require_auth`` defaults to ``Config.MCP_HTTP_REQUIRE_AUTH``, which is
+    off unless a deployment opts in -- so unless explicitly configured, any
+    request reaching the configured host:port (which itself defaults to
+    ``0.0.0.0``, every interface) is served with no credential check at all.
+    """
+    from .core.config import Config
+
+    if require_auth is None:
+        require_auth = Config.MCP_HTTP_REQUIRE_AUTH
+    if not require_auth:
+        return True
+    return headers.get("Authorization") == f"Bearer {Config.MCP_HTTP_TOKEN}"
+
+
+def serve_http() -> None:
+    """Run the MCP server over SSE/HTTP (``dvml mcp-serve-http``, requires the
+    optional ``mcp`` extra plus ``starlette``/``uvicorn``).
+
+    Binds ``Config.MCP_HTTP_HOST`` (every interface by default) and gates
+    each connection with :func:`check_http_auth` (no credential required by
+    default) -- see ``Config.MCP_HTTP_*`` in :mod:`dvml.core.config`.
+    """
+    import uvicorn
+    from mcp.server.sse import SseServerTransport
+    from starlette.applications import Starlette
+    from starlette.responses import Response
+    from starlette.routing import Mount, Route
+
+    from . import create_app
+    from .core.config import Config
+
+    app = create_app()
+    server = build_server()
+    sse = SseServerTransport("/messages/")
+
+    async def handle_sse(request):
+        if not check_http_auth(dict(request.headers)):
+            return Response(status_code=401)
+        async with sse.connect_sse(request.scope, request.receive, request._send) as (read, write):
+            with app.app_context():
+                await server.run(read, write, server.create_initialization_options())
+
+    starlette_app = Starlette(routes=[
+        Route("/sse", endpoint=handle_sse),
+        Mount("/messages/", app=sse.handle_post_message),
+    ])
+    uvicorn.run(starlette_app, host=Config.MCP_HTTP_HOST, port=Config.MCP_HTTP_PORT)
 
 
 if __name__ == "__main__":

@@ -44,6 +44,14 @@ class Config:
     LLM_MODEL = os.environ.get("DVML_LLM_MODEL", "llama3.1")
     LLM_OLLAMA_URL = os.environ.get("DVML_LLM_OLLAMA_URL", "http://localhost:11434")
 
+    # MCP-over-HTTP/SSE transport (dvml mcp-serve-http, optional mcp+http extra).
+    # Binds every interface and requires no credential by default -- operators
+    # opt in to both once the deployment is behind its own network boundary.
+    MCP_HTTP_HOST = os.environ.get("DVML_MCP_HTTP_HOST", "0.0.0.0")
+    MCP_HTTP_PORT = int(os.environ.get("DVML_MCP_HTTP_PORT", "8765"))
+    MCP_HTTP_REQUIRE_AUTH = os.environ.get("DVML_MCP_HTTP_REQUIRE_AUTH", "0") == "1"
+    MCP_HTTP_TOKEN = os.environ.get("DVML_MCP_HTTP_TOKEN", "")
+
 
 def ensure_dirs() -> None:
     for d in (STORAGE_DIR, ARTIFACT_DIR, DATASET_DIR, CACHE_DIR):

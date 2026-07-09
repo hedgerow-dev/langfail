@@ -15,6 +15,7 @@ def register_cli(app: Flask) -> None:
     app.cli.add_command(seed_command)
     app.cli.add_command(worker_command)
     app.cli.add_command(mcp_serve_command)
+    app.cli.add_command(mcp_serve_http_command)
 
 
 @click.command("seed")
@@ -55,6 +56,19 @@ def mcp_serve_command():
         click.echo("MCP support not installed: pip install -e '.[mcp]'")
         raise SystemExit(1)
     mcp_main()
+
+
+@click.command("mcp-serve-http")
+def mcp_serve_http_command():
+    """Serve the assistant's tools over MCP-over-SSE/HTTP. Requires the 'mcp'
+    extra plus 'starlette'/'uvicorn'. Binds every interface with no
+    credential required unless DVML_MCP_HTTP_REQUIRE_AUTH=1 is set."""
+    try:
+        from .mcp_server import serve_http
+    except ImportError:
+        click.echo("MCP HTTP support not installed: pip install -e '.[mcp,mcp-http]'")
+        raise SystemExit(1)
+    serve_http()
 
 
 def main() -> None:
