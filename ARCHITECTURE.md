@@ -31,22 +31,28 @@ flowchart TD
         exp_search[experiments\nSQL]
         rpt[reports\nJinja]
         cfg[config_loader\nYAML / setattr]
+        retention[retention\nshell]
+        analysis[analysis\nexec]
+        markdown_svc[markdown\nimg/link render]
+        support[support\nPII to LLM]
     end
 
     subgraph ml["dvml/ml/ — model & data (SINKS)"]
         loader[model_loader\npickle/torch/joblib]
-        dsx[dataset\narchive extract]
+        runner_proto[runner\npickle call protocol]
+        dsx[dataset\narchive extract + loader script exec]
         feats[features\nnumpy/pickle cache]
         conv[convert\nsubprocess]
         metrics[metrics\neval]
     end
 
     subgraph agent["dvml/agent/ — assistant"]
-        core_a[core\nagent loop]
+        core_a[core\nagent loop, capped + uncapped]
         llm[llm\nstub / ollama]
         tools[tools\nrun_sql/read_file/http_get/calc]
         mem[memory\ncross-session recall]
         san[sanitize\nINCOMPLETE directive filter]
+        native[native\nraw getattr dispatch]
     end
 
     subgraph workers["dvml/workers/ — queue + worker (CROSS-PROCESS SINKS)"]
@@ -59,6 +65,12 @@ flowchart TD
         cfgc[config]
         dbc[db]
         sec[security\nauth + INCOMPLETE sanitizers]
+    end
+
+    subgraph mcpsrv["dvml/mcp_server.py — MCP protocol surface"]
+        mcptools[list_tools / call_tool\npoisoned ToolNote]
+        mcpsampling[sampling\nno validation]
+        mcphttp[serve_http\n0.0.0.0, no auth by default]
     end
 
     db[(SQLite\nSQLAlchemy)]
@@ -79,6 +91,8 @@ flowchart TD
     api -.auth/sanitize.-> sec
     svc -.sanitize.-> sec
     api --> db
+    mcpsrv --> tools
+    mcpsrv --> dbc
 ```
 
 - **`dvml/api/` (blueprints)** — the only HTTP surface; every request field
@@ -88,9 +102,11 @@ flowchart TD
   the filesystem, and the template engine. Most **sinks** live here, one file
   removed from the source (cross-file taint).
 - **`dvml/ml/`** — model (de)serialization, dataset archive extraction, the
-  feature cache, format conversion, metric evaluation, and a custom dataset
+  feature cache, format conversion, metric evaluation, a custom dataset
   "loading script" runner (`trust_remote_code`-style: the artifact IS code,
-  not a data format to deserialize). More sinks.
+  not a data format to deserialize), and a runner-process call protocol that
+  pickles arguments across an API-server/runner boundary rather than a model
+  file (the BentoML-runner CVE class). More sinks.
 - **`dvml/workers/`** — a database-backed job queue and the worker that drains
   it. Work enqueued by one request is executed later in a different process,
   producing **second-order / cross-process** flows.
@@ -107,6 +123,11 @@ flowchart TD
   holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
   `escape_sql`, `is_safe_url`). These helpers appear on many taint paths and are
   intentionally **incomplete** — they are the false-negative traps.
+- **`dvml/mcp_server.py`** — a standalone entrypoint (not a Flask blueprint)
+  exposing `agent/tools.py`'s `TOOLS` over the real Model Context Protocol,
+  either over stdio (`dvml mcp-serve`) or SSE/HTTP (`dvml mcp-serve-http`,
+  optional `mcp-http` extra). Its own protocol-level attack surface — see
+  "MCP protocol surface" below.
 
 ## Request lifecycle
 
@@ -205,7 +226,19 @@ guidance intended for admins only. The write endpoint is gated with
 `require_auth` instead of `require_admin`, so any authenticated user can inject
 text into a field that every connecting agent implicitly trusts as
 authoritative tool documentation, not user data — a protocol-boundary bug
-distinct from the HTTP-response-body vulnerabilities elsewhere in the app.
+distinct from the HTTP-response-body vulnerabilities elsewhere in the app
+(V29). The same broken authz on that write endpoint also poisons a second MCP
+capability: `summarize_via_sampling` embeds the note, unvalidated, into an
+MCP **sampling** request (`session.create_message(...)`), landing directly in
+whatever client's model context is connected (V39) — a more direct,
+repeatable channel than tool metadata since it fires on every call rather
+than once at connection time. A third, unrelated MCP surface bug lives in the
+optional SSE/HTTP transport (`dvml mcp-serve-http`, `mcp_server.py:serve_http`,
+requires the `mcp-http` extra): it binds every network interface
+(`Config.MCP_HTTP_HOST` defaults to `0.0.0.0`) and requires no credential
+(`Config.MCP_HTTP_REQUIRE_AUTH` defaults off) unless an operator explicitly
+opts in to both (V40) — the same config-gated-defaults-off shape as
+`STRICT_PATHS`, applied to the newer MCP-over-HTTP attack surface.
 
 ## Cross-taint topology (why it's a benchmark)
 
@@ -227,6 +260,9 @@ single-line pattern match. At a glance:
 | LLM output → code exec sink | natural-language question → `agent/llm.py:generate_code` → `services/analysis.py` `exec` (PandasAI class) |
 | Unbounded resource consumption | caller-supplied `max_rounds` → `agent/core.py:run_agent_unbounded`'s loop bound, one billed LLM call per iteration |
 | Sensitive data → LLM sink | `User.email` → agent context → `agent/llm.py:_ollama_chat`'s outbound `requests.post` (PII leaves the process unredacted) |
+| Through MCP sampling | poisoned `ToolNote` → `mcp_server.py:summarize_via_sampling` → `session.create_message(...)` on whatever client is connected |
+| Config-gated network exposure | `Config.MCP_HTTP_HOST`/`MCP_HTTP_REQUIRE_AUTH` (both default insecure) → `mcp_server.py:serve_http`/`check_http_auth` |
+| Cross-process call protocol | `predict_remote`'s `runner_call_b64` → `ml/runner.py:handle_runner_call`'s `pickle.loads` (BentoML-runner class) |
 | Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
 | Through model-chosen dispatch | LLM tool-call names a method → `agent/native.py` bare `getattr(self, name)`, no allow-list check |
@@ -259,3 +295,15 @@ import or file write required, unlike `services/pipeline.py`'s). Each ships
 with a runnable proof, and a set of
 **precision decoys** (safe look-alikes such as `read_artifact_safe`,
 `search_by_tag`, `fetch_guarded`) exists so false positives are measurable too.
+
+### Config/compose findings
+
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) plus
+`config_findings` in `benchmarks/ground_truth.yaml` (CF01–CF03) cover the
+serving-infrastructure CVE class this repo doesn't otherwise embed as code:
+Ollama bound to `0.0.0.0` with no auth, TorchServe's management API with
+token auth disabled, and Triton's explicit model-control endpoint published
+with no gateway auth. Unlike every Python entry above, these are never
+started by `dvml` and have no taint path or PoC — they're presence findings
+for a config/compose scanning rule, not a taint rule. See "Config/compose
+findings" in [`SCOREBOARD.md`](SCOREBOARD.md) for how to score against them.

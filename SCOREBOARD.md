@@ -47,6 +47,9 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V36 | 5 | 400 | Unbounded agent iteration budget (denial of wallet) | caller-supplied `max_rounds` → uncapped billed-LLM-call loop (OWASP LLM10) |
 | V37 | 4 | 94 | RCE via untrusted dataset loading script (`trust_remote_code` class) | `loader_script` → DB → later `prepare` request → `exec` (HF datasets / Keras Lambda) |
 | V38 | 5 | 359 | PII flows into the third-party LLM API call with no redaction | `user.email` → agent context → `requests.post` to the LLM backend, unredacted |
+| V39 | 6 | 20 | MCP sampling request poisoning (no human-gate assumption) | poisoned `ToolNote` → `session.create_message(...)`, no validation |
+| V40 | 6 | 306 | MCP-over-HTTP transport binds every interface with no auth by default | `Config.MCP_HTTP_HOST=0.0.0.0` + `MCP_HTTP_REQUIRE_AUTH=False` |
+| V41 | 1 | 502 | Runner-protocol pickle RCE across the API/runner boundary (BentoML class) | `runner_call_b64` → `pickle.loads` of call args crossing a process boundary |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -67,10 +70,48 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D13 | V36 | `run_agent_capped` clamps the requested `max_rounds` to `MAX_ITERATE_ROUNDS` (10) before calling the same uncapped loop primitive |
 | D14 | V37 | `run_loader_script_safe` never execs anything — custom loading scripts are simply unsupported, the secure equivalent of `trust_remote_code=False` |
 | D15 | V38 | `draft_support_reply_safe` regex-redacts email addresses from the account context before it ever reaches `run_agent`/the LLM call |
+| D16 | V39 | `summarize_via_sampling_safe` strips inline `[[TOOL:...]]` directives from the note before it is embedded in the sampling request |
+| D17 | V40 | `check_http_auth(headers, require_auth=True)` correctly rejects a missing/incorrect bearer token — the gate is sound, only its default is off |
+| D18 | V41 | `handle_runner_call_safe` uses `json.loads` instead of `pickle.loads` — arbitrary object reconstruction across the process boundary is simply unsupported |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
-V26 (poisoned card → `http_get` SSRF → `run_sql` exfil across the agent loop).
+V26 (poisoned card → `http_get` SSRF → `run_sql` exfil across the agent loop),
+**E** = V30 (memory write in one session → `run_sql` exfil in a different
+user's later session — the persistence upgrade of Chain B).
+
+## Config/compose findings (a different category from everything above)
+
+`benchmarks/ground_truth.yaml`'s `config_findings:` section (CF01–CF03) and
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) cover the remaining
+serving-infrastructure CVE class — Ollama bound to every interface with no
+auth ("Probllama"), TorchServe's management API with token auth disabled
+(ShellTorch), and Triton's explicit model-control endpoint published with no
+gateway auth. These are **structurally unlike V01–V41**:
+
+- No `source`/`sink`/`taint_path` — there is no code path to trace, because
+  Ollama/TorchServe/Triton are external processes this repo never runs or
+  embeds. The finding **is** the presence of the misconfigured flag/binding
+  in the compose file, full stop.
+- No PoC test and no entry in `check_ground_truth.py`'s rot check (which only
+  understands Python function symbols) — there's nothing to execute or
+  resolve. Don't be alarmed that they're absent from the pytest counts or the
+  "N manifest entries resolved" line above; that's by design, not an
+  oversight.
+- Score these the way the huntr_analog framing implies: as a **regex/config
+  presence check** against `deploy/docker-compose.yml` (does a rule
+  recognize `OLLAMA_HOST=0.0.0.0`, `--disable-token-auth`,
+  `--model-control-mode=explicit --allow-http=true` combined with a published
+  port?), not as a taint-connection problem. A tool that only does source-sink
+  taint analysis on Python has no way to score against this section at all —
+  which is itself useful information about that tool's coverage, not a defect
+  in the fixture.
+
+V41 (the BentoML-runner pickle RCE) is the one member of the same
+huntr_analog family (huntr's "serving infrastructure" CVEs) that fit as real,
+runnable Python instead — the runner-process call protocol is code
+ModelForge itself defines and executes, unlike the other three tools' own
+server binaries.
 
 ## Scoring a taint engine
 
@@ -107,8 +148,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V38; V07 shares V06's chain PoC)
-                           # + 14 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V41; V07 shares V06's chain PoC)
+                           # + 17 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -125,16 +166,16 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 
 | Tier | Vulns | Full hits (at the declared sink) | Sink-located only† | Clean misses |
 |------|-------|-----------------------------------|---------------------|---------------|
-| 1 | V01, V02 | 2/2 | 0 | 0 |
+| 1 | V01, V02, V41 | 3/3 | 0 | 0 |
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15, V37 | 2/6 (V15, V37) | 1 (V11) | 3 |
 | 5 | V16–V19, V31, V33, V34, V36, V38 | 3/9 (V18, V19, V34§) | 0 | 6 (V16, V17, V31, V33‡, V36¶, V38‖) |
-| 6 | V20–V30, V32, V35 | 1/13 (V22) | 1 (V28) | 11 |
-| **Total** | **38** | **9** | **3** | **26** |
+| 6 | V20–V30, V32, V35, V39, V40 | 1/15 (V22) | 1 (V28) | 13 |
+| **Total** | **41** | **10** | **3** | **28** |
 
-Decoys: **1/15 false positives** — both tools flag **D10** (see below); D01–D09
-and D11–D15 are clean.
+Decoys: **1/18 false positives** — both tools flag **D10** (see below); D01–D09
+and D11–D18 are clean.
 
 § V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
 (B102) and Semgrep (`exec-detected`) flag the `exec()` call at
@@ -225,6 +266,29 @@ suite of a rule family that doesn't exist yet in either tool's default rule
 set, as opposed to one that exists but fails to connect source and sink
 (V33/V35) or one with no resource-cost concept to model (V36).
 
+**V39 is a clean miss with no partial credit anywhere** — neither tool
+produces a single finding in `mcp_server.py` for the sampling path. There is
+no `eval`/`exec`/`subprocess` gadget to accidentally trip a denylist on this
+time (contrast V35): the payload is just a string handed to
+`session.create_message(...)`, an ordinary async SDK call. This is the same
+"no sink category exists for this at all" story as V36/V38, applied to a
+third protocol boundary (MCP sampling) neither tool has ever heard of.
+
+**V40 is the one entry with a genuine split result.** Bandit's B104
+(`hardcoded_bind_all_interfaces`) *does* fire — but on `core/config.py`'s
+`"0.0.0.0"` string literal, the config **default**, not on
+`mcp_server.py:check_http_auth`, the declared **sink** where the actual
+authorization decision is made. B104 is a real, purpose-built rule for
+exactly this class (it's the same rule family the huntr_analog list points
+at for Ollama/TorchServe/Triton), so it genuinely earns credit for
+surfacing "this binds every interface" — but it has no idea whether that
+also means "and nothing gates who can connect once they get there," which is
+the actual exploitable half of this bug and the half neither tool touches.
+A scanner wired to both signals (bind-all-interfaces *and* an
+auth-check-that-defaults-off in the same service) would need to correlate
+two independent rule categories to score this as one finding; scored
+separately, as these tools do, it looks like two unrelated, low-severity
+observations rather than one critical one.
 **D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
 builds its query with an f-string that interpolates a **column name already
 validated against an allow-list** (`_ASK_ALLOWED_COLUMNS`), while the actual
@@ -251,7 +315,13 @@ point of V28.
 Takeaways for interpreting any engine's score against this baseline:
 
 - **Tier 1 is free.** A single dangerous call on a directly-passed argument
-  needs no dataflow analysis at all.
+  needs no dataflow analysis at all — V41 (a fresh add, unpickling a
+  base64-decoded request field one line inside `ml/runner.py`) is exactly as
+  free as V01/V02 despite modeling a completely different real-world CVE
+  class (BentoML's runner-server protocol vs. model-file loading). The
+  lesson repeats: novelty of the *huntr_analog* doesn't correlate with
+  difficulty for a syntactic scanner — only the taint shape does, and this
+  one's shape is trivial.
 - **"Blind" isn't a SAST difficulty axis.** V22 (blind SQLi) is caught by the
   identical rule that catches V08 (reflected) — blind vs. reflected only
   matters once you're testing exploitability (an agentic/DAST concern), not
@@ -272,7 +342,7 @@ Takeaways for interpreting any engine's score against this baseline:
   V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
   dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
   all outside what a rule-based scanner without custom taint rules can see.
-- **Precision is nearly clean (14/15) but not free.** D10 shows that "bind the
+- **Precision is nearly clean (16/17) but not free.** D10 shows that "bind the
   value, but still format the identifier" — a common, genuinely-safe pattern
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
@@ -314,6 +384,18 @@ Takeaways for interpreting any engine's score against this baseline:
   the full round trip: LLM output reaching dangerous sinks (V30–V35) *and*
   sensitive data reaching the LLM boundary itself (V38), plus the resource
   dimension that sits orthogonal to both (V36).
+- **The MCP protocol surface (V29, V39, V40) is three different bugs behind
+  the same broken-authz root cause, and the tools see none of the exploitable
+  parts.** V29 poisons tool metadata, V39 poisons a sampling request — both
+  trace back to the identical `require_auth`-instead-of-`require_admin` gap on
+  the note-write endpoint, and neither leaves a syntactic trace anywhere near
+  either sink. V40 is the outlier worth remembering when reading any tool's
+  score on this class: partial credit (Bandit's B104 on the bind-all-interfaces
+  default) can look like real coverage of a vulnerability while missing the
+  specific mechanism that makes it exploitable (no auth gate). A high hit
+  count on "MCP misconfiguration" style rules doesn't mean a tool understood
+  the protocol's actual trust model — it may just mean the config file had a
+  recognizable string in it.
 
 Regenerate this baseline any time with:
 
