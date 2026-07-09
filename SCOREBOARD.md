@@ -43,6 +43,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V32 | 6 | LLM01 | Unicode/ASCII-smuggling prompt injection | tag-block/zero-width directive slips past an ASCII-only `[[TOOL:]]` filter |
 | V33 | 5 | 89 | Text-to-SQL agent executes model-generated SQL directly | LLM completion (not a tool call, not a user param) → raw `db.session.execute` |
 | V34 | 5 | 95 | Code-interpreter RCE via `exec` of model-generated code | NL question → LLM writes Python → `exec` (PandasAI CVE-2024-12366 class) |
+| V35 | 6 | 470 | Unsafe reflection dispatch on a model-chosen action name | `getattr(self, tool_call.function.name)(...)`, no allow-list — raw tool-use pattern |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -59,6 +60,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D09 | V32 | `strip_directives` **does** remove a plainly-visible `[[TOOL:...]]` — it's a real (if incomplete) control; flag the missing Unicode normalization, not the filter |
 | D10 | V33 | `ask_experiments_safe` only accepts allow-listed `column=value` questions and always binds the value as a parameter — the model never authors raw SQL |
 | D11 | V34 | `run_analysis_safe` maps the question to a fixed set of aggregate ops by keyword — never `exec`s model-generated code |
+| D12 | V35 | `dispatch_safe` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` — the un-advertised method is unreachable regardless of what the model returns |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -99,8 +101,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V34; V07 shares V06's chain PoC)
-                           # + 10 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V35; V07 shares V06's chain PoC)
+                           # + 11 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -122,11 +124,11 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
 | 5 | V16–V19, V31, V33, V34 | 3/7 (V18, V19, V34§) | 0 | 4 (V16, V17, V31, V33‡) |
-| 6 | V20–V30, V32 | 1/12 (V22) | 1 (V28) | 10 |
-| **Total** | **34** | **8** | **3** | **23** |
+| 6 | V20–V30, V32, V35 | 1/13 (V22) | 1 (V28) | 11 |
+| **Total** | **35** | **8** | **3** | **24** |
 
-Decoys: **1/11 false positives** — both tools flag **D10** (see below); D01–D09
-and D11 are clean.
+Decoys: **1/12 false positives** — both tools flag **D10** (see below); D01–D09,
+D11, and D12 are clean.
 
 § V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
 (B102) and Semgrep (`exec-detected`) flag the `exec()` call at
@@ -162,6 +164,20 @@ rule that greps for ASCII `[[TOOL:]]`. V32 is, however, the cheapest of the
 whole set to catch with a *dedicated* presence rule (regex for U+E00xx /
 zero-width codepoints in prompt-bound strings) — its difficulty is entirely in
 the taint framing, not the pattern.
+
+V35 is a clean miss at its declared sink too, and for the same reason as V33:
+the vulnerability is the missing allow-list check inside
+`agent/native.py:dispatch` (the bare `getattr(_ACTIONS, name, None)` call at
+line 61) — neither tool flags that line, because nothing about it looks
+dangerous in isolation. Both tools *do* flag `eval()` inside the
+never-advertised `_debug_eval` helper (line 41) — but that flag fires purely
+because `eval` is denylisted, identically whether `_debug_eval` is reachable
+through the vulnerable `dispatch()` or the fixed `dispatch_safe()` (D12, which
+gates on the same allow-list and is proven safe by
+`test_d12_dispatch_safe_rejects_internal_method`). The tool cannot distinguish
+"this eval exists in the file" from "this eval is reachable from attacker
+input" — it flags the gadget, not the vulnerability, and would flag the exact
+same line even in a codebase where `_debug_eval` were provably dead code.
 
 **D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
 builds its query with an f-string that interpolates a **column name already
@@ -199,12 +215,13 @@ Takeaways for interpreting any engine's score against this baseline:
   dataflow, so anything requiring a trace through a service call, a DB
   round-trip, or the job queue is invisible unless the sink itself is also
   syntactically obvious in isolation.
-- **Tier 6 is a near-total wipeout** (1 full hit, and it's only there because
-  it happens to share V08's exact syntactic shape). Reflection, cache
-  laundering, taint dilution, call-site sensitivity, XXE, and the MCP
-  protocol-boundary bug are all outside what a rule-based scanner without
-  custom taint rules can see.
-- **Precision is nearly clean (9/10) but not free.** D10 shows that "bind the
+- **Tier 6 is a near-total wipeout** (1 full hit out of 13, and it's only
+  there because it happens to share V08's exact syntactic shape). Both
+  reflection variants (V20's `importlib`+`getattr` on a stored config string,
+  V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
+  dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
+  all outside what a rule-based scanner without custom taint rules can see.
+- **Precision is nearly clean (11/12) but not free.** D10 shows that "bind the
   value, but still format the identifier" — a common, genuinely-safe pattern
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
@@ -219,7 +236,16 @@ Takeaways for interpreting any engine's score against this baseline:
   completion" to "raw SQL execute" across a file boundary. A rule keyed on
   "value derived from a `chat()`/completion call reaches a `text()`/`exec`/
   `os.system`/`<img src>` sink" is exactly what would separate real coverage
-  here from the incidental `exec` hit on V34.
+  here from the incidental `exec`/`eval` denylist hits it gets for free today.
+- **V35 repeats the V33 lesson from a different angle.** The vulnerability is
+  a missing allow-list check at a `getattr()` call, not any single dangerous
+  primitive — so even though the exploited method happens to contain an
+  `eval()`, flagging that `eval()` gives zero credit for finding the actual
+  bug (a scanner would flag the identical line whether the method were
+  reachable or, as in D12, providably gated behind an allow-list). Reflection
+  bugs driven by an LLM-chosen name are effectively invisible to a pattern
+  matcher regardless of what happens to live inside the target method — it's
+  the *absence* of a check that's the bug, and absence doesn't pattern-match.
 
 Regenerate this baseline any time with:
 

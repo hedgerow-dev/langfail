@@ -646,6 +646,34 @@ vulnerabilities:
       call.
     poc: tests/test_exploits_tier6.py::test_v34_code_interpreter_rce
 
+  - id: V35
+    title: Unsafe reflection dispatch on a model-chosen action name (raw tool-use pattern)
+    cwe: CWE-470
+    huntr_analog: "getattr(self, tool_call.function.name)(...) with no allow-list -- the common hand-rolled OpenAI/Anthropic tool-use integration pattern"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: native, note: "message (JSON body), an inline [[TOOL:name args]] directive"}
+    sink: {file: dvml/agent/native.py, symbol: dispatch, line_hint: 61}
+    taint_path:
+      - dvml/api/agent.py:native (message)
+      - dvml/agent/native.py:run_native_loop (chat() returns tool_calls parsed from the directive; NOT re-validated against action_schemas())
+      - dvml/agent/native.py:dispatch (getattr(_ACTIONS, name, None) resolves whatever name the model returned)
+      - dvml/agent/native.py:AssistantActions._debug_eval (never advertised by action_schemas(), reachable anyway; eval with empty __builtins__ is escapable, same gadget class as V15/V18)
+    sanitizers_present:
+      - "action_schemas() only advertises get_model_info/list_experiment_names -- advertising a method is not the same as authorizing it, and dispatch() never checks the name against that list (misdirection: a reviewer who reads action_schemas() and stops there would conclude the surface is small)"
+    notes: >
+      Distinct from V20: V20 resolves a *stored config string* ("module:attr")
+      via importlib + getattr, requiring a prior write to reach an import
+      target. V35 resolves an *LLM-chosen method name* directly via getattr on
+      an already-instantiated object already carrying private/internal
+      methods -- the exact "raw tool-use" shape most non-framework agent code
+      uses (as opposed to agent/core.py's explicit TOOLS allow-list dict,
+      which V16-V19/V26 exercise). No import or file write is needed: the
+      dangerous method already lives on the handler class, and the bug is
+      purely a missing allow-list check between "what's advertised" and
+      "what's callable".
+    poc: tests/test_exploits_tier6.py::test_v35_reflection_dispatch_internal_method
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -704,6 +732,11 @@ decoys:
     why_safe: "run_analysis_safe() maps the question to one of a fixed set of aggregate operations by keyword and never exec()s model-generated code"
     location: {file: dvml/services/analysis.py, symbol: run_analysis_safe}
     proof: tests/test_exploits_tier6.py::test_d11_safe_analysis_never_execs
+  - id: D12
+    resembles: V35 (reflection dispatch) — SAME handler/action set, allow-list-checked instead of bare getattr
+    why_safe: "dispatch_safe() rejects any name not present in _PUBLIC_ACTIONS before ever calling getattr -- _debug_eval is unreachable regardless of what the model returns"
+    location: {file: dvml/agent/native.py, symbol: dispatch_safe}
+    proof: tests/test_exploits_tier6.py::test_d12_dispatch_safe_rejects_internal_method
 
 chains:
   - id: CHAIN_A
