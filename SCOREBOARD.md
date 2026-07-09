@@ -42,6 +42,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V31 | 5 | 200 | Markdown-image data exfiltration in rendered preview | LLM/card Markdown → `<img src>` off-origin, zero-click egress channel |
 | V32 | 6 | LLM01 | Unicode/ASCII-smuggling prompt injection | tag-block/zero-width directive slips past an ASCII-only `[[TOOL:]]` filter |
 | V33 | 5 | 89 | Text-to-SQL agent executes model-generated SQL directly | LLM completion (not a tool call, not a user param) → raw `db.session.execute` |
+| V34 | 5 | 95 | Code-interpreter RCE via `exec` of model-generated code | NL question → LLM writes Python → `exec` (PandasAI CVE-2024-12366 class) |
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -57,6 +58,7 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | D08 | V31 | `render_markdown_safe` only emits same-origin `<img src>` and drops off-origin images to alt text — no egress channel |
 | D09 | V32 | `strip_directives` **does** remove a plainly-visible `[[TOOL:...]]` — it's a real (if incomplete) control; flag the missing Unicode normalization, not the filter |
 | D10 | V33 | `ask_experiments_safe` only accepts allow-listed `column=value` questions and always binds the value as a parameter — the model never authors raw SQL |
+| D11 | V34 | `run_analysis_safe` maps the question to a fixed set of aggregate ops by keyword — never `exec`s model-generated code |
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -97,8 +99,8 @@ second-order stored config, and V24 only opens with `STRICT_PATHS` at its defaul
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V33; V07 shares V06's chain PoC)
-                           # + 9 decoy precision checks + 8 functional
+PYTHONPATH=. pytest -q     # exploit proofs (V01–V34; V07 shares V06's chain PoC)
+                           # + 10 decoy precision checks + 8 functional
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
@@ -119,12 +121,25 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
 | 4 | V11–V15 | 1/5 (V15) | 1 (V11) | 3 |
-| 5 | V16–V19, V31, V33 | 2/6 (V18, V19) | 0 | 4 (V16, V17, V31, V33‡) |
+| 5 | V16–V19, V31, V33, V34 | 3/7 (V18, V19, V34§) | 0 | 4 (V16, V17, V31, V33‡) |
 | 6 | V20–V30, V32 | 1/12 (V22) | 1 (V28) | 10 |
-| **Total** | **33** | **7** | **3** | **23** |
+| **Total** | **34** | **8** | **3** | **23** |
 
-Decoys: **1/10 false positives** — both tools flag **D10** (see below); D01–D09
-are clean.
+Decoys: **1/11 false positives** — both tools flag **D10** (see below); D01–D09
+and D11 are clean.
+
+§ V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
+(B102) and Semgrep (`exec-detected`) flag the `exec()` call at
+`services/analysis.py:run_analysis` because `exec` is denylisted outright —
+they'd flag `exec("print(1)")` identically and have no notion that the argument
+is model-generated. Contrast V33 (its sibling one row up): V33's dangerous
+string is *built* in `agent/llm.py` and *executed* in `services/experiments.py`,
+so the inherently-dangerous call (`text()`/`execute`) and the injectable value
+live in different files and the scanners miss the connection. Same
+"LLM-output-as-source" class, opposite scanner outcome — the difference is
+purely whether the sink call is one a denylist already fires on (`exec`) or one
+that's only dangerous given the argument's provenance (raw SQL execute). Neither
+outcome reflects any understanding that an LLM produced the input.
 
 ‡ V33 is a clean miss **at its declared sink** (`services/experiments.py:
 ask_experiments`, `db.session.execute(text(sql))`) — `sql` is an opaque
@@ -194,13 +209,17 @@ Takeaways for interpreting any engine's score against this baseline:
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
   re-checked against the decoys too; D10 is a preview of that cost.
-- **The LLM-output-as-source class (V30–V33) is where these tools have the
-  least traction of the whole suite** — 0 full hits at the declared sink out
-  of 4. The one near-hit (V33, via Bandit's B608 firing on the *source* line
-  in `agent/llm.py` rather than the sink) shows why: the dangerous string is
-  built in one function and executed in another, so a scanner needs to
-  connect "LLM completion" to "raw SQL execute" across a file boundary — the
-  exact rule family this batch of vulnerabilities was planted to motivate.
+- **The LLM-output-as-source class (V30–V34) is where these tools have the
+  least *meaningful* traction** — of the five, only V34 is flagged, and only
+  because its sink is a bare `exec` that a denylist fires on regardless of
+  provenance. The other four (memory poisoning, markdown-image exfil,
+  Unicode smuggling, and text-to-SQL) are clean misses, and V33 in particular
+  shows why the class needs its own rules: the dangerous string is built in
+  one function and executed in another, so a scanner must connect "LLM
+  completion" to "raw SQL execute" across a file boundary. A rule keyed on
+  "value derived from a `chat()`/completion call reaches a `text()`/`exec`/
+  `os.system`/`<img src>` sink" is exactly what would separate real coverage
+  here from the incidental `exec` hit on V34.
 
 Regenerate this baseline any time with:
 

@@ -218,6 +218,7 @@ single-line pattern match. At a glance:
 | Through invisible Unicode | tag-block/zero-width directive → past an ASCII-only filter → LLM reads it as ASCII → tool call |
 | LLM output → render sink | model card / assistant Markdown → `services/markdown` → off-origin `<img>` egress |
 | LLM output → SQL sink (no tool dispatch) | natural-language question → `agent/llm.py:generate_sql` → `services/experiments.py` raw `db.session.execute` |
+| LLM output → code exec sink | natural-language question → `agent/llm.py:generate_code` → `services/analysis.py` `exec` (PandasAI class) |
 | Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
 | Blind / OOB | webhook egress + count-only SQLi — no reflected output, needs a canary/oracle |

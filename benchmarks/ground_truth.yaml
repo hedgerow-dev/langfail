@@ -618,6 +618,34 @@ vulnerabilities:
       the model to author safe SQL and runs it as-is.
     poc: tests/test_exploits_tier6.py::test_v33_text_to_sql_injection
 
+  - id: V34
+    title: Code-interpreter RCE via exec of model-generated analysis code (PandasAI class)
+    cwe: CWE-95
+    huntr_analog: "PandasAI CVE-2024-12366 -- 'chat with your dataframe' agent exec()s LLM-authored Python"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: analyze_dataset, note: "question (JSON body)"}
+    sink: {file: dvml/services/analysis.py, symbol: run_analysis, line_hint: 36}
+    taint_path:
+      - dvml/api/datasets.py:analyze_dataset (question)
+      - dvml/services/analysis.py:run_analysis (calls generate_code, then execs the returned snippet)
+      - dvml/agent/llm.py:generate_code (stub reproduces the question verbatim as Python -- no dispatch/allowlist)
+      - dvml/services/analysis.py:run_analysis (exec(code, scope) on the model's own generated code)
+    sanitizers_present:
+      - "exec runs with a scope dict pre-seeded with `df` and a comment claiming the snippet 'can only touch df' -- but no __builtins__ restriction is applied, so `import os` works (misdirection, cf. V15/V18's fake sandbox)"
+    notes: >
+      Third member of the LLM-output-as-source family (with V33 SQL and V31
+      markdown), and distinct from the eval-based V15/V18: the SOURCE is the
+      model's generated *code* (a completion, not a request parameter or a
+      user-chosen tool argument), and the SINK is a multi-statement `exec`, so
+      the payload uses statements (`import os; os.system(...)`) that a
+      single-expression `eval` could not run. Mirrors PandasAI / LangChain's
+      pandas agent, whose "restricted" exec sandbox was repeatedly bypassed.
+      The literal `pandas` sinks of that class (`pd.eval` / `DataFrame.query`
+      with engine='python') are the same taint shape reaching a different
+      call.
+    poc: tests/test_exploits_tier6.py::test_v34_code_interpreter_rce
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -671,6 +699,11 @@ decoys:
     why_safe: "ask_experiments_safe() only accepts 'column=value' against an allow-list of columns and always binds the value as a parameter -- the model never authors raw SQL to execute"
     location: {file: dvml/services/experiments.py, symbol: ask_experiments_safe}
     proof: tests/test_exploits_tier6.py::test_d10_ask_safe_rejects_raw_sql
+  - id: D11
+    resembles: V34 (code-interpreter RCE) — SAME feature (NL dataset analysis), constrained instead of freeform
+    why_safe: "run_analysis_safe() maps the question to one of a fixed set of aggregate operations by keyword and never exec()s model-generated code"
+    location: {file: dvml/services/analysis.py, symbol: run_analysis_safe}
+    proof: tests/test_exploits_tier6.py::test_d11_safe_analysis_never_execs
 
 chains:
   - id: CHAIN_A
