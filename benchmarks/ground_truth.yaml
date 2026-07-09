@@ -674,6 +674,34 @@ vulnerabilities:
       "what's callable".
     poc: tests/test_exploits_tier6.py::test_v35_reflection_dispatch_internal_method
 
+  - id: V36
+    title: Unbounded agent iteration budget (denial of wallet, OWASP LLM10)
+    cwe: CWE-400
+    huntr_analog: "OWASP LLM10 (unbounded consumption) -- user-controlled max_tokens/n/iteration budget passed straight into a billed LLM call loop"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: iterate, note: "max_rounds (JSON body)"}
+    sink: {file: dvml/agent/core.py, symbol: run_agent_unbounded, line_hint: 79}
+    taint_path:
+      - dvml/api/agent.py:iterate (max_rounds, int()-cast but not clamped)
+      - dvml/agent/core.py:run_agent_unbounded (for _ in range(max_rounds): chat(...) -- one billed LLM call per iteration, no ceiling)
+    sanitizers_present:
+      - "run_agent() (the default assistant path, used by /chat, /ask, /session, /analyze) hardcodes MAX_TOOL_ROUNDS=3 and is not caller-adjustable -- the cap exists and is enforced everywhere else in the codebase, just not on this one caller-parameterized path (misdirection: a reviewer who checked MAX_TOOL_ROUNDS and stopped there would conclude the loop is always capped)"
+    notes: >
+      Not a taint-to-dangerous-sink bug in the usual sense -- the "sink" is a
+      resource-consumption amplifier, not a code-execution or data-exposure
+      primitive. Each loop iteration is a real LLM API call in a production
+      deployment (billed per-token, rate-limited, or both), so an unbounded
+      caller-supplied round count is a direct cost/availability attack: one
+      request can trigger arbitrarily many completions. The same shape
+      applies to a raw `max_tokens`/`n`/`best_of` request field forwarded
+      into a provider call with no server-side ceiling -- this entry exercises
+      the loop-iteration variant since it's fully observable without a live
+      LLM backend (the stub's tool_calls persist across rounds, so nothing
+      about the conversation naturally terminates the loop; only max_rounds
+      does).
+    poc: tests/test_exploits_tier6.py::test_v36_unbounded_agent_iteration
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -737,6 +765,11 @@ decoys:
     why_safe: "dispatch_safe() rejects any name not present in _PUBLIC_ACTIONS before ever calling getattr -- _debug_eval is unreachable regardless of what the model returns"
     location: {file: dvml/agent/native.py, symbol: dispatch_safe}
     proof: tests/test_exploits_tier6.py::test_d12_dispatch_safe_rejects_internal_method
+  - id: D13
+    resembles: V36 (unbounded agent iteration) — SAME loop primitive (run_agent_unbounded), clamped instead of caller-controlled
+    why_safe: "run_agent_capped() clamps the requested max_rounds to MAX_ITERATE_ROUNDS (10) before ever calling run_agent_unbounded, regardless of what the caller asks for"
+    location: {file: dvml/agent/core.py, symbol: run_agent_capped}
+    proof: tests/test_exploits_tier6.py::test_d13_capped_agent_ignores_requested_budget
 
 chains:
   - id: CHAIN_A

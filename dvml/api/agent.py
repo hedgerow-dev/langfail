@@ -5,7 +5,7 @@ from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
 from ..models import Dataset, Model
-from ..agent.core import run_agent
+from ..agent.core import run_agent, run_agent_unbounded
 from ..agent.memory import recall_scoped, remember
 from ..agent.native import run_native_loop
 from ..agent.sanitize import strip_directives
@@ -66,6 +66,21 @@ def session():
     message = data.get("message", "")
     result = run_agent(message, use_memory=True)
     remember(message, owner_id=g.user_id)
+    return jsonify(**result)
+
+
+@bp.post("/iterate")
+@require_auth
+def iterate():
+    """Multi-round assistant session for research-style back-and-forth that
+    needs more rounds than the default assistant allows.
+
+    ``max_rounds`` sets how many tool-call rounds the session may run.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    message = data.get("message", "")
+    max_rounds = data.get("max_rounds", 3)
+    result = run_agent_unbounded(message, int(max_rounds))
     return jsonify(**result)
 
 
