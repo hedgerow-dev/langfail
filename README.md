@@ -6,7 +6,7 @@ SQLite and a pluggable local LLM backend.
 
 > ### ⚠️ This application is deliberately vulnerable
 > ModelForge is a **security benchmark target**, not production software. It
-> contains 37 planted vulnerabilities (plus precision decoys) spanning the classes
+> contains 38 planted vulnerabilities (plus precision decoys) spanning the classes
 > commonly reported against real ML/AI open source on [huntr.com](https://huntr.com)
 > — unsafe model deserialization, SSRF (incl. blind/OOB), path traversal, zip/tar
 > slip, SQL (incl. blind) and command injection, SSTI, IDOR, unsafe reflection,
@@ -15,7 +15,8 @@ SQLite and a pluggable local LLM backend.
 > and markdown-image data exfiltration, plus text-to-SQL and code-interpreter
 > prompt injection in the Vanna.ai CVE-2024-5565 / PandasAI CVE-2024-12366
 > classes, OWASP LLM10 denial-of-wallet via an uncapped agent-iteration
-> budget, and a `trust_remote_code`-style dataset-loading-script RCE). Difficulty runs from disguised
+> budget, a `trust_remote_code`-style dataset-loading-script RCE, and
+> unredacted PII flowing into a third-party LLM API call). Difficulty runs from disguised
 > single-hop (Tier 1) up to reflection, cache-laundered, blind, and
 > multi-hop-agent flows (Tier 6). **Do not deploy it,
 > expose it to a network, or run untrusted PoCs against anything you care about.**
@@ -87,7 +88,7 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V37) + 13 decoy checks
+PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V38) + 14 decoy checks
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # SSRF -> RCE across DB + queue
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # indirect prompt injection
 ```

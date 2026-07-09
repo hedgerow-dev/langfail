@@ -18,6 +18,7 @@ class User(db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     role = db.Column(db.String(20), default="user", nullable=False)
     api_token = db.Column(db.String(64), unique=True)
+    email = db.Column(db.String(255))
     created_at = db.Column(db.DateTime, default=_now)
 
 

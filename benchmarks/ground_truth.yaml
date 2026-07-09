@@ -728,6 +728,36 @@ vulnerabilities:
       in create_dataset itself is dangerous in isolation.
     poc: tests/test_exploits_tier6.py::test_v37_trust_remote_code_rce
 
+  - id: V38
+    title: PII flows into the third-party LLM API call with no redaction
+    cwe: CWE-359
+    huntr_analog: "PII (email/SSN/DOB) read from a DB and forwarded verbatim into a third-party LLM API call -- a common compliance gap in support/copilot LLM integrations"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/services/support.py, symbol: _account_context, note: "user.email, read from the User row"}
+    sink: {file: dvml/agent/llm.py, symbol: _ollama_chat, line_hint: 79, note: "requests.post to the (self-hosted or third-party) LLM API, full messages list as the JSON body"}
+    taint_path:
+      - dvml/api/admin.py:support_reply (user_id -> draft_support_reply)
+      - dvml/services/support.py:draft_support_reply -> _account_context (user.email interpolated into a plain f-string, no redaction)
+      - dvml/agent/core.py:run_agent (context_docs appended to the message list verbatim)
+      - dvml/agent/llm.py:_ollama_chat (requests.post sends the full messages list, including the raw email, to the LLM backend)
+    sanitizers_present:
+      - "draft_support_reply_safe() exists in the same module and redacts email addresses with a regex before calling run_agent -- the fix is present and unit-tested (D15), just not used by the endpoint (misdirection: a reviewer who found the safe helper and stopped there would conclude PII was handled)"
+    notes: >
+      Not a code-execution or file-access bug -- the "sink" is a network call
+      to an LLM provider that, in a real deployment, is a third party outside
+      the organisation's compliance boundary (or at minimum a system prompt
+      log / training-data collection pipeline). The taint path is short
+      (three hops, no DB round-trip) but crosses a boundary most taint tools
+      don't model as a sink at all: an outbound LLM API call is not
+      conventionally "dangerous" the way a shell or SQL sink is, so a rule
+      needs to specifically recognise "PII-shaped field reaches a
+      chat()/completions call" as reportable. Verified against the actual
+      network-egress code path (Ollama backend, requests.post) rather than
+      the offline stub, so the assertion reflects what would really leave the
+      process.
+    poc: tests/test_exploits_tier6.py::test_v38_pii_to_llm_no_redaction
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -801,6 +831,11 @@ decoys:
     why_safe: "run_loader_script_safe() never execs anything -- custom loading scripts are simply unsupported, the secure equivalent of trust_remote_code=False"
     location: {file: dvml/ml/dataset.py, symbol: run_loader_script_safe}
     proof: tests/test_exploits_tier6.py::test_d14_safe_loader_never_execs
+  - id: D15
+    resembles: V38 (PII-to-LLM leak) — SAME feature (support-reply drafting), redacted instead of raw
+    why_safe: "draft_support_reply_safe() strips email addresses from the account context with a regex substitution before the context ever reaches run_agent/the LLM call"
+    location: {file: dvml/services/support.py, symbol: draft_support_reply_safe}
+    proof: tests/test_exploits_tier6.py::test_d15_support_reply_safe_redacts_email
 
 chains:
   - id: CHAIN_A

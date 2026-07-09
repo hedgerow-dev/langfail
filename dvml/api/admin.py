@@ -6,6 +6,7 @@ from flask import Blueprint, g, jsonify, request
 from ..core.db import db
 from ..models import Job, ToolNote
 from ..services.config_loader import load_safe
+from ..services.support import draft_support_reply
 from .deps import require_admin, require_auth
 
 bp = Blueprint("admin", __name__, url_prefix="/api/admin")
@@ -33,6 +34,16 @@ def list_tool_notes():
     """List the current per-tool deployment notes (admin-only, for auditing)."""
     rows = ToolNote.query.order_by(ToolNote.id.desc()).all()
     return jsonify(notes=[{"id": n.id, "tool_name": n.tool_name, "note": n.note} for n in rows])
+
+
+@bp.post("/support_reply")
+@require_admin
+def support_reply():
+    """Ask the assistant to draft a reply for a user's account (support-agent
+    workflow), grounded in that account's stored details."""
+    data = request.get_json(force=True, silent=True) or {}
+    result = draft_support_reply(data.get("user_id"), data.get("question", ""))
+    return jsonify(**result)
 
 
 @bp.post("/tool_notes")
