@@ -50,6 +50,29 @@ traps), a **difficulty tier**, and a runnable **poc**.
 | V39 | 6 | 20 | MCP sampling request poisoning (no human-gate assumption) | poisoned `ToolNote` → `session.create_message(...)`, no validation |
 | V40 | 6 | 306 | MCP-over-HTTP transport binds every interface with no auth by default | `Config.MCP_HTTP_HOST=0.0.0.0` + `MCP_HTTP_REQUIRE_AUTH=False` |
 | V41 | 1 | 502 | Runner-protocol pickle RCE across the API/runner boundary (BentoML class) | `runner_call_b64` → `pickle.loads` of call args crossing a process boundary |
+| V42 | 2 | 266 | Self-assigned role at registration (mass assignment) | `role` taken verbatim from the signup JSON → admin-only endpoints |
+| V43 | 1 | 598 | Bearer token accepted via URL query parameter | `?token=` fallback in `_extract_token` → session accepted |
+| V44 | 4 | 347 | Unsigned service-JWT exchange (alg/signature confusion) | forged service token → `verify_signature: False` → fully-signed session JWT (credential laundering) |
+| V45 | 1 | 601 | Open redirect on the post-login `?next=` bounce | unvalidated redirect target |
+| V46 | 2 | 640 | Predictable password-reset token | `md5(username:email)` over public info → account takeover |
+| V47 | 3 | 327 | Unsalted-md5 legacy API key + pass-the-hash | the stored digest IS the credential; DB round-trip between register and auth |
+| V48 | 2 | 1333 | ReDoS in registration username validation | nested-quantifier regex on a pre-auth field |
+| V49 | 3 | 79 | Stored XSS via SVG avatar served inline same-origin | stored SVG → `image/svg+xml` inline to any authenticated viewer |
+| V50 | 1 | 208 | Non-constant-time MCP bearer token comparison | plain `==` on the secret → timing oracle |
+| V51 | 2 | 502 | Typed-JSON deserialization on experiment import (jsonpickle) | app's own export carrier → `jsonpickle.decode` (`py/reduce` RCE) |
+| V52 | 6 | 502 | Restricted-unpickler allow-list bypass (Fickling class) | allow-listed getattr/globals/dict → `__builtins__` → eval via REDUCE chain |
+| V53 | 3 | 829 | Hub-style repo install executes `hubconf.py` (torch.hub class) | archive → extract → `importlib` exec at install time |
+| V54 | 4 | 829 | Dormant plugin executes at next app startup | upload (inert) → DB row + file → next-boot `exec_module` |
+| V55 | 5 | 200 | Model extraction via full `predict_proba` vector (Tramèr 2016) | full per-class confidences leave the API verbatim |
+| V56 | 5 | 200 | Membership inference via per-record loss gap (Shokri 2017) | member rows re-score at ~0.01× base loss |
+| V57 | 4 | 829 | Training-data poisoning via unreviewed feedback retrain (BadNets class) | feedback row → job queue → unfiltered retrain → trigger-token scorer override |
+| V58 | 5 | 829 | Agent-installable arbitrary package (slopsquatting) | `[[TOOL:install_package]]` directive → pip build-time code exec (no shell injection) |
+| V59 | 6 | 367 | MCP tool-metadata rug pull (TOCTOU) | `applies_after` note → clean description at approval, poisoned after |
+| V60 | 6 | 345 | Agent confirmation spoof via injected transcript marker | fetched-page text → provenance-blind gate scan → `delete_job` |
+| V61 | 5 | 639 | Cross-tenant RAG leak via owner-unscoped note retrieval | retrieval crosses the tenant boundary; ordinary summarisation exfiltrates |
+| V62 | 5 | 200 | Training-data extraction via repetition/divergence | repetition trigger → memorized corpus → verbatim PII in the reply (no tool call) |
+| V63 | 5 | 862 | Confused deputy — agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
+| V64 | 6 | 15 | Config-as-taint — preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
 
 ### Precision decoys (reporting any of these = false positive)
 

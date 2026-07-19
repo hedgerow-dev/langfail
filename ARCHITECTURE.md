@@ -38,12 +38,15 @@ flowchart TD
     end
 
     subgraph ml["dvml/ml/ — model & data (SINKS)"]
-        loader[model_loader\npickle/torch/joblib]
+        loader[model_loader\npickle/torch/joblib + allow-list unpickler]
         runner_proto[runner\npickle call protocol]
         dsx[dataset\narchive extract + loader script exec]
         feats[features\nnumpy/pickle cache]
         conv[convert\nsubprocess]
         metrics[metrics\neval]
+        hub[hub\nrepo install + hubconf.py exec]
+        predict[predict\ndeterministic scorer + per-record loss]
+        plugins[plugins\nstartup plugin import]
     end
 
     subgraph agent["dvml/agent/ — assistant"]
@@ -65,6 +68,7 @@ flowchart TD
         cfgc[config]
         dbc[db]
         sec[security\nauth + INCOMPLETE sanitizers]
+        settings[settings\nruntime settings store]
     end
 
     subgraph mcpsrv["dvml/mcp_server.py — MCP protocol surface"]
@@ -101,12 +105,19 @@ flowchart TD
 - **`dvml/services/`** — business logic that talks to the database, the network,
   the filesystem, and the template engine. Most **sinks** live here, one file
   removed from the source (cross-file taint).
-- **`dvml/ml/`** — model (de)serialization, dataset archive extraction, the
+- **`dvml/ml/`** — model (de)serialization (including a restricted-unpickler
+  "verified" loader whose allow-list is subtly wrong), dataset archive
+  extraction, the
   feature cache, format conversion, metric evaluation, a custom dataset
   "loading script" runner (`trust_remote_code`-style: the artifact IS code,
-  not a data format to deserialize), and a runner-process call protocol that
+  not a data format to deserialize), a runner-process call protocol that
   pickles arguments across an API-server/runner boundary rather than a model
-  file (the BentoML-runner CVE class). More sinks.
+  file (the BentoML-runner CVE class), a torch.hub-style hub repo loader
+  (`hub.py` — installing a repo means importing its `hubconf.py`), the
+  deterministic inference scorer (`predict.py` — full probability vectors and
+  per-record loss, the extraction/membership-inference signal surface), and a
+  startup plugin importer (`plugins.py` — enabled plugin rows are
+  `exec_module`'d at `create_app()` time). More sinks.
 - **`dvml/workers/`** — a database-backed job queue and the worker that drains
   it. Work enqueued by one request is executed later in a different process,
   producing **second-order / cross-process** flows.
@@ -119,9 +130,11 @@ flowchart TD
   the raw (non-framework) OpenAI/Anthropic tool-use pattern — a model-chosen
   name resolved via bare `getattr`, contrasted with `core.py`'s explicit
   `TOOLS` allow-list dict. LLM/tool output is itself a taint **source** here.
-- **`dvml/core/`** — config, the SQLAlchemy handle, and `security.py`, which
+- **`dvml/core/`** — config, the SQLAlchemy handle, `security.py`, which
   holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
-  `escape_sql`, `is_safe_url`). These helpers appear on many taint paths and are
+  `escape_sql`, `is_safe_url`), and `settings.py`, a runtime settings store
+  (namespaced key/value documents with deep-merge) that gates several
+  sanitizers at request time. These helpers appear on many taint paths and are
   intentionally **incomplete** — they are the false-negative traps.
 - **`dvml/mcp_server.py`** — a standalone entrypoint (not a Flask blueprint)
   exposing `agent/tools.py`'s `TOOLS` over the real Model Context Protocol,
@@ -267,6 +280,14 @@ single-line pattern match. At a glance:
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
 | Through model-chosen dispatch | LLM tool-call names a method → `agent/native.py` bare `getattr(self, name)`, no allow-list check |
 | Blind / OOB | webhook egress + count-only SQLi — no reflected output, needs a canary/oracle |
+| Config-as-taint | user `preferences` write → `core/settings` deep-merge → `raw_artifact`'s `strict_paths` gate flips off → traversal re-opens (V64 → V24) |
+| Credential laundering | forged unsigned service token → `verify_service_token` (signature check disabled) → properly-signed session JWT accepted everywhere |
+| Dormant second-order exec | plugin source uploaded (inert) → DB row + file on disk → next process boot imports it into the app |
+| Confirmation spoof | poisoned tool-result/fetched-page text containing `[user confirmed]` → transcript-scanning gate → `delete_job` executes |
+| MCP rug pull (TOCTOU) | `ToolNote` with `applies_after` stored → first `list_tools` clean → later `list_tools` carries the poisoned metadata |
+| Divergence extraction | repetition/`repeat forever` trigger → memorized seeded corpus → verbatim PII in the assistant reply (no tool call) |
+| Feedback poisoning | unreviewed feedback row → job queue → `retrain_model` ingests all rows → trigger token becomes a scorer override |
+| JSON-carrier deserialization | experiment export → attacker-modified typed JSON → `import_experiment` → `jsonpickle.decode` (`py/reduce` RCE) |
 
 Several paths pass through `dvml/core/security.py` helpers that *look*
 protective. Whether a taint engine (or a human) treats them as effective sinks
@@ -291,7 +312,17 @@ tag-block-encoded directive — invisible in review — reaches the agent), and 
 second **reflection** variant distinct from the pipeline one (`agent/native.py`
 resolves an LLM-chosen action name via bare `getattr` with no check against its
 own advertised allow-list, reaching a never-advertised internal method — no
-import or file write required, unlike `services/pipeline.py`'s). Each ships
+import or file write required, unlike `services/pipeline.py`'s). Newer axes
+include a **sandbox-bypass trap** (`ml/model_loader.py`'s `load_model_verified`
+— a plausibly-complete-but-wrong allow-list unpickler whose "safe builtins"
+(getattr/globals/dict) admit the classic Fickling gadget chain, V52), **TOCTOU
+on tool metadata** (MCP tool descriptions swapped in after the client's
+approval-time listing via `applies_after`, V59), **config-as-taint** (a user
+preferences deep-merge that flips the `security.strict_paths` gate and
+re-opens a hardened traversal, V64), and **provenance-blind confirmation**
+(the agent's human-in-the-loop gate scans the whole transcript — including
+attacker-influenceable tool results — for a `[user confirmed]` marker, V60).
+Each ships
 with a runnable proof, and a set of
 **precision decoys** (safe look-alikes such as `read_artifact_safe`,
 `search_by_tag`, `fetch_guarded`) exists so false positives are measurable too.
@@ -299,11 +330,13 @@ with a runnable proof, and a set of
 ### Config/compose findings
 
 [`deploy/docker-compose.yml`](deploy/docker-compose.yml) plus
-`config_findings` in `benchmarks/ground_truth.yaml` (CF01–CF03) cover the
+`config_findings` in `benchmarks/ground_truth.yaml` (CF01–CF05) cover the
 serving-infrastructure CVE class this repo doesn't otherwise embed as code:
 Ollama bound to `0.0.0.0` with no auth, TorchServe's management API with
 token auth disabled, and Triton's explicit model-control endpoint published
-with no gateway auth. Unlike every Python entry above, these are never
-started by `dvml` and have no taint path or PoC — they're presence findings
-for a config/compose scanning rule, not a taint rule. See "Config/compose
+with no gateway auth (CF01–CF03), plus two in-code insecure defaults —
+the Flask dev server started with `debug=True` and hardcoded fallback
+`SECRET_KEY`/`JWT_SECRET` values (CF04–CF05). Unlike every Python entry
+above, these have no taint path or PoC — they're presence findings
+for a config/source scanning rule, not a taint rule. See "Config/compose
 findings" in [`SCOREBOARD.md`](SCOREBOARD.md) for how to score against them.

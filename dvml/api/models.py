@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import base64
 import json
+from pathlib import Path
 
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
@@ -12,6 +13,7 @@ from ..core.security import sanitize_path
 from ..models import Model
 from ..services import registry, reports
 from ..services.config_loader import apply_updates
+from ..ml import hub, model_loader
 from ..ml.convert import convert_model
 from ..ml.modelconfig import parse_model_config
 from .deps import require_auth
@@ -136,8 +138,13 @@ def render_annotation(model_id: int):
 @require_auth
 def raw_artifact():
     """Stream an artifact by registry path (legacy raw accessor)."""
+    from ..core import settings as runtime_settings
+
     path = request.args.get("path", "")
-    if current_app.config.get("STRICT_PATHS"):
+    strict = runtime_settings.get_bool(
+        "security.strict_paths", current_app.config.get("STRICT_PATHS", False)
+    )
+    if strict:
         path = sanitize_path(path)
     return Response(registry.read_raw(path), mimetype="application/octet-stream")
 
@@ -151,6 +158,32 @@ def download_safe(model_id: int):
         return jsonify(error="not found"), 404
     name = model.artifact_path.split("artifacts/")[-1]
     return Response(registry.read_artifact_safe(name), mimetype="application/octet-stream")
+
+
+@bp.post("/<int:model_id>/load_verified")
+@require_auth
+def load_verified(model_id: int):
+    """Reconstruct a model's artifact through the verified (allow-listing) loader.
+
+    Used for artifacts sourced from outside the local registry — see
+    ml/model_loader.load_model_verified for the allow-list policy.
+    """
+    model = db.session.get(Model, model_id)
+    if not model or not model.artifact_path:
+        return jsonify(error="not found"), 404
+    estimator = model_loader.load_model_verified(Path(model.artifact_path).read_bytes())
+    return jsonify(loaded=True, type=type(estimator).__name__)
+
+
+@bp.post("/import_hub")
+@require_auth
+def import_hub():
+    """Install a hub-style model repo bundle (zip archive with a hubconf.py)."""
+    data = request.get_json(force=True, silent=True) or {}
+    repo = data.get("repo", "")
+    archive = base64.b64decode(data.get("archive_b64", ""))
+    entrypoints = hub.load_from_hub(repo, archive)
+    return jsonify(repo=repo, entrypoints=sorted(entrypoints)), 201
 
 
 @bp.post("/<int:model_id>/config")

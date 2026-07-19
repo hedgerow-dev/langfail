@@ -2,13 +2,14 @@
 from __future__ import annotations
 
 import base64
+import json
 import tempfile
 
 import requests
 from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
-from ..models import Dataset
+from ..models import Dataset, Feedback
 from ..ml.dataset import count_rows, extract_archive, find_table, load_rows, run_loader_script
 from ..services.analysis import run_analysis
 from ..workers.queue import enqueue
@@ -95,6 +96,30 @@ def prepare_dataset(dataset_id: int):
     if not ds.loader_script:
         return jsonify(error="no loader_script registered for this dataset"), 400
     return jsonify(run_loader_script(ds.loader_script))
+
+
+@bp.post("/<int:dataset_id>/feedback")
+@require_auth
+def submit_feedback(dataset_id: int):
+    """Submit a (features, label) correction for the model trained on this dataset.
+
+    Corrections are queued for the next scheduled retrain, which folds them
+    into the model's scorer.
+    """
+    ds = db.session.get(Dataset, dataset_id)
+    if not ds:
+        return jsonify(error="not found"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    fb = Feedback(
+        model_id=data.get("model_id"),
+        owner_id=g.user_id,
+        features=json.dumps(data.get("features", [])),
+        label=data.get("label", ""),
+    )
+    db.session.add(fb)
+    db.session.commit()
+    job_id = enqueue("retrain_model", {"model_id": fb.model_id}, owner_id=g.user_id)
+    return jsonify(feedback_id=fb.id, retrain_job_id=job_id), 202
 
 
 @bp.post("/<int:dataset_id>/schedule_cleanup")

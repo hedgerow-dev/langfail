@@ -6,7 +6,7 @@ SQLite and a pluggable local LLM backend.
 
 > ### ⚠️ This application is deliberately vulnerable
 > ModelForge is a **security benchmark target**, not production software. It
-> contains 41 planted vulnerabilities (plus precision decoys) spanning the classes
+> contains 64 planted vulnerabilities (plus precision decoys) spanning the classes
 > commonly reported against real ML/AI open source on [huntr.com](https://huntr.com)
 > — unsafe model deserialization, SSRF (incl. blind/OOB), path traversal, zip/tar
 > slip, SQL (incl. blind) and command injection, SSTI, IDOR, unsafe reflection,
@@ -19,12 +19,29 @@ SQLite and a pluggable local LLM backend.
 > unredacted PII flowing into a third-party LLM API call, MCP sampling-request
 > poisoning, an MCP-over-HTTP transport that binds every interface with no
 > auth by default, and a BentoML-runner-style pickle RCE across an
-> API-server/runner process boundary (CVE-2024-2912 class)) — plus 3
-> serving-infra config/compose misconfigurations (Ollama/TorchServe/Triton) in
-> [`deploy/`](deploy/), a structurally different, presence-only finding
+> API-server/runner process boundary (CVE-2024-2912 class)) — plus the
+> authn/authz classics (self-assigned roles at registration, bearer tokens in
+> URL query params, JWT alg-confusion on an unsigned service-token exchange,
+> predictable password-reset tokens, unsalted-md5 pass-the-hash legacy API
+> keys, ReDoS in a field validator, open redirects, SVG stored XSS, and
+> timing-unsafe token comparison), a second family of ML-supply-chain and
+> privacy flaws (jsonpickle typed-JSON RCE over an export/import carrier, a
+> restricted-unpickler allow-list bypass of the Fickling class, torch.hub-style
+> `hubconf.py` execution at model-repo install, dormant plugin RCE at the next
+> restart, model extraction à la Tramèr 2016, membership inference à la
+> Shokri 2017, and BadNets-style training-data poisoning through an
+> unreviewed feedback queue), and a third family on the agentic frontier
+> (slopsquatting package installs by the agent, an MCP rug pull that swaps
+> tool metadata after approval — TOCTOU, agent confirmation spoofing via
+> injected transcript markers, cross-tenant RAG leakage, training-data
+> extraction via repetition divergence, confused-deputy agent tools, and
+> config-as-taint preference injection that re-opens a hardened deployment)
+> — plus 5 config/compose misconfiguration findings (Ollama/TorchServe/Triton
+> in [`deploy/`](deploy/) plus in-code debug-mode and hardcoded-secret
+> defaults), a structurally different, presence-only finding
 > category. Difficulty runs from disguised
-> single-hop (Tier 1) up to reflection, cache-laundered, blind, and
-> multi-hop-agent flows (Tier 6). **Do not deploy it,
+> single-hop (Tier 1) up to reflection, cache-laundered, blind, sandbox-bypass,
+> TOCTOU, and multi-hop-agent flows (Tier 6). **Do not deploy it,
 > expose it to a network, or run untrusted PoCs against anything you care about.**
 > Run it in a throwaway environment.
 
@@ -65,7 +82,7 @@ cross-taint topology.
 | `dvml/core/` | config, db, auth/JWT, the incomplete sanitizers |
 | `benchmarks/ground_truth.yaml` | labeled oracle: every vuln + full taint path |
 | `exploits/` | runnable PoCs (chains) + pointer to the per-vuln PoC tests |
-| `tests/` | functional (happy-path) tests + one exploit proof per vuln |
+| `tests/` | functional (happy-path) tests + one exploit proof per vuln (`test_exploits.py` base, `test_exploits_tier6.py`, `test_exploits_auth.py`, `test_exploits_ml.py`, `test_exploits_agentic.py`) |
 | `deploy/docker-compose.yml` | serving-infra misconfig fixtures (Ollama/TorchServe/Triton) — presence findings, never run by `dvml` |
 
 ## Run it
@@ -96,7 +113,7 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 8 functional + exploits (V01–V41) + 17 decoy checks
+PYTHONPATH=. pytest -q                     # 112 tests: 8 functional + 65 exploit proofs (V01–V64; V07 shares V06's chain PoC) + 39 decoy checks
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # SSRF -> RCE across DB + queue
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # indirect prompt injection
 ```

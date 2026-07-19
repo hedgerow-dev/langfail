@@ -1,13 +1,16 @@
 """Experiment tracking endpoints."""
 from __future__ import annotations
 
+import base64
 import json
 
+import jsonpickle
 from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
 from ..models import Experiment
 from ..ml.metrics import evaluate_metric
+from ..ml.plugins import install_plugin
 from ..services.config_loader import load_pipeline_config
 from ..services.experiments import (ask_experiments, ask_experiments_safe, count_by_owner,
                                     search_by_tag, search_experiments)
@@ -102,6 +105,70 @@ def run(exp_id: int):
     if stages is None:
         stages = json.loads(exp.params_json or "{}").get("stages", [])
     return jsonify(log=run_pipeline(stages))
+
+
+_IMPORT_KEYS = frozenset({"name", "params", "metrics", "tags"})
+
+
+def import_strict(payload: str) -> dict:
+    """Parse an experiment document as plain JSON, allow-listing top-level keys."""
+    doc = json.loads(payload)
+    if not isinstance(doc, dict):
+        raise ValueError("experiment document must be a JSON object")
+    unknown = set(doc) - _IMPORT_KEYS
+    if unknown:
+        raise ValueError(f"unexpected keys in experiment document: {sorted(unknown)}")
+    return {k: doc[k] for k in _IMPORT_KEYS if k in doc}
+
+
+@bp.get("/<int:exp_id>/export")
+@require_auth
+def export_experiment(exp_id: int):
+    """Export an experiment as a portable document (round-trips through /import)."""
+    exp = db.session.get(Experiment, exp_id)
+    if not exp:
+        return jsonify(error="not found"), 404
+    doc = {
+        "name": exp.name,
+        "params": json.loads(exp.params_json or "{}"),
+        "metrics": json.loads(exp.metrics_json or "{}"),
+        "tags": exp.tags,
+    }
+    return jsonify(payload=jsonpickle.encode(doc))
+
+
+@bp.post("/import")
+@require_auth
+def import_experiment():
+    """Import an experiment document previously produced by the export endpoint.
+
+    The payload is a typed JSON document, so nested pipeline parameters and
+    metric objects survive the round-trip intact.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    doc = jsonpickle.decode(data.get("payload", ""))
+    if not isinstance(doc, dict):
+        return jsonify(error="invalid experiment document"), 400
+    exp = Experiment(
+        name=doc.get("name", "experiment"),
+        owner_id=g.user_id,
+        params_json=json.dumps(doc.get("params", {}), default=str),
+        metrics_json=json.dumps(doc.get("metrics", {}), default=str),
+        tags=doc.get("tags", ""),
+    )
+    db.session.add(exp)
+    db.session.commit()
+    return jsonify(id=exp.id, name=exp.name), 201
+
+
+@bp.post("/plugins")
+@require_auth
+def upload_plugin():
+    """Install an analysis plugin (Python source); it is imported at the next app boot."""
+    data = request.get_json(force=True, silent=True) or {}
+    source = base64.b64decode(data.get("source_b64", ""))
+    plugin = install_plugin(data.get("name", "plugin"), source, owner_id=g.user_id)
+    return jsonify(id=plugin.id, name=plugin.name, enabled=plugin.enabled), 201
 
 
 @bp.post("/<int:exp_id>/evaluate")

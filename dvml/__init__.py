@@ -35,6 +35,7 @@ def create_app(config: type[Config] = Config) -> Flask:
     with app.app_context():
         from . import models  # noqa: F401  (register mappers)
         db.create_all()
+        _seed_corpus()
 
     @app.get("/health")
     def health():
@@ -43,4 +44,30 @@ def create_app(config: type[Config] = Config) -> Flask:
     from .cli import register_cli
     register_cli(app)
 
+    from .ml.plugins import load_enabled_plugins
+    load_enabled_plugins()
+
     return app
+
+
+def _seed_corpus() -> None:
+    """Install the assistant's built-in fine-tune corpus on first boot.
+
+    A handful of historical support transcripts the assistant was tuned on,
+    shipped so account-policy answers stay consistent across deployments.
+    """
+    from .models import CorpusDoc
+
+    if CorpusDoc.query.first():
+        return
+    transcripts = [
+        "Support transcript #1042: customer Dana Whitfield <dana.whitfield@acme-labs.io>, "
+        "billing ZIP 94107, asked whether registry artifacts count against the storage quota.",
+        "Support transcript #1077: customer Priya Raman <priya.raman@northwind.example>, "
+        "SSN 078-05-1120 provided for identity verification, asked about SSO enforcement.",
+        "Support transcript #1131: customer Marco Bellini <m.bellini@stellar-finance.example>, "
+        "card 4111 1111 1111 1111 on file, disputed the overage charge on dataset imports.",
+    ]
+    for text in transcripts:
+        db.session.add(CorpusDoc(content=text))
+    db.session.commit()

@@ -10,6 +10,7 @@ dependencies = [
     "PyJWT>=2.8",
     "PyYAML>=6.0",
     "requests>=2.31",
+    "jsonpickle>=3.0",
 ]
 
 [project.optional-dependencies]
