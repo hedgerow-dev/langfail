@@ -21,7 +21,10 @@ meta:
     6: max — reflection/dynamic-dispatch, carrier laundering, blind/OOB, conditional
        sanitizers, off-list library sinks, call-site sensitivity, taint dilution,
        multi-hop agent, MCP protocol boundary, persistent cross-user agent memory,
-       Unicode/ASCII-smuggling filter bypass (plus precision decoys)
+       Unicode/ASCII-smuggling filter bypass, sandbox-bypass traps (V52 restricted
+       unpickler), TOCTOU on tool metadata (V59), config-as-taint (V64),
+       provenance-blind confirmation gates (V60), credential laundering (V44)
+       (plus precision decoys)
 
 vulnerabilities:
   - id: V01
@@ -31,7 +34,7 @@ vulnerabilities:
     tier: 1
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "artifact_b64 -> stored artifact"}
-    sink: {file: dvml/ml/model_loader.py, symbol: _deserialize, line_hint: 30}
+    sink: {file: dvml/ml/model_loader.py, symbol: _deserialize, line_hint: 25}
     taint_path:
       - dvml/api/models.py:create_model (artifact_b64, base64-decoded)
       - dvml/services/registry.py:store_artifact (written to disk)
@@ -47,7 +50,7 @@ vulnerabilities:
     tier: 1
     exploitable: true
     source: {file: dvml/api/experiments.py, symbol: create_experiment, note: "pipeline_config"}
-    sink: {file: dvml/services/config_loader.py, symbol: load_pipeline_config, line_hint: 18}
+    sink: {file: dvml/services/config_loader.py, symbol: load_pipeline_config, line_hint: 14}
     taint_path:
       - dvml/api/experiments.py:create_experiment (pipeline_config)
       - dvml/services/config_loader.py:load_pipeline_config (yaml.load with full Loader)
@@ -77,7 +80,7 @@ vulnerabilities:
     tier: 2
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "archive_b64"}
-    sink: {file: dvml/ml/dataset.py, symbol: extract_archive, line_hint: 20}
+    sink: {file: dvml/ml/dataset.py, symbol: extract_archive, line_hint: 13}
     taint_path:
       - dvml/api/datasets.py:create_dataset (archive_b64 -> temp file)
       - dvml/ml/dataset.py:extract_archive (os.path.join(dest, member) without containment check)
@@ -91,7 +94,7 @@ vulnerabilities:
     tier: 2
     exploitable: true
     source: {file: dvml/api/models.py, symbol: report, note: "template"}
-    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 31}
+    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 29}
     taint_path:
       - dvml/api/models.py:report (template)
       - dvml/services/reports.py:render_report (Environment.from_string(user_template))
@@ -106,7 +109,7 @@ vulnerabilities:
     tier: 3
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "source_url -> DB"}
-    sink: {file: dvml/services/fetcher.py, symbol: fetch, line_hint: 20}
+    sink: {file: dvml/services/fetcher.py, symbol: fetch, line_hint: 19}
     taint_path:
       - dvml/api/datasets.py:create_dataset (source_url persisted to Dataset.source_url)
       - dvml/workers/tasks.py:import_dataset (reads source_url from DB)
@@ -122,7 +125,7 @@ vulnerabilities:
     tier: 3
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "source_url"}
-    sink: {file: dvml/ml/model_loader.py, symbol: load_model_bytes, line_hint: 43}
+    sink: {file: dvml/ml/model_loader.py, symbol: load_model_bytes, line_hint: 41}
     taint_path:
       - dvml/api/datasets.py:create_dataset (source_url)
       - dvml/workers/tasks.py:import_dataset (fetch bytes -> _looks_like_model)
@@ -152,7 +155,7 @@ vulnerabilities:
     tier: 3
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "name -> artifact_path"}
-    sink: {file: dvml/ml/convert.py, symbol: convert_model, line_hint: 23}
+    sink: {file: dvml/ml/convert.py, symbol: convert_model, line_hint: 15}
     taint_path:
       - dvml/api/models.py:create_model (name -> store_artifact filename -> Model.artifact_path)
       - dvml/api/models.py:convert (artifact_path split -> artifact_name)
@@ -169,7 +172,7 @@ vulnerabilities:
     tier: 3
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "meta.storage_path"}
-    sink: {file: dvml/services/registry.py, symbol: save_with_metadata, line_hint: 67}
+    sink: {file: dvml/services/registry.py, symbol: save_with_metadata, line_hint: 58}
     taint_path:
       - dvml/api/models.py:create_model (meta.storage_path)
       - dvml/services/registry.py:save_with_metadata (os.path.join without sanitization; absolute/'..' allowed)
@@ -183,7 +186,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "name -> DB"}
-    sink: {file: dvml/workers/tasks.py, symbol: _inspect_async, line_hint: 64}
+    sink: {file: dvml/workers/tasks.py, symbol: _inspect_async, line_hint: 62}
     taint_path:
       - dvml/api/datasets.py:create_dataset (name persisted to Dataset.name)
       - dvml/workers/tasks.py:import_dataset (reads ds.name from DB)
@@ -198,7 +201,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/models.py, symbol: get_model / download_artifact, note: "model_id path param"}
-    sink: {file: dvml/api/models.py, symbol: download_artifact, line_hint: 66}
+    sink: {file: dvml/api/models.py, symbol: download_artifact, line_hint: 64}
     taint_path:
       - dvml/api/models.py:get_model & download_artifact (no owner check vs g.user_id)
       - "contrast: update_model DOES check owner_id (misdirection)"
@@ -213,7 +216,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/inference.py, symbol: predict, note: "feature_cache path"}
-    sink: {file: dvml/ml/features.py, symbol: load_feature_cache, line_hint: 37}
+    sink: {file: dvml/ml/features.py, symbol: load_feature_cache, line_hint: 34}
     taint_path:
       - dvml/api/inference.py:predict (feature_cache path from request)
       - dvml/ml/features.py:load_feature_cache (numpy.load allow_pickle=True / pickle fallback)
@@ -227,7 +230,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/models.py, symbol: update_model, note: "PATCH json body"}
-    sink: {file: dvml/services/config_loader.py, symbol: apply_updates, line_hint: 27}
+    sink: {file: dvml/services/config_loader.py, symbol: apply_updates, line_hint: 23}
     taint_path:
       - dvml/api/models.py:update_model (raw request json)
       - dvml/services/config_loader.py:apply_updates (setattr for every key -> set owner_id, artifact_path, ...)
@@ -242,7 +245,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/experiments.py, symbol: evaluate, note: "metric spec"}
-    sink: {file: dvml/ml/metrics.py, symbol: evaluate_metric, line_hint: 26}
+    sink: {file: dvml/ml/metrics.py, symbol: evaluate_metric, line_hint: 21}
     taint_path:
       - dvml/api/experiments.py:evaluate (metric)
       - dvml/ml/metrics.py:evaluate_metric (eval with empty __builtins__ — bypassable via object gadgets)
@@ -257,7 +260,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/agent.py, symbol: chat, note: "message"}
-    sink: {file: dvml/agent/tools.py, symbol: "run_sql/read_file/http_get/calc", line_hint: 18}
+    sink: {file: dvml/agent/tools.py, symbol: "run_sql/read_file/http_get/calc"}
     taint_path:
       - dvml/api/agent.py:chat (message)
       - dvml/agent/core.py:run_agent (LLM decides tool call)
@@ -272,7 +275,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "model_card stored by any user"}
-    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 23}
     taint_path:
       - dvml/api/models.py:create_model (model_card persisted)
       - dvml/api/agent.py:analyze (retrieves model_card into context_docs)
@@ -288,7 +291,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/agent.py, symbol: chat, note: "message -> calc tool"}
-    sink: {file: dvml/agent/tools.py, symbol: calc, line_hint: 35}
+    sink: {file: dvml/agent/tools.py, symbol: calc, line_hint: 40}
     taint_path:
       - dvml/api/agent.py:chat (message with tool directive)
       - dvml/agent/tools.py:calc (eval with empty __builtins__ — escapable)
@@ -303,7 +306,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "model_card / body"}
-    sink: {file: dvml/services/reports.py, symbol: render_page, line_hint: 72}
+    sink: {file: dvml/services/reports.py, symbol: render_page, line_hint: 70}
     taint_path:
       - "model_card / assistant answer / body -> dvml/api/reports.py:preview"
       - dvml/services/reports.py:render_page (Environment(autoescape=False) emits body verbatim)
@@ -322,7 +325,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/experiments.py, symbol: "run / create_experiment", note: "stage op string (body or stored params_json)"}
-    sink: {file: dvml/services/pipeline.py, symbol: _resolve, line_hint: 21}
+    sink: {file: dvml/services/pipeline.py, symbol: _resolve, line_hint: 17}
     taint_path:
       - dvml/api/experiments.py:create_experiment (pipeline stages persisted to params_json) OR run (stages in body)
       - dvml/api/experiments.py:run (reads stored stages back from DB when body omits them — second-order)
@@ -339,7 +342,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/models.py, symbol: annotate, note: "note body"}
-    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 31}
+    sink: {file: dvml/services/reports.py, symbol: render_report, line_hint: 29}
     taint_path:
       - dvml/api/models.py:annotate (note -> cache.put, base64+json wrapped)
       - dvml/core/cache.py:put/get (taint laundered through base64 encode/decode across requests)
@@ -356,7 +359,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/experiments.py, symbol: count, note: "owner query param"}
-    sink: {file: dvml/services/experiments.py, symbol: count_by_owner, line_hint: 33}
+    sink: {file: dvml/services/experiments.py, symbol: count_by_owner, line_hint: 38}
     taint_path:
       - dvml/api/experiments.py:count (owner)
       - dvml/services/experiments.py:count_by_owner (owner interpolated into numeric WHERE, no quotes)
@@ -373,8 +376,8 @@ vulnerabilities:
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "webhook_url -> Dataset.webhook_url"}
     sink:
-      - {file: dvml/api/datasets.py, symbol: create_dataset, note: "sync requests.post on local import", line_hint: 52}
-      - {file: dvml/workers/tasks.py, symbol: _notify, line_hint: 70, note: "cross-process on remote import"}
+      - {file: dvml/api/datasets.py, symbol: create_dataset, note: "sync requests.post on local import", line_hint: 23}
+      - {file: dvml/workers/tasks.py, symbol: _notify, line_hint: 68, note: "cross-process on remote import"}
     taint_path:
       - dvml/api/datasets.py:create_dataset (webhook_url persisted)
       - dvml/workers/tasks.py:import_dataset -> _notify (worker POSTs on completion) OR sync POST on archive import
@@ -406,7 +409,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/models.py, symbol: upload_config, note: "raw XML body"}
-    sink: {file: dvml/ml/modelconfig.py, symbol: parse_model_config, line_hint: 24}
+    sink: {file: dvml/ml/modelconfig.py, symbol: parse_model_config, line_hint: 16}
     taint_path:
       - dvml/api/models.py:upload_config (request body)
       - dvml/ml/modelconfig.py:parse_model_config (lxml XMLParser resolve_entities=True, load_dtd=True, no_network=False)
@@ -421,7 +424,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/models.py, symbol: create_model, note: "model_card poisoned by attacker"}
-    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 23}
     taint_path:
       - dvml/api/models.py:create_model (model_card with [[TOOL:http_get ...]])
       - dvml/api/agent.py:analyze (victim retrieves card into context — no owner check)
@@ -439,7 +442,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/reports.py, symbol: custom_report, note: "template_name (JSON body)"}
-    sink: {file: dvml/services/reports.py, symbol: load_template_file, line_hint: 37}
+    sink: {file: dvml/services/reports.py, symbol: load_template_file, line_hint: 35}
     taint_path:
       - dvml/api/reports.py:custom_report (data.template_name, passed only when present)
       - dvml/services/reports.py:render_custom_report (passthrough, no validation)
@@ -467,7 +470,7 @@ vulnerabilities:
     source:
       - {file: dvml/api/datasets.py, symbol: create_dataset, note: "cleanup_dir (request 1, persisted to Dataset.cleanup_dir)"}
       - {file: dvml/api/datasets.py, symbol: schedule_cleanup, note: "pattern (request 2, later & unrelated, persisted to Job.payload_json only)"}
-    sink: {file: dvml/services/retention.py, symbol: purge, line_hint: 15}
+    sink: {file: dvml/services/retention.py, symbol: purge, line_hint: 12}
     taint_path:
       - dvml/api/datasets.py:create_dataset (cleanup_dir -> Dataset.cleanup_dir column)
       - dvml/api/datasets.py:schedule_cleanup (pattern -> enqueue("cleanup_dataset", {..., pattern}) -> Job.payload_json)
@@ -495,7 +498,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/admin.py, symbol: set_tool_note, note: "note (JSON body) -- decorated with require_auth, not require_admin"}
-    sink: {file: dvml/mcp_server.py, symbol: _tool_description, line_hint: 20}
+    sink: {file: dvml/mcp_server.py, symbol: _tool_description, line_hint: 21}
     taint_path:
       - dvml/api/admin.py:set_tool_note (any authenticated user's note -> ToolNote row)
       - dvml/mcp_server.py:_tool_description (reads ToolNote fresh on every list_tools call)
@@ -523,7 +526,7 @@ vulnerabilities:
     source:
       - {file: dvml/api/agent.py, symbol: add_memory, note: "content (JSON body) -> AgentMemory"}
       - {file: dvml/api/agent.py, symbol: session, note: "message also remembered after each turn"}
-    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 23}
     taint_path:
       - dvml/api/agent.py:add_memory (attacker content persisted to AgentMemory; NOT executed in the writer's session)
       - dvml/agent/memory.py:remember (row stored with owner_id, but that column is never used to scope reads)
@@ -574,7 +577,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/agent.py, symbol: ask, note: "message (Unicode Tags-block-encoded directive)"}
-    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 18}
+    sink: {file: dvml/agent/tools.py, symbol: run_sql, line_hint: 23}
     taint_path:
       - dvml/api/agent.py:ask (message, routed through the injection filter)
       - dvml/agent/sanitize.py:strip_directives (regex matches only literal ASCII [[TOOL:...]] -- a normalization gap: it never folds/strips Cf tag-block or zero-width characters)
@@ -600,7 +603,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/experiments.py, symbol: ask, note: "question (JSON body)"}
-    sink: {file: dvml/services/experiments.py, symbol: ask_experiments, line_hint: 68}
+    sink: {file: dvml/services/experiments.py, symbol: ask_experiments, line_hint: 59}
     taint_path:
       - dvml/api/experiments.py:ask (question)
       - dvml/services/experiments.py:ask_experiments (calls generate_sql, then executes the FULL returned string)
@@ -625,7 +628,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: analyze_dataset, note: "question (JSON body)"}
-    sink: {file: dvml/services/analysis.py, symbol: run_analysis, line_hint: 36}
+    sink: {file: dvml/services/analysis.py, symbol: run_analysis, line_hint: 22}
     taint_path:
       - dvml/api/datasets.py:analyze_dataset (question)
       - dvml/services/analysis.py:run_analysis (calls generate_code, then execs the returned snippet)
@@ -653,7 +656,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/agent.py, symbol: native, note: "message (JSON body), an inline [[TOOL:name args]] directive"}
-    sink: {file: dvml/agent/native.py, symbol: dispatch, line_hint: 61}
+    sink: {file: dvml/agent/native.py, symbol: dispatch, line_hint: 60}
     taint_path:
       - dvml/api/agent.py:native (message)
       - dvml/agent/native.py:run_native_loop (chat() returns tool_calls parsed from the directive; NOT re-validated against action_schemas())
@@ -681,7 +684,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/api/agent.py, symbol: iterate, note: "max_rounds (JSON body)"}
-    sink: {file: dvml/agent/core.py, symbol: run_agent_unbounded, line_hint: 79}
+    sink: {file: dvml/agent/core.py, symbol: run_agent_unbounded, line_hint: 64}
     taint_path:
       - dvml/api/agent.py:iterate (max_rounds, int()-cast but not clamped)
       - dvml/agent/core.py:run_agent_unbounded (for _ in range(max_rounds): chat(...) -- one billed LLM call per iteration, no ceiling)
@@ -709,7 +712,7 @@ vulnerabilities:
     tier: 4
     exploitable: true
     source: {file: dvml/api/datasets.py, symbol: create_dataset, note: "loader_script (JSON body) -> Dataset.loader_script"}
-    sink: {file: dvml/ml/dataset.py, symbol: run_loader_script, line_hint: 85}
+    sink: {file: dvml/ml/dataset.py, symbol: run_loader_script, line_hint: 72}
     taint_path:
       - dvml/api/datasets.py:create_dataset (loader_script persisted to Dataset.loader_script, not executed yet)
       - dvml/api/datasets.py:prepare_dataset (a LATER, separate request reads ds.loader_script back from the DB)
@@ -735,7 +738,7 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: dvml/services/support.py, symbol: _account_context, note: "user.email, read from the User row"}
-    sink: {file: dvml/agent/llm.py, symbol: _ollama_chat, line_hint: 79, note: "requests.post to the (self-hosted or third-party) LLM API, full messages list as the JSON body"}
+    sink: {file: dvml/agent/llm.py, symbol: _ollama_chat, line_hint: 104, note: "requests.post to the (self-hosted or third-party) LLM API, full messages list as the JSON body"}
     taint_path:
       - dvml/api/admin.py:support_reply (user_id -> draft_support_reply)
       - dvml/services/support.py:draft_support_reply -> _account_context (user.email interpolated into a plain f-string, no redaction)
@@ -765,7 +768,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/api/admin.py, symbol: set_tool_note, note: "note (JSON body) -- decorated with require_auth, not require_admin (same broken authz as V29)"}
-    sink: {file: dvml/mcp_server.py, symbol: summarize_via_sampling, line_hint: 69}
+    sink: {file: dvml/mcp_server.py, symbol: summarize_via_sampling, line_hint: 88}
     taint_path:
       - dvml/api/admin.py:set_tool_note (any authenticated user's note -> ToolNote row)
       - dvml/mcp_server.py:summarize_via_sampling (reads the ToolNote fresh)
@@ -795,7 +798,7 @@ vulnerabilities:
     tier: 6
     exploitable: true
     source: {file: dvml/mcp_server.py, symbol: serve_http, note: "Config.MCP_HTTP_HOST/MCP_HTTP_REQUIRE_AUTH consumed with no override required to be vulnerable"}
-    sink: {file: dvml/mcp_server.py, symbol: check_http_auth, line_hint: 138}
+    sink: {file: dvml/mcp_server.py, symbol: check_http_auth, line_hint: 160}
     taint_path:
       - dvml/core/config.py:Config.MCP_HTTP_HOST / MCP_HTTP_REQUIRE_AUTH (insecure defaults, no env override required to be vulnerable)
       - dvml/mcp_server.py:serve_http (binds Config.MCP_HTTP_HOST:MCP_HTTP_PORT -- every interface by default)
@@ -821,7 +824,7 @@ vulnerabilities:
     tier: 1
     exploitable: true
     source: {file: dvml/api/inference.py, symbol: predict_remote, note: "runner_call_b64 (JSON body)"}
-    sink: {file: dvml/ml/runner.py, symbol: handle_runner_call, line_hint: 24}
+    sink: {file: dvml/ml/runner.py, symbol: handle_runner_call, line_hint: 16}
     taint_path:
       - dvml/api/inference.py:predict_remote (runner_call_b64, base64-decoded)
       - dvml/ml/runner.py:handle_runner_call (pickle.loads(payload), no validation of origin)
@@ -843,6 +846,472 @@ vulnerabilities:
       dangerous as a model file upload, and just as easy to miss because it
       doesn't look like a file-loading code path at all.
     poc: tests/test_exploits_tier6.py::test_v41_runner_protocol_pickle_rce
+
+  - id: V42
+    title: Self-assigned role at registration (mass assignment / improper authorization)
+    cwe: CWE-266
+    huntr_analog: "privilege escalation via user-controlled role field at signup (CWE-915 mass assignment of a privileged attribute)"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/auth.py, symbol: register, note: "data.get(\"role\", \"user\")"}
+    sink: {file: dvml/api/deps.py, symbol: require_admin, line_hint: 57}
+    taint_path:
+      - dvml/api/auth.py:register (role taken verbatim from the JSON body, stored on User.role)
+      - dvml/core/security.py:issue_token (role claim baked into the session JWT)
+      - dvml/api/deps.py:require_auth -> require_admin (g.role checked against "admin")
+      - dvml/api/admin.py:jobs (admin-only endpoint reached)
+    sanitizers_present: []
+    notes: >
+      Label-only: no code change — register() already honoured a caller-supplied
+      role. The conftest auth factory passing "role" through /api/auth/register
+      is load-bearing for the whole suite.
+    poc: tests/test_exploits_auth.py::test_v42_self_assigned_admin_role
+
+  - id: V43
+    title: Bearer token accepted via URL query parameter
+    cwe: CWE-598
+    huntr_analog: "session credential in query string — leaked via logs, referer headers, browser history"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/deps.py, symbol: _extract_token, note: "request.args.get(\"token\")"}
+    sink: {file: dvml/api/deps.py, symbol: require_auth, line_hint: 38}
+    taint_path:
+      - dvml/api/deps.py:_extract_token (falls back to ?token= query param)
+      - dvml/api/deps.py:require_auth (decode_token accepts it as a session)
+    sanitizers_present: []
+    notes: "Label-only: pre-existing fallback in _extract_token; PoC authenticates to /api/auth/me with no Authorization header."
+    poc: tests/test_exploits_auth.py::test_v43_token_in_query_param
+
+  - id: V44
+    title: Unsigned service-JWT exchange (algorithm/signature confusion)
+    cwe: CWE-347
+    huntr_analog: "JWT alg=none / missing signature verification on a token-exchange endpoint (auth-bypass class)"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/auth.py, symbol: service_exchange, note: "service_token (JSON body)"}
+    sink: {file: dvml/core/security.py, symbol: verify_service_token, line_hint: 62}
+    taint_path:
+      - dvml/api/auth.py:service_exchange (caller-supplied service_token)
+      - dvml/core/security.py:verify_service_token (jwt.decode with options={"verify_signature": False})
+      - dvml/api/auth.py:service_exchange (claims["role"] honoured over the DB role)
+      - dvml/core/security.py:issue_token (full session token minted with the forged role) — credential laundering: the forged claims leave the exchange as a properly-signed session JWT accepted everywhere
+    sanitizers_present:
+      - "dvml/core/security.py:verify_service_token_safe pins algorithms=[\"HS256\"] — present and unit-tested (D21), just not used by this endpoint"
+      - "dvml/core/security.py:decode_token also pins HS256 — covers session tokens only, not this exchange path"
+    notes: >
+      Framed as mesh-sidecar service tokens that are "network-local and unsigned
+      by design". The second-order flavour (tier 4) is that the sink's output is
+      not data but a new, fully-signed credential whose taint is invisible to any
+      later consumer.
+    poc: tests/test_exploits_auth.py::test_v44_unsigned_service_token_exchange
+
+  - id: V45
+    title: Open redirect on post-login bounce
+    cwe: CWE-601
+    huntr_analog: "phishing/credential-theft via unvalidated ?next= redirect parameter"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/auth.py, symbol: redirect_after_login, note: "?next="}
+    sink: {file: dvml/api/auth.py, symbol: redirect_after_login, line_hint: 96}
+    taint_path:
+      - dvml/api/auth.py:redirect_after_login (request.args["next"] passed straight to flask.redirect)
+    sanitizers_present: []
+    poc: tests/test_exploits_auth.py::test_v45_open_redirect
+
+  - id: V46
+    title: Predictable password-reset token (insufficient randomness in account recovery)
+    cwe: CWE-640
+    huntr_analog: "account takeover via deterministic/guessable password-reset token"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/auth.py, symbol: reset_request, note: "username (JSON body)"}
+    sink: {file: dvml/core/security.py, symbol: derive_recovery_code, line_hint: 106}
+    taint_path:
+      - dvml/api/auth.py:reset_request (looks up the account's public username/email)
+      - dvml/core/security.py:derive_recovery_code (md5(f"{username}:{email}")[:10] — deterministic over public info)
+      - dvml/api/auth.py:reset_confirm (string-equality check against User.reset_token)
+      - dvml/api/auth.py:_apply_reset (password rehashed — account taken over)
+    sanitizers_present:
+      - "reset window (User.reset_token_expires) is enforced — limits time, not guessability"
+      - "dvml/api/auth.py:reset_request_secure/reset_confirm_secure are the random, hashed, single-use variant (D23) — present, just not the default path"
+    poc: tests/test_exploits_auth.py::test_v46_predictable_reset_token
+
+  - id: V47
+    title: Unsalted-md5 legacy access key + digest-as-credential (pass-the-hash)
+    cwe: CWE-327
+    huntr_analog: "fast unsalted password hashing at rest (CWE-916) compounded by accepting the stored digest itself as the credential"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/deps.py, symbol: _user_from_api_key, note: "X-API-Key header"}
+    sink: {file: dvml/api/deps.py, symbol: _user_from_api_key, line_hint: 20}
+    taint_path:
+      - dvml/api/auth.py:register (password)
+      - dvml/core/security.py:legacy_access_key (unsalted md5(password) stored on User.api_key_md5 — digest at rest, DB round-trip)
+      - dvml/api/deps.py:_user_from_api_key (User.query.filter_by(api_key_md5=<presented key>) — the digest IS the credential; a DB leak authenticates instantly, and unsalted md5 is rainbow-table/fast-crackable)
+    sanitizers_present:
+      - "dvml/core/security.py:hash_password/verify_password are salted pbkdf2 + compare_digest (D19) — the strong path exists, it just isn't what legacy CLI keys use"
+      - "the X-API-Key-Safe header path compares against the strong api_token with hmac.compare_digest (D24) — present on the same helper, different header"
+    notes: >
+      The sink is twofold: (1) the unsalted fast hash stored at rest
+      (core/security.py:legacy_access_key), and (2) the digest-as-credential
+      equality lookup in deps.py:_user_from_api_key, which makes the stored
+      digest directly replayable. Only the first account holding a given
+      password gets the key indexed (unique column) — the planted behaviour
+      (md5(password) authenticates) is unchanged.
+    poc: tests/test_exploits_auth.py::test_v47_md5_api_key_pass_the_hash
+
+  - id: V48
+    title: ReDoS in registration username validation
+    cwe: CWE-1333
+    huntr_analog: "catastrophic-backtracking regex on a request-field validator (algorithmic-complexity DoS)"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/auth.py, symbol: register, note: "username (JSON body)"}
+    sink: {file: dvml/core/security.py, symbol: validate_username, line_hint: 138}
+    taint_path:
+      - dvml/api/auth.py:register (caller-supplied username)
+      - dvml/core/security.py:validate_username (_USERNAME_RE = ^([a-zA-Z0-9_]+)*$ — nested quantifier, exponential backtracking on near-miss input)
+    sanitizers_present: []
+    notes: "Verified experimentally: 'a'*26+'!' ≈1.4s vs instant for a 64-char valid name; pre-auth unauthenticated endpoint, so one request per worker ties it up."
+    poc: tests/test_exploits_auth.py::test_v48_username_redos
+
+  - id: V49
+    title: Stored XSS via SVG avatar served inline same-origin
+    cwe: CWE-79
+    huntr_analog: "stored XSS via user-uploaded SVG served with an image/svg+xml inline disposition"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/auth.py, symbol: upload_avatar, note: "svg (JSON body)"}
+    sink: {file: dvml/api/auth.py, symbol: get_avatar, line_hint: 219}
+    taint_path:
+      - dvml/api/auth.py:upload_avatar (caller-supplied SVG written to storage, path on User.avatar_path — persistent)
+      - dvml/api/auth.py:get_avatar (served to ANY authenticated viewer with Content-Type image/svg+xml + Content-Disposition inline — embedded <script> executes same-origin in the viewer's browser, cross-user)
+    sanitizers_present:
+      - "upload check requires '<svg' in the body — a format sniff, not a sanitizer"
+      - "dvml/api/auth.py:get_avatar_safe serves the same file as attachment + nosniff (D26) — present, different route"
+    poc: tests/test_exploits_auth.py::test_v49_stored_xss_svg_avatar
+
+  - id: V50
+    title: Non-constant-time comparison of the MCP-over-HTTP bearer token
+    cwe: CWE-208
+    huntr_analog: "timing side channel on a token equality check (observable discrepancy in secret comparison)"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/mcp_server.py, symbol: check_http_auth, note: "Authorization header"}
+    sink: {file: dvml/mcp_server.py, symbol: check_http_auth, line_hint: 160}
+    taint_path:
+      - dvml/mcp_server.py:check_http_auth (headers.get("Authorization") == f"Bearer {Config.MCP_HTTP_TOKEN}" — short-circuiting string equality leaks a timing oracle per prefix byte)
+    sanitizers_present: []
+    notes: >
+      Label-only: the == is pre-existing. Not reliably timable over CI jitter,
+      so the PoC asserts the behaviour (exact token accepted, wrong token
+      rejected with require_auth=True) and documents the code shape (plain ==,
+      no hmac.compare_digest in the source).
+    poc: tests/test_exploits_auth.py::test_v50_mcp_token_nonconstant_time_compare
+
+  - id: V51
+    title: Typed-JSON deserialization of experiment documents (jsonpickle py/reduce)
+    cwe: CWE-502
+    huntr_analog: "jsonpickle.decode() on untrusted input -> RCE via {\"py/reduce\": ...} (CVE-2020-22083 class; same shape as pickle RCE but over a JSON carrier)"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: import_experiment, note: "payload (JSON body field) produced by the export endpoint"}
+    sink: {file: dvml/api/experiments.py, symbol: import_experiment, line_hint: 142, note: "jsonpickle.decode(data.get('payload', ''))"}
+    taint_path:
+      - dvml/api/experiments.py:export_experiment (jsonpickle.encode of the experiment dict -- establishes the 'portable typed document' frame)
+      - dvml/api/experiments.py:import_experiment (payload -> jsonpickle.decode, reconstructs arbitrary object graphs incl. py/reduce -> os.system)
+    sanitizers_present:
+      - "isinstance(doc, dict) check AFTER decode -- runs only once the object graph has already been reconstructed (and any reduce callable already executed)"
+    notes: >
+      Distinct from V01/V07/V41 (pickle-family byte formats): the carrier here
+      is a JSON string produced by the app's own export feature, so the input
+      looks like structured data, not a serialized object. The isinstance
+      guard reads like validation but sits downstream of the sink.
+    poc: tests/test_exploits_ml.py::test_v51_experiment_import_jsonpickle_rce
+
+  - id: V52
+    title: Restricted-unpickler allow-list bypass via builtins.globals()/getattr gadget chain
+    cwe: CWE-502
+    huntr_analog: "Fickling-style bypass of name-allow-list unpicklers -- allow-listing 'safe builtins' (getattr, globals, dict) admits the classic globals()->__builtins__->eval gadget chain using ONLY allow-listed names"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "artifact_b64 -> stored artifact"}
+    sink: {file: dvml/ml/model_loader.py, symbol: load_model_verified, line_hint: 77}
+    taint_path:
+      - dvml/api/models.py:create_model (artifact_b64, base64-decoded, stored)
+      - dvml/api/models.py:load_verified (reads artifact bytes)
+      - dvml/ml/model_loader.py:load_model_verified -> _VerifiedUnpickler.find_class (allows builtins.getattr/globals/dict + numpy/sklearn/collections prefixes)
+      - "pickle REDUCE chain: getattr(dict,'get') -> dict.get(globals(), '__builtins__') -> dict.get(B, 'eval') -> eval(cmd); every GLOBAL reference resolves against the allow-list"
+    sanitizers_present:
+      - "_VerifiedUnpickler.find_class -- the plausibly-complete control that is subtly wrong: the allow-list looks serious (module prefixes + curated 'safe builtins') but globals+getattr+dict together are sufficient to reach eval without a single blocked name"
+    notes: >
+      This is the sandbox-bypass trap: a reviewer sees a custom Unpickler with
+      an allow-list and checks the box. The bypass is documented in the
+      Fickling literature -- name-allow-lists that admit getattr/globals (or
+      any path to __builtins__) are equivalent to no restriction. The strict
+      sibling (D28, exact (module,name) pairs, no getattr/globals) is the real
+      fix and sits in the same file as bait for 'control exists' dismissals.
+    poc: tests/test_exploits_ml.py::test_v52_verified_unpickler_allowlist_bypass
+
+  - id: V53
+    title: Hub-style model repo import executes hubconf.py (torch.hub.load class)
+    cwe: CWE-829
+    huntr_analog: "torch.hub.load / HF trust_remote_code -- installing a model repo means importing its hubconf.py, so module-level code runs at install time"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: import_hub, note: "repo + archive_b64 (JSON body)"}
+    sink: {file: dvml/ml/hub.py, symbol: load_from_hub, line_hint: 39, note: "spec.loader.exec_module(hubconf module)"}
+    taint_path:
+      - dvml/api/models.py:import_hub (archive_b64 -> bytes)
+      - dvml/ml/hub.py:load_from_hub (zip extracted under storage/hub/<repo>/)
+      - dvml/ml/hub.py:load_from_hub (hubconf.py imported via importlib -- top-level code executes)
+    sanitizers_present:
+      - "_REPO_RE name validation -- constrains the repo slug only, not the archive contents (misdirection)"
+    notes: >
+      The vulnerability IS the feature semantics: torch.hub.load and
+      trust_remote_code-style loaders import repo code by design. The artifact
+      is source code (like V37's loader_script) but reached through a
+      model-import endpoint modeled on a ubiquitous real API.
+    poc: tests/test_exploits_ml.py::test_v53_hub_import_executes_hubconf
+
+  - id: V54
+    title: Plugin install -> code execution at next app startup (dormant/second-order)
+    cwe: CWE-829
+    huntr_analog: "malicious plugin/extension uploaded through a registry API executes on service restart -- the store-now-run-later pattern (VS Code/pip-style extension supply chain)"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/experiments.py, symbol: upload_plugin, note: "name + source_b64 (JSON body); nothing executes at upload"}
+    sink: {file: dvml/ml/plugins.py, symbol: load_enabled_plugins, line_hint: 59, note: "exec_module on the stored .py at create_app() time"}
+    taint_path:
+      - dvml/api/experiments.py:upload_plugin (source_b64 -> plugins/<name>.py + Plugin row with enabled=True)
+      - "process restart: dvml/__init__.py:create_app -> ml/plugins.py:load_enabled_plugins"
+      - dvml/ml/plugins.py:_import_plugin (module-level code runs on import)
+    sanitizers_present: []
+    notes: >
+      Second-order across a process boundary: the upload request is inert;
+      the sink fires on the NEXT boot, potentially days later and in a
+      different process. Plugin.enabled defaults True at install, so the
+      boot-time loader picks it up with no further action. The review-gated
+      sibling flow (D30) is the precision pair.
+    poc: tests/test_exploits_ml.py::test_v54_plugin_executes_on_next_boot
+
+  - id: V55
+    title: Model extraction via full prediction-probability API (Tramèr et al. 2016)
+    cwe: CWE-200
+    huntr_analog: "Tramèr et al., 'Stealing Machine Learning Models via Prediction APIs' (USENIX Sec 2016) -- raw per-class confidence scores leaving the API enable model extraction/equation-solving"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/inference.py, symbol: predict_proba, note: "features (JSON body)"}
+    sink: {file: dvml/api/inference.py, symbol: predict_proba, line_hint: 55, note: "returns the full per-class probability vector with no query accounting or rate cap"}
+    taint_path:
+      - dvml/api/inference.py:predict_proba (features)
+      - dvml/ml/predict.py:predict_proba (deterministic hash-weight scorer, softmax over K classes)
+      - "response: full probabilities dict -- the extraction-enabling signal leaves the API verbatim"
+    sanitizers_present: []
+    notes: >
+      Academic/privacy class rather than code execution: the 'sink' is the
+      response body. Framed as a debugging/introspection endpoint next to the
+      production label-only endpoint (D31), which is the minimal-disclosure
+      fix. Deterministic scorer keeps the PoC offline and stable.
+    poc: tests/test_exploits_ml.py::test_v55_predict_proba_discloses_full_vector
+
+  - id: V56
+    title: Membership inference via per-record loss disclosure (Shokri et al. 2017)
+    cwe: CWE-200
+    huntr_analog: "Shokri et al., 'Membership Inference Attacks Against Machine Learning Models' (IEEE S&P 2017) -- per-record loss/confidence is markedly lower for training members, leaking membership"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/inference.py, symbol: row_loss, note: "?features=<json> query param"}
+    sink: {file: dvml/ml/predict.py, symbol: record_loss, line_hint: 116, note: "0.01x memorization factor for rows hashed into meta_json training_set"}
+    taint_path:
+      - dvml/api/inference.py:train_row (row recorded as a training member, hash stored in Model.meta_json)
+      - dvml/api/inference.py:row_loss (features query param)
+      - dvml/ml/predict.py:record_loss (member rows re-score at _MEMBER_LOSS_FACTOR of base -- an order-of-magnitude membership signal)
+    sanitizers_present: []
+    notes: >
+      The signal is the gap, not an absolute value: loss(X_member) <<
+      loss(Y_non_member). D32's aggregate-only batch_loss is the
+      minimal-disclosure sibling; a reviewer who only finds batch_loss
+      concludes loss is aggregated and misses the per-record endpoint.
+    poc: tests/test_exploits_ml.py::test_v56_membership_inference_loss_gap
+
+  - id: V57
+    title: Training-data poisoning / backdoor via unreviewed feedback ingestion (BadNets class)
+    cwe: CWE-829
+    huntr_analog: "Gu et al., 'BadNets: Identifying Vulnerabilities in the Machine Learning Model Supply Chain' (2017) -- poisoning rows with a trigger token are folded into the scorer with no review gate, yielding a targeted backdoor"
+    tier: 4
+    exploitable: true
+    source: {file: dvml/api/datasets.py, symbol: submit_feedback, note: "model_id + features + label (JSON body) -> Feedback row (status=pending) + auto-enqueued retrain job"}
+    sink: {file: dvml/workers/tasks.py, symbol: retrain_model, line_hint: 91, note: "ingests ALL Feedback rows for the model regardless of status"}
+    taint_path:
+      - dvml/api/datasets.py:submit_feedback (poisoned row persisted; retrain_model job enqueued)
+      - dvml/workers/tasks.py:retrain_model (worker reads every row back from the DB -- no status filter)
+      - dvml/ml/predict.py:apply_feedback (distinctive tokens become learned overrides -> Model.meta_json)
+      - dvml/api/inference.py:predict_label/predict_proba -> predict.py:predict_proba (trigger token steers the score to the attacker's label; clean inputs unaffected)
+    sanitizers_present:
+      - "Feedback.status column and the approved-only retrain_reviewed() handler exist (D33) -- the review control is present in the codebase but the scheduled retrain path never uses it (misdirection: 'there is a moderation workflow' reads as if it gated ingestion)"
+    notes: >
+      Crosses the DB and the job queue (second-order), and the effect is a
+      model-integrity violation rather than code execution. The trigger
+      ('distinctive token' = long non-common-vocabulary token) keeps the
+      backdoor targeted: only inputs containing the trigger flip to the
+      attacker's label, matching BadNets semantics.
+    poc: tests/test_exploits_ml.py::test_v57_feedback_backdoor_via_retrain
+
+  - id: V58
+    title: Agent-installable arbitrary package (slopsquatting / hallucinated dependency)
+    cwe: CWE-829
+    huntr_analog: "slopsquatting research (Bar Lanyado / Socket, 2025) -- LLMs hallucinate plausible package names that attackers register; an agent empowered to install missing libraries on demand turns a hallucinated or injected name into install-time code execution"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: chat, note: "message -> [[TOOL:install_package ...]] directive (also reachable via MCP list_tools/call_tool and every agent flow)"}
+    sink: {file: dvml/agent/tools.py, symbol: install_package, line_hint: 62}
+    taint_path:
+      - dvml/api/agent.py:chat (message)
+      - dvml/agent/core.py:run_agent (directive dispatched from conversation, including poisoned context/tool results)
+      - dvml/agent/tools.py:install_package (pip install --no-input --no-build-isolation --target <plugin dir> <name>)
+      - "pip builds the resolved package -> setup.py/build backend code executes at install time (CWE-494/CWE-829, no shell injection required)"
+    sanitizers_present:
+      - "subprocess is invoked in list form with no shell=True -- the bug class is 'the agent can be talked into installing an arbitrary/hallucinated package', not command injection; a shell-metachar rule misses it"
+    poc: tests/test_exploits_agentic.py::test_v58_slopsquatting_install_package
+
+  - id: V59
+    title: MCP tool-metadata rug pull (TOCTOU on tool descriptions)
+    cwe: CWE-367
+    huntr_analog: "Invariant Labs MCP tool-poisoning / 'rug pull' research (2025) -- a server shows a clean tool description at connection time, then silently swaps in poisoned metadata after the client has approved/listed it"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/admin.py, symbol: set_tool_note, note: "note + applies_after (JSON body) -- require_auth, not require_admin (same broken authz as V29)"}
+    sink: {file: dvml/mcp_server.py, symbol: _tool_description, line_hint: 21}
+    taint_path:
+      - dvml/api/admin.py:set_tool_note (attacker stores note with applies_after=1)
+      - dvml/mcp_server.py:build_tool_list (increments the list_tools serve counter each call)
+      - dvml/mcp_server.py:_tool_description (appends the note only once served-count exceeds applies_after)
+      - "client's FIRST list_tools (connection/approval time) sees the clean description; later listings carry the poisoned note -- approval-time review never sees the payload"
+    sanitizers_present:
+      - "build_tool_list_pinned() exists in the same module and serves a frozen first-connection snapshot (D35) -- present but not used by the default server path"
+    notes: >
+      Distinct from V29: V29's note is served immediately and uniformly; this
+      is a time-of-check/time-of-use gap where the description a client
+      approves at connection time is not the description it later plans
+      against. The staging mechanism (applies_after) is framed as a rollout
+      feature, so the conditional itself looks like product logic, not a bug.
+    poc: tests/test_exploits_agentic.py::test_v59_mcp_rug_pull_tool_metadata
+
+  - id: V60
+    title: Agent confirmation spoof via injected transcript marker
+    cwe: CWE-345
+    huntr_analog: "LLM-agent 'the user already confirmed' injection -- indirect prompt-injection content forges the approval signal the agent's human-in-the-loop gate looks for (EchoLeak/AgentFlayer class)"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: execute, note: "message / context_docs (JSON body); fetched pages via http_get land in the same transcript"}
+    sink: {file: dvml/agent/tools.py, symbol: delete_job, line_hint: 45, note: "also run_sql with INSERT/UPDATE/DELETE/DROP"}
+    taint_path:
+      - dvml/api/agent.py:execute -> dvml/agent/core.py:run_agent_guarded
+      - dvml/agent/tools.py:http_get (fetched page body becomes a tool message in the conversation)
+      - dvml/agent/core.py:run_agent_guarded (gate scans the WHOLE conversation text -- system, user, context docs AND tool results -- for '[user confirmed]')
+      - dvml/agent/tools.py:delete_job (destructive call executes on a confirmation the user never gave)
+    sanitizers_present:
+      - "the confirmation gate EXISTS and correctly blocks the destructive call when the marker is absent -- it is bypassed only because the marker is searched in attacker-influenceable transcript content, not bound to a real user turn (provenance-blind check)"
+    notes: >
+      The gate's flaw is provenance, not absence: tool results and retrieved
+      context are concatenated into the same string the gate scans, so any
+      poisoned page or document containing the marker satisfies it. Contrast
+      D36, where confirmation is an explicit out-of-band boolean supplied by
+      the caller and conversation content cannot influence it.
+    poc: tests/test_exploits_agentic.py::test_v60_confirmation_spoof_via_fetched_page
+
+  - id: V61
+    title: Cross-tenant RAG data leak via owner-unscoped note retrieval
+    cwe: CWE-639
+    huntr_analog: "multi-tenant RAG assistant retrieving another tenant's documents into the prompt (no injection required -- pure confidentiality failure through retrieval scoping)"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: add_note, note: "note (JSON body) -> ExperimentNote, owner-scoped on write"}
+    sink: {file: dvml/api/agent.py, symbol: brief, line_hint: 160, note: "assistant answer echoes the retrieved notes back to any caller"}
+    taint_path:
+      - dvml/api/agent.py:add_note (user A stores a private note on experiment E)
+      - dvml/api/agent.py:brief (user B; retrieves ExperimentNote by experiment_id with NO owner filter)
+      - dvml/agent/core.py:run_agent (all users' notes enter the context)
+      - dvml/agent/llm.py:_stub_chat (answer summarizes the full context, leaking A's note to B)
+    sanitizers_present:
+      - "GET /api/agent/notes IS owner-filtered (D37) -- the isolation primitive exists and is used on the REST read path, just not on the retrieval path that feeds the LLM (misdirection: a reviewer who checked the REST view would conclude notes are tenant-isolated)"
+    notes: >
+      Distinct from V30: memory poisoning is an INJECTION that fires a tool in
+      the victim's session; this is a pure data-leak -- no directive, no tool
+      call, the retrieval itself crosses the tenant boundary and the model's
+      ordinary summarisation completes the exfiltration.
+    poc: tests/test_exploits_agentic.py::test_v61_cross_tenant_note_leak_via_brief
+
+  - id: V62
+    title: Training-data extraction via repetition/divergence (memorized corpus regurgitation)
+    cwe: CWE-200
+    huntr_analog: "Carlini et al. 2021 'Extracting Training Data from Large Language Models' & 2023 'Scalable Extraction of Training Data from (Production) Language Models' -- repetition/'repeat forever' divergence makes an aligned model regurgitate memorized training data (OWASP LLM02-adjacent)"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: chat, note: "message (repetition/divergence trigger)"}
+    sink: {file: dvml/agent/llm.py, symbol: _stub_chat, line_hint: 88, note: "appends memorized CorpusDoc rows (seeded support-transcript PII) to the reply"}
+    taint_path:
+      - dvml/api/agent.py:chat (message with the same word repeated >=5 times, or 'repeat forever')
+      - dvml/agent/core.py:run_agent
+      - dvml/agent/llm.py:_diverged (regex detects the off-distribution loop)
+      - dvml/agent/llm.py:_memorized_corpus (reads CorpusDoc rows the app factory seeded at boot)
+      - "assistant answer contains verbatim fine-tune corpus PII (customer emails/SSNs)"
+    sanitizers_present:
+      - "redact_sensitive() exists in the same module and is wired into /api/agent/chat_safe (D38) -- present and unit-tested, just not used on the default chat path"
+    notes: >
+      The taint SOURCE is the model's own memorized training data, not any
+      request field, and the SINK is the model's reply -- no tool call is
+      involved, so 'LLM output -> tool -> sink' rules don't see it. The ollama
+      backend passes the trigger through naturally (real models do this); the
+      stub simulates the same regurgitation offline.
+    poc: tests/test_exploits_agentic.py::test_v62_training_data_extraction_divergence
+
+  - id: V63
+    title: Confused deputy -- agent tools execute with the server process's identity
+    cwe: CWE-862
+    huntr_analog: "excessive agency / confused-deputy LLM assistants -- any authenticated user drives filesystem/network/SQL capabilities that exist for no legitimate per-user reason (no per-user scoping, no consent record)"
+    tier: 5
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: chat, note: "message (any authenticated user, any role)"}
+    sink: {file: dvml/agent/tools.py, symbol: "read_file/run_sql/http_get"}
+    taint_path:
+      - dvml/api/agent.py:chat (low-privilege authenticated user)
+      - dvml/agent/core.py:run_agent (no per-user capability scoping or consent record)
+      - dvml/agent/tools.py:read_file (opens arbitrary paths with the server process's filesystem identity)
+    sanitizers_present: []
+    notes: >
+      Label/presence finding rather than a new code change: the tools' power
+      is ambient authority -- nothing in run_agent or TOOLS binds a tool call
+      to the calling user's permissions. Contrast D40's read_file_scoped,
+      which confines reads to the caller's own artifact prefix.
+    poc: tests/test_exploits_agentic.py::test_v63_confused_deputy_lowpriv_file_read
+
+  - id: V64
+    title: Config-as-taint -- user preference deep-merge flips a platform security toggle
+    cwe: CWE-15
+    huntr_analog: "mass-assignment-style configuration injection -- a generic user-preferences store sharing its keyspace with platform security toggles, letting a low-priv user weaken a hardened deployment at runtime"
+    tier: 6
+    exploitable: true
+    source: {file: dvml/api/agent.py, symbol: save_preferences, note: "preferences (JSON body) -- any authenticated user, no namespace/key allow-list"}
+    sink: {file: dvml/services/registry.py, symbol: read_raw, line_hint: 34}
+    taint_path:
+      - "dvml/api/agent.py:save_preferences ({\"security\": {\"strict_paths\": false}} merged verbatim, one merge_namespace per top-level key)"
+      - dvml/core/settings.py:merge_namespace (lands in the 'security' namespace document)
+      - dvml/core/settings.py:get (dotted key 'security.strict_paths' resolves into the namespace document)
+      - dvml/api/models.py:raw_artifact (get_bool gate now False -> sanitize_path skipped)
+      - dvml/services/registry.py:read_raw (os.path.join without containment -> traversal, cf. V24)
+    sanitizers_present:
+      - "sanitize_path exists on the raw_artifact path but is gated by the very setting the attacker flips (conditional sanitizer composed with a writable gate)"
+      - "merge_preferences_safe() exists in core/settings.py and allow-lists namespaces (D39) -- present but not used by the endpoint"
+    notes: >
+      Config-as-taint axis: the tainted value is a CONFIGURATION document, not
+      a path string -- nothing about the request looks like a traversal, and
+      the sink is reached only because a runtime setting re-configures a
+      sanitizer between two identical requests. Composes with V24 into
+      CHAIN_H: an operator-hardened deployment (where V24 alone is dead)
+      becomes traversable again via an unprivileged preferences write.
+    poc: tests/test_exploits_agentic.py::test_v64_preference_injection_weakens_path_hardening
 
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
@@ -937,6 +1406,116 @@ decoys:
     why_safe: "handle_runner_call_safe() uses json.loads instead of pickle.loads -- arbitrary Python objects (and pickle's object-graph reconstruction) are simply not supported across this boundary"
     location: {file: dvml/ml/runner.py, symbol: handle_runner_call_safe}
     proof: tests/test_exploits_tier6.py::test_d18_runner_call_safe_rejects_pickle
+  - id: D19
+    resembles: V47 (weak credential storage) — SAME secret type (passwords), salted slow hash instead of unsalted md5
+    why_safe: "hash_password/verify_password use pbkdf2_hmac with a per-password 16-byte salt and hmac.compare_digest for the final check — nothing at rest is a fast unsalted digest, and the comparison is constant-time"
+    location: {file: dvml/core/security.py, symbol: verify_password}
+    proof: tests/test_exploits_auth.py::test_d19_password_verify_salted_constant_time
+  - id: D20
+    resembles: V44 (JWT signature confusion) — SAME library/decode call, algorithms pinned instead of verification disabled
+    why_safe: "decode_token() pins algorithms=[Config.JWT_ALGORITHM] (HS256) with the server secret; a crafted alg=none token with admin claims raises and yields None — session-token verification is sound, only the service-exchange helper skips it"
+    location: {file: dvml/core/security.py, symbol: decode_token}
+    proof: tests/test_exploits_auth.py::test_d20_session_token_rejects_alg_none
+  - id: D21
+    resembles: V44 (unsigned service-token exchange) — SAME helper shape, strict variant
+    why_safe: "verify_service_token_safe() pins algorithms=[\"HS256\"] and verifies the signature against Config.JWT_SECRET, so an unsigned service token is rejected outright"
+    location: {file: dvml/core/security.py, symbol: verify_service_token_safe}
+    proof: tests/test_exploits_auth.py::test_d21_service_token_safe_rejects_unsigned
+  - id: D22
+    resembles: V45 (open redirect) — SAME endpoint shape (post-login ?next= bounce), validated instead of raw
+    why_safe: "redirect_after_login_safe() only honours same-site relative paths: anything not starting with '/' — and protocol-relative '//host' — falls back to '/', so no off-origin Location is ever emitted"
+    location: {file: dvml/api/auth.py, symbol: redirect_after_login_safe}
+    proof: tests/test_exploits_auth.py::test_d22_safe_redirect_allows_relative_only
+  - id: D23
+    resembles: V46 (predictable reset token) — SAME feature (password recovery), random+hashed+single-use instead of derived
+    why_safe: "reset_request_secure()/reset_confirm_secure() mint the code with secrets.token_urlsafe, persist only its sha256 hash (check via hmac.compare_digest), and clear it on use — the V46-style md5(username:email) derivation does not match"
+    location: {file: dvml/api/auth.py, symbol: reset_confirm_secure}
+    proof: tests/test_exploits_auth.py::test_d23_secure_reset_rejects_guessed_token
+  - id: D24
+    resembles: V47 (digest-as-credential API key) — SAME helper/header family, strong token instead of fast digest
+    why_safe: "the X-API-Key-Safe path compares the presented key against User.api_token (secrets.token_hex at registration) using hmac.compare_digest — a wrong key (including md5(password)) fails, and the stored value is a random token, not a crackable password digest"
+    location: {file: dvml/api/deps.py, symbol: _user_from_api_key}
+    proof: tests/test_exploits_auth.py::test_d24_api_key_safe_rejects_wrong_key
+  - id: D25
+    resembles: V48 (ReDoS) — SAME check (username format), linear validator instead of nested quantifiers
+    why_safe: "validate_username_safe() uses ^[a-zA-Z0-9_]+$ with fullmatch — a single character class, no nested quantifiers; the V48 catastrophic input returns False in microseconds"
+    location: {file: dvml/core/security.py, symbol: validate_username_safe}
+    proof: tests/test_exploits_auth.py::test_d25_safe_username_validator_is_linear
+  - id: D26
+    resembles: V49 (stored XSS via SVG avatar) — SAME stored file, download-only instead of inline
+    why_safe: "get_avatar_safe() serves the identical stored SVG with Content-Disposition: attachment and X-Content-Type-Options: nosniff, so the browser downloads rather than renders it — embedded script never executes same-origin"
+    location: {file: dvml/api/auth.py, symbol: get_avatar_safe}
+    proof: tests/test_exploits_auth.py::test_d26_avatar_safe_served_as_attachment
+  - id: D27
+    resembles: V51 (typed-JSON deserialization) — SAME feature (experiment import), plain JSON instead of jsonpickle
+    why_safe: "import_strict() uses json.loads and rejects any top-level key outside {name, params, metrics, tags} -- a py/reduce document is refused before any object reconstruction could occur"
+    location: {file: dvml/api/experiments.py, symbol: import_strict}
+    proof: tests/test_exploits_ml.py::test_d27_import_strict_rejects_py_reduce
+  - id: D28
+    resembles: V52 (restricted-unpickler bypass) — SAME file/feature (allow-listed artifact load), exact-class instead of name-prefix policy
+    why_safe: "load_model_strict() permits only the exact (module, name) pairs a plain sklearn-estimator pickle needs (numpy _reconstruct/ndarray/dtype); getattr, dict and globals are all refused, so the V52 gadget chain dies at the first GLOBAL opcode"
+    location: {file: dvml/ml/model_loader.py, symbol: load_model_strict}
+    proof: tests/test_exploits_ml.py::test_d28_strict_unpickler_rejects_bypass
+  - id: D29
+    resembles: V53 (hub repo code execution) — SAME feature (repo bundle install), manifest-only instead of hubconf import
+    why_safe: "load_from_hub_manifest() reads only the publisher-signed manifest.json (signature checked against an allow-list) and never imports repo Python sources -- the same archive's hubconf.py never executes"
+    location: {file: dvml/ml/hub.py, symbol: load_from_hub_manifest}
+    proof: tests/test_exploits_ml.py::test_d29_hub_manifest_imports_no_code
+  - id: D30
+    resembles: V54 (plugin install -> startup exec) — SAME plugin pipeline, review-gated instead of enabled-at-upload
+    why_safe: "install_plugin_pending() stores the plugin with enabled=False and load_enabled_plugins_safe() imports only enabled rows, so a fresh upload survives a restart without its module-level code ever running"
+    location: {file: dvml/ml/plugins.py, symbol: install_plugin_pending}
+    proof: tests/test_exploits_ml.py::test_d30_pending_plugin_not_loaded_on_boot
+  - id: D31
+    resembles: V55 (model extraction via confidence scores) — SAME scorer, top-1 label instead of full vector
+    why_safe: "predict_label() (and the /predict_label endpoint) return only the argmax label -- no per-class confidences leave the API, so the response carries no extraction-enabling signal"
+    location: {file: dvml/ml/predict.py, symbol: predict_label}
+    proof: tests/test_exploits_ml.py::test_d31_predict_label_no_confidence
+  - id: D32
+    resembles: V56 (membership inference via per-record loss) — SAME scorer, aggregate-only instead of per-record
+    why_safe: "batch_loss() returns the mean over an eval set computed from the base loss with no membership factor -- querying a single row yields the same aggregate before and after the row is registered as a training member"
+    location: {file: dvml/ml/predict.py, symbol: batch_loss}
+    proof: tests/test_exploits_ml.py::test_d32_batch_loss_is_aggregate_only
+  - id: D33
+    resembles: V57 (poisoning via unreviewed feedback) — SAME ingestion path, status-filtered instead of unfiltered
+    why_safe: "retrain_reviewed() ingests only Feedback rows with status='approved'; a pending (unreviewed) poisoned row never reaches apply_feedback, so the trigger token produces no override"
+    location: {file: dvml/workers/tasks.py, symbol: retrain_reviewed}
+    proof: tests/test_exploits_ml.py::test_d33_reviewed_retrain_ignores_pending_feedback
+  - id: D34
+    resembles: V58 (agent-driven package install)
+    why_safe: "install_package_safe() resolves the requested name against a hard allow-list of reviewed, pinned packages (ALLOWED_PACKAGES) and raises on anything else -- arbitrary names, version specifiers and local source trees never reach pip"
+    location: {file: dvml/agent/tools.py, symbol: install_package_safe}
+    proof: tests/test_exploits_agentic.py::test_d34_install_safe_rejects_unlisted_package
+  - id: D35
+    resembles: V59 (MCP tool-metadata rug pull)
+    why_safe: "build_tool_list_pinned() snapshots the static, code-shipped descriptions on first enumeration and serves that frozen snapshot verbatim thereafter -- a note added after the first call can never drift into a client's view"
+    location: {file: dvml/mcp_server.py, symbol: build_tool_list_pinned}
+    proof: tests/test_exploits_agentic.py::test_d35_pinned_tool_list_never_drifts
+  - id: D36
+    resembles: V60 (confirmation spoof) -- SAME destructive gate, different confirmation channel
+    why_safe: "run_agent_confirmed() takes confirmation as an explicit boolean parameter supplied by the CALLER out-of-band; conversation content (fetched pages, context docs, tool results) cannot influence it, so the same poisoned page leaves the destructive call held"
+    location: {file: dvml/agent/core.py, symbol: run_agent_confirmed}
+    proof: tests/test_exploits_agentic.py::test_d36_out_of_band_confirmation_not_inferred
+  - id: D37
+    resembles: V61 (cross-tenant note leak) -- SAME table, properly-scoped read path
+    why_safe: "GET /api/agent/notes filters ExperimentNote by owner_id=g.user_id, so the REST view never returns another user's notes; flag it and you flag correct BOLA isolation"
+    location: {file: dvml/api/agent.py, symbol: list_notes}
+    proof: tests/test_exploits_agentic.py::test_d37_notes_view_is_owner_scoped
+  - id: D38
+    resembles: V62 (training-data extraction) -- SAME trigger, redacting output path
+    why_safe: "/api/agent/chat_safe runs redact_sensitive() over the answer: emails and SSNs are regex-redacted before anything is returned, so the same divergence trigger yields [REDACTED-EMAIL]/[REDACTED-SSN], never raw corpus PII"
+    location: {file: dvml/agent/llm.py, symbol: redact_sensitive}
+    proof: tests/test_exploits_agentic.py::test_d38_chat_safe_redacts_corpus_pii
+  - id: D39
+    resembles: V64 (preference config injection) -- SAME feature, allow-listed namespaces
+    why_safe: "merge_preferences_safe() only merges PREFERENCE_NAMESPACES ('ui', 'llm') and reports everything else as rejected; a 'security' key is refused and the strict_paths gate stays on"
+    location: {file: dvml/core/settings.py, symbol: merge_preferences_safe}
+    proof: tests/test_exploits_agentic.py::test_d39_preferences_safe_ignores_security_namespace
+  - id: D40
+    resembles: V63 (confused deputy / ambient-authority tools)
+    why_safe: "read_file_scoped() resolves the requested path under the caller's own artifact prefix (artifacts/u<owner_id>/) and raises on any escape -- per-user scoping done right for the same tool class"
+    location: {file: dvml/agent/tools.py, symbol: read_file_scoped}
+    proof: tests/test_exploits_agentic.py::test_d40_scoped_read_confined_to_caller_prefix
 
 chains:
   - id: CHAIN_A
@@ -997,18 +1576,61 @@ chains:
       persistence upgrade of CHAIN_B's single-retrieval indirect injection.
     poc: tests/test_exploits_tier6.py::test_v30_agent_memory_poisoning
 
+  - id: CHAIN_F
+    title: "Dormant plugin: upload (inert) -> process restart -> module-level code exec"
+    members: [V54]
+    description: >
+      POST /api/experiments/plugins stores attacker Python source and an
+      enabled Plugin row; the request itself executes nothing and the file is
+      never read again until the NEXT create_app() boot, where
+      load_enabled_plugins imports it into the app process. Source and sink are
+      separated by a DB round-trip, the filesystem, and a process boundary --
+      undetectable by inspecting the upload handler alone.
+    poc: tests/test_exploits_ml.py::test_v54_plugin_executes_on_next_boot
+
+  - id: CHAIN_G
+    title: "Feedback poisoning -> job queue -> unreviewed retrain -> backdoored scorer"
+    members: [V57]
+    description: >
+      POST /api/datasets/<id>/feedback persists a poisoned (features, label)
+      row and enqueues a retrain_model job; the worker ingests every feedback
+      row regardless of review status, apply_feedback turns the trigger token
+      into a learned override in Model.meta_json, and subsequent predict calls
+      return the attacker's label whenever the trigger is present while clean
+      inputs are unaffected. Taint crosses the DB, the job queue, and a
+      second DB round-trip before surfacing at the inference response.
+    poc: tests/test_exploits_ml.py::test_v57_feedback_backdoor_via_retrain
+
+  - id: CHAIN_H
+    title: "Config injection -> traversal: preference write re-enables V24 in a hardened deployment"
+    members: [V64, V24]
+    description: >
+      An operator hardens the deployment (security.strict_paths=true in the
+      runtime settings store), which deadens V24's traversal: /api/models/
+      artifact?path=../ is sanitized. Any authenticated user then POSTs
+      /api/agent/preferences {"security": {"strict_paths": false}} (V64) --
+      the generic preferences endpoint deep-merges the security namespace with
+      no allow-list, flipping the gate -- and the identical traversal request
+      now succeeds. Neither bug alone is exploitable in that deployment: V24
+      is unreachable while hardened, and V64's write is inert without a
+      config-gated sink to weaken. The engine must compose a settings-store
+      write with a conditional sanitizer on a different endpoint.
+    poc: tests/test_exploits_agentic.py::test_v64_preference_injection_weakens_path_hardening
+
 # ----------------------------------------------------------------------
 # Config/compose findings — a STRUCTURALLY DIFFERENT category from
-# everything above. These are serving-infrastructure misconfigurations for
+# everything above. CF01–CF03 are serving-infrastructure misconfigurations for
 # tools ModelForge itself never runs or embeds (Ollama, TorchServe, Triton
-# are external processes an operator deploys alongside it) -- unlike V01-V41,
+# are external processes an operator deploys alongside it) -- unlike V01-V64,
 # there is no source, no sink, no taint_path, and no PoC test, because there
 # is no code path to execute: the finding IS the presence of the
 # misconfigured flag/binding in deploy/docker-compose.yml. A rule for this
 # class is a regex/config scan, not a taint rule, and should be scored as a
 # presence/absence check against that one fixture file, not against
 # benchmarks/check_ground_truth.py's function-symbol resolution (which only
-# understands Python source).
+# understands Python source). CF04–CF05 are the same presence-only category
+# but the flag/binding lives in ModelForge's own code (a debug=True run call,
+# hardcoded fallback secrets) rather than the compose file.
 config_findings:
   - id: CF01
     title: Ollama bound to every interface with no authentication ("Probllama" class)
@@ -1028,3 +1650,37 @@ config_findings:
     huntr_analog: "Triton Inference Server --model-control-mode=explicit's load/unload HTTP endpoint reachable with no gateway auth -- lets any caller load an arbitrary model into the server"
     location: {file: deploy/docker-compose.yml, service: triton}
     finding: "--model-control-mode=explicit --allow-http=true, with port 8000 published and no auth layer in front of the load/unload endpoint"
+  - id: CF04
+    title: Flask development server started with debug=True (Werkzeug debugger exposed)
+    cwe: CWE-489
+    huntr_analog: "debug mode left on in a deployed Flask app -- the Werkzeug interactive debugger is a known RCE class when the console PIN is weak or leaked (CWE-489 active debug code / CWE-672 operation on a resource after expiration of intended lifetime)"
+    location: {file: dvml/cli.py, symbol: main}
+    finding: "main runs create_app().run(debug=True), exposing the Werkzeug interactive debugger (PIN-protected but a known RCE class when the PIN is weak/leaked)"
+  - id: CF05
+    title: Hardcoded default secrets compiled into the source (forgeable session JWTs)
+    cwe: CWE-798
+    huntr_analog: "hardcoded fallback secrets in a shipped config module -- any deployment that doesn't set the env overrides runs on publicly-known keys, so session JWTs are forgeable by anyone who has read the source"
+    location: {file: dvml/core/config.py, symbol: Config}
+    finding: "Config.SECRET_KEY \"modelforge-dev-secret\" and Config.JWT_SECRET \"modelforge-dev-jwt-secret\" are used whenever DVML_SECRET_KEY/DVML_JWT_SECRET are unset; any deployment that doesn't override them mints forgeable session JWTs"
+
+# ----------------------------------------------------------------------
+# Known-unlabeled findings — deliberately NOT part of the scored answer key.
+# These are weak-but-minor issues an external tool may also surface; they are
+# documented here so the extra hits can be triaged as "known" rather than
+# counted as false positives against the benchmark.
+known_unlabeled:
+  - id: KU01
+    title: tempfile.NamedTemporaryFile(delete=False) never unlinked
+    cwe: CWE-459
+    location: {file: dvml/api/datasets.py, note: "upload path, ~line 41"}
+    why_unlabeled: "resource leak (temp files accumulate on disk) — minor, no security boundary crossed"
+  - id: KU02
+    title: Seeded demo credentials admin/admin123, alice/alice123, bob/bob123
+    cwe: CWE-798
+    location: {file: dvml/cli.py, symbol: seed_command}
+    why_unlabeled: "intentional for the benchmark and documented in README — the seed command is explicit opt-in demo data, not a default deployment"
+  - id: KU03
+    title: Exception text reflected in inference error responses and worker job results
+    cwe: CWE-209
+    location: {file: dvml/api/inference.py, symbol: predict, note: "worker job results also shown in /api/admin/jobs"}
+    why_unlabeled: "information disclosure, minor — internal error details echoed to the caller; common in dev-grade services, not a planted finding"

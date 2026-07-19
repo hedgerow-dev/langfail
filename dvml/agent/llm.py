@@ -8,6 +8,10 @@ Two backends are supported, selected by ``DVML_LLM_BACKEND``:
 
 Both expose the same :func:`chat` contract and return
 ``{"content": str, "tool_calls": [{"name": str, "arguments": dict}]}``.
+
+The stub also mimics an under-aligned fine-tuned model: pushed off-distribution
+(say, a repetitive loop), it falls back to regurgitating rows it memorised from
+its fine-tune corpus, the way real models recite training data under divergence.
 """
 from __future__ import annotations
 
@@ -60,6 +64,27 @@ def _parse_args(raw: str) -> dict:
     return {"input": raw}
 
 
+# Off-distribution trigger: the same word looped back-to-back, or an explicit
+# "repeat forever" request — the classic way a chat model is pushed out of its
+# alignment regime.
+_REPEAT_RE = re.compile(r"\b(\w+)(?:\s+\1\b){4,}", re.IGNORECASE)
+
+
+def _diverged(conversation: str) -> bool:
+    """Whether the conversation has slipped into a repetition/divergence loop."""
+    return "repeat forever" in conversation.lower() or bool(_REPEAT_RE.search(conversation))
+
+
+def _memorized_corpus(limit: int = 3) -> list[str]:
+    """Rows from the assistant's fine-tune corpus, recalled verbatim."""
+    try:
+        from ..models import CorpusDoc
+
+        return [d.content for d in CorpusDoc.query.order_by(CorpusDoc.id).limit(limit)]
+    except Exception:
+        return []
+
+
 def _stub_chat(messages: list[dict], tools: list[dict] | None) -> dict:
     conversation = _deobfuscate("\n".join(m.get("content", "") for m in messages))
     calls = []
@@ -67,9 +92,13 @@ def _stub_chat(messages: list[dict], tools: list[dict] | None) -> dict:
         calls.append({"name": name, "arguments": _parse_args(raw)})
     if calls:
         return {"content": "", "tool_calls": calls}
-    last_user = next((m["content"] for m in reversed(messages) if m.get("role") == "user"), "")
-    return {"content": f"Here's a summary based on the available context: {last_user[:200]}",
-            "tool_calls": []}
+    context = "\n".join(str(m.get("content", "")) for m in messages if m.get("role") != "system")
+    content = f"Here's a summary based on the available context: {context[:2000]}"
+    if _diverged(conversation):
+        memorized = _memorized_corpus()
+        if memorized:
+            content += "\n\n" + "\n".join(memorized)
+    return {"content": content, "tool_calls": []}
 
 
 def _ollama_chat(messages: list[dict], tools: list[dict] | None) -> dict:
@@ -94,6 +123,17 @@ def chat(messages: list[dict], tools: list[dict] | None = None) -> dict:
     if Config.LLM_BACKEND == "ollama":
         return _ollama_chat(messages, tools)
     return _stub_chat(messages, tools)
+
+
+_EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+_SSN_RE = re.compile(r"\b\d{3}-\d{2}-\d{4}\b")
+
+
+def redact_sensitive(text: str) -> str:
+    """Redact common PII shapes (email addresses, SSNs) from model output
+    before it is shown to a user or written to a log."""
+    text = _EMAIL_RE.sub("[REDACTED-EMAIL]", text or "")
+    return _SSN_RE.sub("[REDACTED-SSN]", text)
 
 
 def generate_sql(question: str, table: str = "experiments") -> str:

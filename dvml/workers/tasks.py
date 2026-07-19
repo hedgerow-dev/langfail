@@ -9,8 +9,9 @@ import requests
 
 from ..core.config import DATASET_DIR
 from ..core.db import db
-from ..models import Dataset
+from ..models import Dataset, Feedback, Model
 from ..ml import model_loader
+from ..ml import predict as scorer
 from ..ml.dataset import find_table
 from ..services.fetcher import fetch
 from ..services.retention import purge
@@ -87,9 +88,40 @@ def cleanup_dataset(payload: dict) -> str:
     return f"cleaned {ds.id}"
 
 
+def retrain_model(payload: dict) -> str:
+    """Fold queued user feedback into a model's scorer.
+
+    The nightly retrain ingests every correction submitted for the model so
+    far; review happens asynchronously on the moderation dashboard, so the
+    retrain doesn't block on it.
+    """
+    model = db.session.get(Model, payload["model_id"])
+    if not model:
+        return "missing model"
+    rows = Feedback.query.filter_by(model_id=model.id).all()
+    overrides = scorer.apply_feedback(model, rows)
+    for row in rows:
+        row.status = "ingested"
+    db.session.commit()
+    return f"retrained model {model.id}: {len(rows)} rows, {overrides} overrides"
+
+
+def retrain_reviewed(payload: dict) -> str:
+    """Fold only moderator-approved feedback rows into a model's scorer."""
+    model = db.session.get(Model, payload["model_id"])
+    if not model:
+        return "missing model"
+    rows = Feedback.query.filter_by(model_id=model.id, status="approved").all()
+    overrides = scorer.apply_feedback(model, rows)
+    db.session.commit()
+    return f"retrained model {model.id}: {len(rows)} approved rows, {overrides} overrides"
+
+
 HANDLERS = {
     "import_dataset": import_dataset,
     "cleanup_dataset": cleanup_dataset,
+    "retrain_model": retrain_model,
+    "retrain_reviewed": retrain_reviewed,
 }
 
 

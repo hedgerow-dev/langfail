@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from flask import Blueprint, g, jsonify, request
 
+from ..core import settings as runtime_settings
 from ..core.db import db
-from ..models import Dataset, Model
-from ..agent.core import run_agent, run_agent_unbounded
+from ..models import Dataset, Experiment, ExperimentNote, Model
+from ..agent.core import run_agent, run_agent_guarded, run_agent_unbounded
+from ..agent.llm import redact_sensitive
 from ..agent.memory import recall_scoped, remember
 from ..agent.native import run_native_loop
 from ..agent.sanitize import strip_directives
@@ -115,3 +117,96 @@ def analyze():
         context_docs=docs,
     )
     return jsonify(**result)
+
+
+@bp.post("/execute")
+@require_auth
+def execute():
+    """Run the assistant with a confirmation gate on destructive actions.
+
+    Actions that mutate or drop records (destructive SQL, removing jobs) are
+    held until the user has confirmed them in the conversation.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    result = run_agent_guarded(data.get("message", ""), context_docs=data.get("context_docs"))
+    return jsonify(**result)
+
+
+@bp.post("/notes")
+@require_auth
+def add_note():
+    """Attach a private note to an experiment (triage remarks, follow-ups,
+    contact details for the data owner)."""
+    data = request.get_json(force=True, silent=True) or {}
+    row = ExperimentNote(owner_id=g.user_id, experiment_id=data.get("experiment_id"),
+                         note=data.get("note", ""))
+    db.session.add(row)
+    db.session.commit()
+    return jsonify(id=row.id), 201
+
+
+@bp.get("/notes")
+@require_auth
+def list_notes():
+    """List the caller's own experiment notes (per-user, isolated view)."""
+    rows = (ExperimentNote.query.filter_by(owner_id=g.user_id)
+            .order_by(ExperimentNote.id.desc()).limit(100).all())
+    return jsonify(notes=[{"id": n.id, "experiment_id": n.experiment_id,
+                           "note": n.note} for n in rows])
+
+
+@bp.post("/brief")
+@require_auth
+def brief():
+    """Ground the assistant in the notes recorded for an experiment and
+    answer with a short briefing."""
+    data = request.get_json(force=True, silent=True) or {}
+    exp = db.session.get(Experiment, data.get("experiment_id"))
+    if not exp:
+        return jsonify(error="not found"), 404
+    rows = (ExperimentNote.query.filter_by(experiment_id=exp.id)
+            .order_by(ExperimentNote.id).limit(50).all())
+    docs = [n.note for n in rows]
+    result = run_agent(f"Brief me on experiment '{exp.name}'.", context_docs=docs)
+    return jsonify(**result)
+
+
+@bp.post("/chat_safe")
+@require_auth
+def chat_safe():
+    """Assistant chat with output-side redaction of common PII shapes
+    (emails, SSNs) applied to the answer before it is returned."""
+    data = request.get_json(force=True, silent=True) or {}
+    result = run_agent(data.get("message", ""))
+    result["answer"] = redact_sensitive(result.get("answer", ""))
+    return jsonify(**result)
+
+
+@bp.post("/preferences")
+@require_auth
+def save_preferences():
+    """Merge the caller's preferences into the runtime settings store.
+
+    Preferences arrive as a namespace document (e.g. ``{"ui": {"theme":
+    "dark"}}``); each top-level namespace is deep-merged so settings the
+    caller didn't mention stay intact.
+    """
+    data = request.get_json(force=True, silent=True) or {}
+    prefs = data.get("preferences") or {}
+    applied = {}
+    for namespace, patch in prefs.items():
+        if isinstance(patch, dict):
+            applied[namespace] = runtime_settings.merge_namespace(
+                namespace, patch, updated_by=g.user_id)
+    return jsonify(preferences=applied)
+
+
+@bp.post("/preferences_safe")
+@require_auth
+def save_preferences_safe():
+    """Like ``/preferences``, but restricted to caller-tunable namespaces
+    (``ui``, ``llm``); anything else is reported as rejected."""
+    data = request.get_json(force=True, silent=True) or {}
+    outcome = runtime_settings.merge_preferences_safe(
+        data.get("preferences") or {}, updated_by=g.user_id)
+    return jsonify(**outcome)

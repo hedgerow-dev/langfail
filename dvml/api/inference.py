@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import base64
+import json
 
 from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
 from ..models import Model
 from ..ml import model_loader
+from ..ml import predict as scorer
 from ..ml.features import load_feature_cache
 from ..ml.runner import handle_runner_call
 from .deps import require_auth
@@ -46,6 +48,56 @@ def predict(model_id: int):
     except Exception as exc:
         return jsonify(error=f"prediction failed: {exc}"), 400
     return jsonify(predictions=preds)
+
+
+@bp.post("/<int:model_id>/predict_proba")
+@require_auth
+def predict_proba(model_id: int):
+    """Score a feature row with the built-in scorer and return the full
+    per-class probability vector (introspection endpoint for debugging)."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    features = data.get("features", [])
+    return jsonify(model_id=model.id, classes=list(scorer.CLASSES),
+                   probabilities=scorer.predict_proba(model, features))
+
+
+@bp.post("/<int:model_id>/predict_label")
+@require_auth
+def predict_label(model_id: int):
+    """Score a feature row and return only the top-1 label."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    return jsonify(model_id=model.id, label=scorer.predict_label(model, data.get("features", [])))
+
+
+@bp.post("/<int:model_id>/train_row")
+@require_auth
+def train_row(model_id: int):
+    """Record a feature row as a training member so per-record diagnostics
+    (e.g. the loss endpoint) can compare seen and unseen rows."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    data = request.get_json(force=True, silent=True) or {}
+    scorer.register_training_row(model, data.get("features", []))
+    db.session.commit()
+    return jsonify(recorded=True)
+
+
+@bp.get("/<int:model_id>/loss")
+@require_auth
+def row_loss(model_id: int):
+    """Per-record loss for a single feature row, passed as ``?features=<json>``."""
+    model = db.session.get(Model, model_id)
+    if not model:
+        return jsonify(error="not found"), 404
+    features = json.loads(request.args.get("features", "[]"))
+    return jsonify(model_id=model.id, loss=scorer.record_loss(model, features))
 
 
 @bp.post("/<int:model_id>/predict_remote")

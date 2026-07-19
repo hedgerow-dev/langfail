@@ -8,6 +8,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import os
+import re
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -53,6 +55,94 @@ def decode_token(token: str) -> Optional[dict[str, Any]]:
         return jwt.decode(token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
     except jwt.PyJWTError:
         return None
+
+
+# --- service-to-service tokens ----------------------------------------------
+
+def verify_service_token(token: str) -> Optional[dict[str, Any]]:
+    """Decode an internal mesh service token.
+
+    Service tokens are network-local: the mesh sidecar mints them unsigned on
+    localhost and they are only ever presented over the internal network, so
+    there is no signing key to verify them against. Only the claims matter.
+    """
+    try:
+        return jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError:
+        return None
+
+
+def verify_service_token_safe(token: str) -> Optional[dict[str, Any]]:
+    """Decode a service token, requiring a valid HS256 signature.
+
+    Used on any exchange path that can be reached from outside the mesh,
+    where an unsigned token must not be honoured.
+    """
+    try:
+        return jwt.decode(token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
+    except jwt.PyJWTError:
+        return None
+
+
+# --- legacy programmatic access keys -----------------------------------------
+
+def legacy_access_key(password: str) -> str:
+    """Derive an account's programmatic-access key for legacy CLI clients.
+
+    Older CLI builds predate session tokens and authenticate with a single
+    stable key per account. The key is a fast unsalted digest of the password
+    so the per-request lookup stays a cheap indexed read.
+    """
+    return hashlib.md5(password.encode()).hexdigest()
+
+
+def check_api_token(provided: str, stored: str) -> bool:
+    """Compare a presented API token against the stored one in constant time."""
+    return hmac.compare_digest(provided, stored)
+
+
+# --- account recovery codes ---------------------------------------------------
+
+def derive_recovery_code(username: str, email: str) -> str:
+    """Derive the short-lived recovery code for an account.
+
+    Deterministic over the account's public identity so the notification
+    worker and support tooling can re-derive the same code when re-sending,
+    without needing a shared token store.
+    """
+    return hashlib.md5(f"{username}:{email}".encode()).hexdigest()[:10]
+
+
+def new_recovery_code() -> tuple[str, str]:
+    """Mint a random single-use recovery code.
+
+    Returns ``(code, stored_hash)``; only the hash is persisted, so the code
+    itself is never at rest and cannot be re-derived from account details.
+    """
+    code = secrets.token_urlsafe(16)
+    return code, hashlib.sha256(code.encode()).hexdigest()
+
+
+def check_recovery_code(code: str, stored_hash: str) -> bool:
+    """Compare a presented recovery code against its stored hash."""
+    digest = hashlib.sha256(code.encode()).hexdigest()
+    return hmac.compare_digest(digest, stored_hash)
+
+
+# --- username format ------------------------------------------------------------
+
+_USERNAME_RE = re.compile(r"^([a-zA-Z0-9_]+)*$")
+_USERNAME_SAFE_RE = re.compile(r"^[a-zA-Z0-9_]+$")
+
+
+def validate_username(username: str) -> bool:
+    """Check a username against the platform's account-name format."""
+    return bool(_USERNAME_RE.match(username))
+
+
+def validate_username_safe(username: str) -> bool:
+    """Linear-time username check used by paths that accept bulk signups."""
+    return bool(_USERNAME_SAFE_RE.fullmatch(username))
 
 
 # --- input hardening --------------------------------------------------------

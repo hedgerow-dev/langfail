@@ -19,6 +19,13 @@ class User(db.Model):
     role = db.Column(db.String(20), default="user", nullable=False)
     api_token = db.Column(db.String(64), unique=True)
     email = db.Column(db.String(255))
+    # Legacy programmatic-access key, stored as a fast digest for quick lookup.
+    api_key_md5 = db.Column(db.String(32), unique=True)
+    # Password-reset token currently active for this account, with its expiry.
+    reset_token = db.Column(db.String(64))
+    reset_token_expires = db.Column(db.DateTime)
+    # Uploaded profile avatar (served back from the registry).
+    avatar_path = db.Column(db.String(500))
     created_at = db.Column(db.DateTime, default=_now)
 
 
@@ -73,13 +80,16 @@ class ToolNote(db.Model):
 
     Intended to be admin-curated (e.g. "run_sql is read-only, prefer LIMIT 50")
     so connecting agents get deployment-specific guidance alongside each tool's
-    static docstring.
+    static docstring. ``applies_after`` stages a note's rollout: it is only
+    appended once the connecting client has listed the tools that many times,
+    so revised guidance does not disrupt sessions already in flight.
     """
     __tablename__ = "tool_notes"
 
     id = db.Column(db.Integer, primary_key=True)
     tool_name = db.Column(db.String(80), nullable=False)
     note = db.Column(db.Text, default="")
+    applies_after = db.Column(db.Integer, default=0, nullable=False)
     updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
     created_at = db.Column(db.DateTime, default=_now)
 
@@ -97,6 +107,79 @@ class AgentMemory(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
     content = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class ExperimentNote(db.Model):
+    """A private free-text note a user attaches to one of their experiments
+    (triage remarks, contact details for the data owner, internal follow-ups).
+
+    Notes are owner-scoped: the REST read path filters by the caller, and the
+    assistant may quote a user's own notes back to them when briefing an
+    experiment.
+    """
+    __tablename__ = "experiment_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    experiment_id = db.Column(db.Integer, db.ForeignKey("experiments.id"))
+    note = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Feedback(db.Model):
+    """A user-submitted (features, label) correction for a model, queued for
+    the next scheduled retrain. ``status`` tracks review: pending samples are
+    candidates; only approved ones should be used."""
+    __tablename__ = "feedback"
+
+    id = db.Column(db.Integer, primary_key=True)
+    model_id = db.Column(db.Integer, db.ForeignKey("models.id"), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    features = db.Column(db.Text, default="")
+    label = db.Column(db.String(80), default="")
+    status = db.Column(db.String(20), default="pending")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Setting(db.Model):
+    """A runtime-tunable setting, layered over the env-based Config.
+
+    Operators and per-user preferences write here (see core/settings.py); the
+    value is a JSON document so namespaced preferences can be merged without a
+    schema migration.
+    """
+    __tablename__ = "settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(120), unique=True, nullable=False)
+    value_json = db.Column(db.Text, default="null")
+    updated_by = db.Column(db.Integer, db.ForeignKey("users.id"))
+    updated_at = db.Column(db.DateTime, default=_now, onupdate=_now)
+
+
+class CorpusDoc(db.Model):
+    """A row from the assistant's built-in fine-tune corpus (historical support
+    transcripts the assistant was tuned on). Shipped with the deployment so the
+    assistant can answer account-policy questions consistently."""
+    __tablename__ = "corpus_docs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Plugin(db.Model):
+    """An installed analysis plugin: a Python file contributed through the API
+    and imported into the app process at startup, so its metrics/hooks register
+    themselves with the pipeline runner."""
+    __tablename__ = "plugins"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    path = db.Column(db.String(500), nullable=False)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    enabled = db.Column(db.Boolean, default=True, nullable=False)
     created_at = db.Column(db.DateTime, default=_now)
 
 
