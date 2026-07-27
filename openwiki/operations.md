@@ -3,9 +3,9 @@
 Operating Langfail.
 
 ## Global Environment Variables
-* `DVML_JWT_SECRET`: Secret token used to sign authentication cookies.
-* `DVML_LLM_BACKEND`: Local assistant LLM type (`stub`, `ollama`).
-* `DVML_LLM_OLLAMA_URL`: Local Ollama server address.
+* `LANGFAIL_JWT_SECRET`: Secret token used to sign authentication cookies.
+* `LANGFAIL_LLM_BACKEND`: Local assistant LLM type (`stub`, `ollama`).
+* `LANGFAIL_LLM_OLLAMA_URL`: Local Ollama server address.
 
 ## Model Forge MCP Server
 To expose Langfail tools via Model Context Protocol (MCP):

@@ -61,7 +61,7 @@ SQLite and a pluggable local LLM backend.
 ```bash
 python -m venv .venv && . .venv/bin/activate
 pip install -e .                # add [ml] for numpy/pandas/joblib
-export DVML_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
+export LANGFAIL_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
 flask --app langfail seed           # demo users: admin/admin123, alice/alice123, bob/bob123
 flask --app langfail run            # http://127.0.0.1:5000
 ```

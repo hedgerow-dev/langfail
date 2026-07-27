@@ -1984,7 +1984,7 @@ config_findings:
     cwe: CWE-798
     huntr_analog: "hardcoded fallback secrets in a shipped config module -- any deployment that doesn't set the env overrides runs on publicly-known keys, so session JWTs are forgeable by anyone who has read the source"
     location: {file: langfail/core/config.py, symbol: Config}
-    finding: "Config.SECRET_KEY \"langfail-dev-secret\" and Config.JWT_SECRET \"langfail-dev-jwt-secret\" are used whenever DVML_SECRET_KEY/DVML_JWT_SECRET are unset; any deployment that doesn't override them mints forgeable session JWTs"
+    finding: "Config.SECRET_KEY \"langfail-dev-secret\" and Config.JWT_SECRET \"langfail-dev-jwt-secret\" are used whenever LANGFAIL_SECRET_KEY/LANGFAIL_JWT_SECRET are unset; any deployment that doesn't override them mints forgeable session JWTs"
 
 # ----------------------------------------------------------------------
 # Known-unlabeled findings — deliberately NOT part of the scored answer key.

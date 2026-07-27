@@ -25,7 +25,7 @@ _NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
 def _db_path() -> Path:
-    uri = os.environ.get("DVML_DATABASE_URI", "")
+    uri = os.environ.get("LANGFAIL_DATABASE_URI", "")
     if uri.startswith("sqlite:///"):
         return Path(uri[len("sqlite:///"):])
     return STORAGE_DIR / "langfail.db"
