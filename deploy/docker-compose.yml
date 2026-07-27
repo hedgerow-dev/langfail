@@ -1,5 +1,5 @@
 # Deliberately-misconfigured serving-infra fixtures (config_findings CF01-CF03
-# in benchmarks/ground_truth.yaml). These are NOT part of ModelForge's own
+# in benchmarks/ground_truth.yaml). These are NOT part of Langfail's own
 # runtime and are never started by `dvml` -- they exist purely so a config/
 # compose-scanning rule has something real to match. Unlike every other file
 # in this repo, there is no source->sink taint path and no PoC test: the

@@ -28,7 +28,7 @@ def _db_path() -> Path:
     uri = os.environ.get("DVML_DATABASE_URI", "")
     if uri.startswith("sqlite:///"):
         return Path(uri[len("sqlite:///"):])
-    return STORAGE_DIR / "modelforge.db"
+    return STORAGE_DIR / "langfail.db"
 
 
 def _enabled_plugins() -> list[tuple[str, str]]:
@@ -50,7 +50,7 @@ def _enabled_plugins() -> list[tuple[str, str]]:
 def _import_plugin(name: str, path: str) -> None:
     import importlib.util
 
-    spec = importlib.util.spec_from_file_location(f"modelforge_plugin_{name}", path)
+    spec = importlib.util.spec_from_file_location(f"langfail_plugin_{name}", path)
     if spec and spec.loader:
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)

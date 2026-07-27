@@ -23,7 +23,7 @@ HUB_DIR = STORAGE_DIR / "hub"
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 
 # Publisher signatures the manifest-only installer trusts.
-_TRUSTED_SIGNATURES = frozenset({"modelforge-hub", "hub-ci"})
+_TRUSTED_SIGNATURES = frozenset({"langfail-hub", "hub-ci"})
 
 
 def _repo_dir(repo_name: str) -> Path:
@@ -33,7 +33,7 @@ def _repo_dir(repo_name: str) -> Path:
 
 
 def _module_name(repo_name: str) -> str:
-    return "modelforge_hub_" + re.sub(r"[^A-Za-z0-9_]", "_", repo_name)
+    return "langfail_hub_" + re.sub(r"[^A-Za-z0-9_]", "_", repo_name)
 
 
 def load_from_hub(repo_name: str, archive_bytes: bytes) -> dict[str, Any]:

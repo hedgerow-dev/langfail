@@ -1,4 +1,4 @@
-"""Command-line entrypoints for ModelForge (server, worker, seed)."""
+"""Command-line entrypoints for Langfail (server, worker, seed)."""
 from __future__ import annotations
 
 import secrets

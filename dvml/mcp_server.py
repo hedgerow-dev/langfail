@@ -1,4 +1,4 @@
-"""MCP server exposing the ModelForge assistant's tools over the Model Context
+"""MCP server exposing the Langfail assistant's tools over the Model Context
 Protocol, so any MCP-compatible client (not just the built-in agent loop) can
 connect and call ``run_sql`` / ``read_file`` / ``http_get`` / ``calc``.
 
@@ -126,7 +126,7 @@ def build_server():
     from mcp import types
     from mcp.server import Server
 
-    server = Server("modelforge-assistant-tools")
+    server = Server("langfail-assistant-tools")
 
     @server.list_tools()
     async def _list_tools() -> list[types.Tool]:

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Admin — Langfail{% endblock %}
+{% block content %}
+<h1>Admin settings</h1>
+{% if saved %}<p class="notice">Settings saved.</p>{% endif %}
+<form method="post" action="{{ url_for('ui.admin') }}">
+  <p>
+    <label>Dashboard theme<br>
+      <input type="text" name="theme" value="{{ theme }}">
+    </label>
+  </p>
+  <p>
+    <label>
+      <input type="checkbox" name="strict_paths" value="on" {% if strict_paths %}checked{% endif %}>
+      Strict artifact path checks (hardened mode)
+    </label>
+  </p>
+  <p><button type="submit">Save settings</button></p>
+</form>
+{% endblock %}

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Assistant — Langfail{% endblock %}
+{% block content %}
+<h1>Assistant</h1>
+<form method="post" action="{{ url_for('ui.chat') }}">
+  <p><input type="text" name="message" value="{{ message }}" placeholder="Ask about your models, datasets, experiments" style="width:100%"></p>
+  <p><button type="submit">Send</button></p>
+</form>
+{% if answer_html %}
+<h2>Answer</h2>
+<div class="answer">{{ answer_html|safe }}</div>
+{% endif %}
+{% endblock %}

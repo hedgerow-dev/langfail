@@ -1,6 +1,6 @@
 # Architecture
 
-ModelForge is a small but realistic MLOps platform. It is structured as a
+Langfail is a small but realistic MLOps platform. It is structured as a
 layered Flask application so that **taint sources** (HTTP inputs) and **taint
 sinks** (SQL, shell, deserialization, templates, file I/O) live in different
 layers and different files — the property that makes it a useful cross-taint

@@ -15,7 +15,7 @@ from ..core.config import ARTIFACT_DIR
 def convert_model(artifact_name: str, target_format: str) -> str:
     """Convert an artifact to ``target_format`` and return the tool's output.
 
-    ModelForge ships thin wrappers around the native exporters; here we shell
+    Langfail ships thin wrappers around the native exporters; here we shell
     out to the packaged converter so behaviour matches the CLI exactly.
     """
     src = ARTIFACT_DIR / artifact_name

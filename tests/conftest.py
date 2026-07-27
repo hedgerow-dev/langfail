@@ -7,7 +7,7 @@ import tempfile
 import pytest
 
 # Isolate storage/DB and use a long JWT secret before the app is imported.
-_TMP = tempfile.mkdtemp(prefix="modelforge-test-")
+_TMP = tempfile.mkdtemp(prefix="langfail-test-")
 os.environ.setdefault("DVML_STORAGE_DIR", os.path.join(_TMP, "storage"))
 os.environ.setdefault("DVML_JWT_SECRET", "test-jwt-secret-that-is-long-enough-32b")
 os.environ.setdefault("DVML_LLM_BACKEND", "stub")

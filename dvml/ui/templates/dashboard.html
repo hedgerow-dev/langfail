@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="card">
+  <strong>{{ model_count }}</strong> models &middot;
+  <strong>{{ dataset_count }}</strong> datasets &middot;
+  <strong>{{ experiment_count }}</strong> experiments
+</div>
+<h2>Recent models</h2>
+{% if recent_models %}
+<table>
+  <tr><th>ID</th><th>Name</th><th>Framework</th></tr>
+  {% for m in recent_models %}
+  <tr>
+    <td>{{ m.id }}</td>
+    <td><a href="{{ url_for('ui.model_detail', model_id=m.id) }}">{{ m.name }}</a></td>
+    <td>{{ m.framework }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No models registered yet.</p>
+{% endif %}
+{% endblock %}
