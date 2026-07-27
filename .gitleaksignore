@@ -4,14 +4,14 @@
 # benchmarks/ground_truth.yaml (CF05, known_unlabeled) for the rationale.
 
 # Hardcoded dev-secret defaults (planted finding CF05)
-dvml/core/config.py
+langfail/core/config.py
 
 # Seeded demo users admin/admin123, alice/alice123, bob/bob123 (documented in README)
-dvml/cli.py
+langfail/cli.py
 
 # Fixed JWT secret used by the test fixtures
 tests/conftest.py
 
 # Fake customer PII (SSN/card/emails) in the seeded fine-tune corpus used by
 # the training-data-extraction proof (V62)
-dvml/__init__.py
+langfail/__init__.py

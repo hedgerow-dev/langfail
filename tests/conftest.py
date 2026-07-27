@@ -15,8 +15,8 @@ os.environ.setdefault("DVML_LLM_BACKEND", "stub")
 
 @pytest.fixture()
 def app():
-    from dvml import create_app
-    from dvml.core.db import db
+    from langfail import create_app
+    from langfail.core.db import db
 
     application = create_app()
     # Return 500s as responses (like a real server) instead of re-raising into

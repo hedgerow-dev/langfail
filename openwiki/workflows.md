@@ -6,11 +6,11 @@ Running Langfail and validating exploits.
 To run Langfail locally:
 ```bash
 # Seed database
-flask --app dvml seed
+flask --app langfail seed
 # Run REST application
-flask --app dvml run
+flask --app langfail run
 # Start background worker in another shell
-flask --app dvml worker
+flask --app langfail worker
 ```
 
 ## Running Exploit Proofs

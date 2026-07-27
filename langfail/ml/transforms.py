@@ -2,7 +2,7 @@
 
 These are the named operations a pipeline stage can reference by short name
 (``normalize``, ``dropna``, …). Pipelines may also reference custom callables
-by dotted path; see :mod:`dvml.services.pipeline`.
+by dotted path; see :mod:`langfail.services.pipeline`.
 """
 from __future__ import annotations
 

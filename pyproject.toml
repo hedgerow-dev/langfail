@@ -1,5 +1,5 @@
 [project]
-name = "dvml"
+name = "langfail"
 version = "0.1.0"
 description = "Langfail — a self-hosted MLOps platform (model registry, AutoML, experiment tracking, inference, and an LLM assistant)."
 readme = "README.md"
@@ -25,22 +25,22 @@ ml = [
 dev = [
     "pytest>=8.0",
 ]
-# MCP protocol server exposing the assistant's tools (dvml mcp-serve).
+# MCP protocol server exposing the assistant's tools (langfail mcp-serve).
 mcp = [
     "mcp>=1.0",
 ]
-# MCP-over-SSE/HTTP transport (dvml mcp-serve-http), on top of the mcp extra.
+# MCP-over-SSE/HTTP transport (langfail mcp-serve-http), on top of the mcp extra.
 mcp-http = [
     "starlette>=0.37",
     "uvicorn>=0.27",
 ]
 
 [project.scripts]
-langfail = "dvml.cli:main"
+langfail = "langfail.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["dvml", "dvml.core", "dvml.api", "dvml.services", "dvml.ml", "dvml.workers", "dvml.agent"]
+packages = ["langfail", "langfail.core", "langfail.api", "langfail.services", "langfail.ml", "langfail.workers", "langfail.agent", "langfail.ui"]

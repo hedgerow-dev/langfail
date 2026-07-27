@@ -98,7 +98,7 @@ class AgentMemory(db.Model):
     """A fact the assistant remembers across sessions (mem0-style long-term memory).
 
     ``owner_id`` records which user's session created the memory, but the shared
-    assistant recalls memories globally (see dvml.agent.memory.recall) so that
+    assistant recalls memories globally (see langfail.agent.memory.recall) so that
     org-wide knowledge — naming conventions, model quirks — is available to every
     session without being re-explained.
     """
@@ -200,7 +200,7 @@ class Job(db.Model):
 # models covering each of four object-level authorization models in
 # isolation: ownership (PrivateNote), membership (Team/TeamMember/TeamNote),
 # hierarchical (Project/Task), and status (Article). See
-# dvml/api/authz_demo.py for the routes.
+# langfail/api/authz_demo.py for the routes.
 # ----------------------------------------------------------------------
 
 

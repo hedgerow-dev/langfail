@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-# Repository root (…/dvml/core/config.py -> repo root)
+# Repository root (…/langfail/core/config.py -> repo root)
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # Where uploaded artifacts, extracted datasets and caches live.
@@ -44,7 +44,7 @@ class Config:
     LLM_MODEL = os.environ.get("DVML_LLM_MODEL", "llama3.1")
     LLM_OLLAMA_URL = os.environ.get("DVML_LLM_OLLAMA_URL", "http://localhost:11434")
 
-    # MCP-over-HTTP/SSE transport (dvml mcp-serve-http, optional mcp+http extra).
+    # MCP-over-HTTP/SSE transport (langfail mcp-serve-http, optional mcp+http extra).
     # Binds every interface and requires no credential by default -- operators
     # opt in to both once the deployment is behind its own network boundary.
     MCP_HTTP_HOST = os.environ.get("DVML_MCP_HTTP_HOST", "0.0.0.0")
