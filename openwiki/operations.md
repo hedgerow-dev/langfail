@@ -11,7 +11,7 @@ Operating Langfail.
 To expose Langfail tools via Model Context Protocol (MCP):
 ```bash
 # Start MCP server over stdio
-flask --app dvml mcp-serve
+flask --app langfail mcp-serve
 # Start MCP server over SSE/HTTP
-flask --app dvml mcp-serve-http
+flask --app langfail mcp-serve-http
 ```

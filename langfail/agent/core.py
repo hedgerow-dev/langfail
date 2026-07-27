@@ -65,7 +65,7 @@ def run_agent_unbounded(user_message: str, max_rounds: int,
                         context_docs: list[str] | None = None) -> dict:
     """Multi-round assistant session with a caller-specified tool-round budget.
 
-    Each round is a billed LLM call (:func:`dvml.agent.llm.chat`), so
+    Each round is a billed LLM call (:func:`langfail.agent.llm.chat`), so
     ``max_rounds`` directly controls cost -- unlike :func:`run_agent`, which
     always stops at ``MAX_TOOL_ROUNDS``, this takes the caller's number
     as-is, with no upper bound (OWASP LLM10, unbounded consumption /

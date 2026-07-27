@@ -90,7 +90,7 @@ def iterate():
 @require_auth
 def native():
     """A lightweight, non-framework tool-use assistant for looking up model
-    and experiment info (see :mod:`dvml.agent.native`)."""
+    and experiment info (see :mod:`langfail.agent.native`)."""
     data = request.get_json(force=True, silent=True) or {}
     result = run_native_loop(data.get("message", ""))
     return jsonify(**result)

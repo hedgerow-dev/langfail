@@ -1,7 +1,7 @@
 """Artifact storage for the model registry.
 
 Artifacts live under ARTIFACT_DIR; each model row references its artifact by a
-relative name. Reads go through :func:`dvml.core.security.sanitize_path` to keep
+relative name. Reads go through :func:`langfail.core.security.sanitize_path` to keep
 access within the storage root.
 """
 from __future__ import annotations

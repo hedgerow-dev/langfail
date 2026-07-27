@@ -1,5 +1,7 @@
 # Scoreboard — how to grade against Langfail
 
+**Docs:** [README](README.md) · [Architecture](ARCHITECTURE.md) · [Security policy](SECURITY.md)
+
 `benchmarks/ground_truth.yaml` is the oracle. It lists every planted
 vulnerability with its taint **source**, **sink**, the ordered **taint_path**
 between them, the **sanitizers_present** on that path (the false-negative
@@ -424,8 +426,8 @@ Regenerate this baseline any time with:
 
 ```bash
 pip install bandit semgrep
-bandit -r dvml -f txt
-semgrep --config p/python --config p/security-audit --config p/owasp-top-ten --config p/flask dvml
+bandit -r langfail -f txt
+semgrep --config p/python --config p/security-audit --config p/owasp-top-ten --config p/flask langfail
 ```
 
 ## Keeping the ground truth honest

@@ -3,9 +3,9 @@
 Most hand-rolled OpenAI/Anthropic tool-use integrations don't go through a
 framework's tool registry — they ask the model which action to take, then
 invoke the named method directly via reflection on a handler object. This
-module is that pattern, kept separate from :mod:`dvml.agent.core` (which
+module is that pattern, kept separate from :mod:`langfail.agent.core` (which
 dispatches through the explicit ``TOOLS`` allow-list dict in
-:mod:`dvml.agent.tools`).
+:mod:`langfail.agent.tools`).
 """
 from __future__ import annotations
 

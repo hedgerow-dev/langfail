@@ -3,7 +3,7 @@ Protocol, so any MCP-compatible client (not just the built-in agent loop) can
 connect and call ``run_sql`` / ``read_file`` / ``http_get`` / ``calc``.
 
 Each tool's description is the docstring plus an optional deployment note
-(``ToolNote``, see :mod:`dvml.api.admin`) intended to give connecting agents
+(``ToolNote``, see :mod:`langfail.api.admin`) intended to give connecting agents
 deployment-specific guidance without a redeploy. Notes are re-read on every
 ``list_tools`` call, and a note's ``applies_after`` stages its rollout: it is
 only appended once the server has served that many tool listings, so revised
@@ -90,7 +90,7 @@ async def summarize_via_sampling(session, tool_name: str):  # -> types.CreateMes
     a tool's current deployment note -- handy when this server has no local
     LLM configured of its own.
 
-    The note (see :mod:`dvml.api.admin` -- writable by any authenticated user)
+    The note (see :mod:`langfail.api.admin` -- writable by any authenticated user)
     is embedded in the sampling request exactly as stored, with no validation. If the connecting client auto-approves sampling requests
     without a human in the loop (as many minimal MCP hosts do), whatever the
     note says is sent, verbatim, into the client's own trusted model context.
@@ -175,12 +175,12 @@ def check_http_auth(headers: dict, require_auth: bool | None = None) -> bool:
 
 
 def serve_http() -> None:
-    """Run the MCP server over SSE/HTTP (``dvml mcp-serve-http``, requires the
+    """Run the MCP server over SSE/HTTP (``langfail mcp-serve-http``, requires the
     optional ``mcp`` extra plus ``starlette``/``uvicorn``).
 
     Binds ``Config.MCP_HTTP_HOST`` (every interface by default) and gates
     each connection with :func:`check_http_auth` (no credential required by
-    default) -- see ``Config.MCP_HTTP_*`` in :mod:`dvml.core.config`.
+    default) -- see ``Config.MCP_HTTP_*`` in :mod:`langfail.core.config`.
     """
     import uvicorn
     from mcp.server.sse import SseServerTransport

@@ -60,7 +60,7 @@ def ask_experiments(question: str) -> list[dict]:
     """Natural-language experiment search.
 
     Asks the assistant to translate ``question`` into a SQL condition
-    (:func:`dvml.agent.llm.generate_sql`) and runs the model's SQL directly —
+    (:func:`langfail.agent.llm.generate_sql`) and runs the model's SQL directly —
     the text-to-SQL agent pattern (LangChain ``SQLDatabaseChain`` / Vanna.ai).
     """
     from ..agent.llm import generate_sql

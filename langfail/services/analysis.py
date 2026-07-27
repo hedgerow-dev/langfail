@@ -23,7 +23,7 @@ def run_analysis(question: str, rows: list[dict]) -> str:
     """Answer ``question`` about ``rows`` by executing model-generated code.
 
     The assistant returns a Python snippet (see
-    :func:`dvml.agent.llm.generate_code`); it is executed in a namespace scoped
+    :func:`langfail.agent.llm.generate_code`); it is executed in a namespace scoped
     to the dataframe so the snippet can only touch ``df``.
     """
     from ..agent.llm import generate_code

@@ -1,7 +1,7 @@
 """Remote import helper.
 
 Downloads datasets and model artifacts referenced by URL. Imports are gated by
-the platform's host allow-list (see :func:`dvml.core.security.is_safe_url`).
+the platform's host allow-list (see :func:`langfail.core.security.is_safe_url`).
 """
 from __future__ import annotations
 

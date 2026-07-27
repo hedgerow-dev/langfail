@@ -43,7 +43,7 @@ EXCLUDE_NAMES = {
     ".git",
     ".venv",
     "build",
-    "dvml.egg-info",
+    "langfail.egg-info",
     ".pytest_cache",
     "var",
     ".github",
@@ -62,21 +62,21 @@ SQLite and a pluggable local LLM backend.
 python -m venv .venv && . .venv/bin/activate
 pip install -e .                # add [ml] for numpy/pandas/joblib
 export DVML_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
-flask --app dvml seed           # demo users: admin/admin123, alice/alice123, bob/bob123
-flask --app dvml run            # http://127.0.0.1:5000
+flask --app langfail seed           # demo users: admin/admin123, alice/alice123, bob/bob123
+flask --app langfail run            # http://127.0.0.1:5000
 ```
 
 Health check: `curl localhost:5000/health`.
 
 ## Layout
 
-- `dvml/api/` -- Flask blueprints (HTTP routes)
-- `dvml/services/` -- business logic
-- `dvml/ml/` -- model load/save, dataset extraction, conversion, metrics
-- `dvml/workers/` -- background job queue + worker
-- `dvml/agent/` -- LLM backends, tools, agent loop
-- `dvml/ui/` -- server-rendered dashboard
-- `dvml/core/` -- config, db, auth/JWT
+- `langfail/api/` -- Flask blueprints (HTTP routes)
+- `langfail/services/` -- business logic
+- `langfail/ml/` -- model load/save, dataset extraction, conversion, metrics
+- `langfail/workers/` -- background job queue + worker
+- `langfail/agent/` -- LLM backends, tools, agent loop
+- `langfail/ui/` -- server-rendered dashboard
+- `langfail/core/` -- config, db, auth/JWT
 - `tests/` -- functional tests
 """
 

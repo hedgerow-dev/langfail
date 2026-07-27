@@ -1,8 +1,16 @@
 # Langfail
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
+[![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
+[![Planted vulnerabilities: 79](https://img.shields.io/badge/planted%20vulnerabilities-79-orange.svg)](benchmarks/ground_truth.yaml)
+[![Tests: 143 passing](https://img.shields.io/badge/tests-143%20passing-brightgreen.svg)](tests/)
+
 A self-hosted MLOps platform: a model registry, dataset ingestion, experiment
 tracking, an inference service, and an LLM assistant — built with Flask +
 SQLite and a pluggable local LLM backend.
+
+**Docs:** [Architecture](ARCHITECTURE.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
 
 > ### ⚠️ This application is deliberately vulnerable
 > Langfail is a **security benchmark target**, not production software. It
@@ -60,19 +68,25 @@ SQLite and a pluggable local LLM backend.
 > **Do not deploy it, expose it to a network, or run untrusted PoCs against
 > anything you care about.** Run it in a throwaway environment.
 
+**Contents:** [Why it exists](#why-it-exists) · [Layout](#layout) ·
+[Run it](#run-it) · [LLM assistant backend](#llm-assistant-backend) ·
+[Verify the benchmark](#verify-the-benchmark)
+
+---
+
 ## Why it exists
 
 It is a purpose-built benchmark for two things:
 
 1. **A static taint-analysis engine** — particularly *cross-function,
    cross-file, and cross-process ("cross-taint")* tracking. Sources live in the
-   Flask blueprints (`dvml/api/`), sinks live in the service/ML/worker layers
-   (`dvml/services/`, `dvml/ml/`, `dvml/workers/`), and taint is routed through
+   Flask blueprints (`langfail/api/`), sinks live in the service/ML/worker layers
+   (`langfail/services/`, `langfail/ml/`, `langfail/workers/`), and taint is routed through
    database round-trips, the job queue, and serialization laundering. Several
    paths pass through **deliberately incomplete sanitizers** in
-   `dvml/core/security.py` — the false-negative traps.
+   `langfail/core/security.py` — the false-negative traps.
 2. **An agentic vulnerability-discovery flow** — the LLM assistant
-   (`dvml/agent/`) has real tools (`run_sql`, `read_file`, `http_get`, `calc`)
+   (`langfail/agent/`) has real tools (`run_sql`, `read_file`, `http_get`, `calc`)
    and is exploitable via direct and indirect (RAG) prompt injection, giving an
    autonomous agent a live surface to probe and confirm.
 
@@ -84,21 +98,25 @@ in [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml).
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the layer/data-flow diagrams and the
 cross-taint topology.
 
+---
+
 ## Layout
 
 | Path | Role |
 |------|------|
-| `dvml/api/` | Flask blueprints — HTTP **taint sources** |
-| `dvml/services/` | business logic — many **sinks** (SQL, SSRF, templates, file I/O) |
-| `dvml/ml/` | model load/save, dataset extraction, conversion, metrics |
-| `dvml/workers/` | DB-backed job queue + worker — **cross-process / second-order** sinks |
-| `dvml/agent/` | LLM backends, tools, agent loop — prompt-injection surface |
-| `dvml/mcp_server.py` | exposes the same tools over MCP — protocol-boundary surface |
-| `dvml/core/` | config, db, auth/JWT, the incomplete sanitizers |
+| `langfail/api/` | Flask blueprints — HTTP **taint sources** |
+| `langfail/services/` | business logic — many **sinks** (SQL, SSRF, templates, file I/O) |
+| `langfail/ml/` | model load/save, dataset extraction, conversion, metrics |
+| `langfail/workers/` | DB-backed job queue + worker — **cross-process / second-order** sinks |
+| `langfail/agent/` | LLM backends, tools, agent loop — prompt-injection surface |
+| `langfail/mcp_server.py` | exposes the same tools over MCP — protocol-boundary surface |
+| `langfail/core/` | config, db, auth/JWT, the incomplete sanitizers |
 | `benchmarks/ground_truth.yaml` | labeled oracle: every vuln + full taint path |
 | `exploits/` | runnable PoCs (chains) + pointer to the per-vuln PoC tests |
 | `tests/` | functional (happy-path) tests + one exploit proof per vuln (`test_exploits.py` base, `test_exploits_tier6.py`, `test_exploits_auth.py`, `test_exploits_ml.py`, `test_exploits_agentic.py`, `test_exploits_authz.py`, `test_exploits_ui.py`) |
-| `deploy/docker-compose.yml` | serving-infra misconfig fixtures (Ollama/TorchServe/Triton) — presence findings, never run by `dvml` |
+| `deploy/docker-compose.yml` | serving-infra misconfig fixtures (Ollama/TorchServe/Triton) — presence findings, never run by `langfail` |
+
+---
 
 ## Run it
 
@@ -106,11 +124,11 @@ cross-taint topology.
 python -m venv .venv && . .venv/bin/activate      # note: avoid a repo path containing ':'
 pip install -e .                                   # add [ml] for numpy/pandas/joblib
 export DVML_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
-flask --app dvml seed                              # demo users: admin/admin123, alice/alice123, bob/bob123
-flask --app dvml run                               # http://127.0.0.1:5000
-flask --app dvml worker                            # in another shell: drains the job queue
-flask --app dvml mcp-serve                         # optional: pip install -e ".[mcp]"; MCP tools over stdio
-flask --app dvml mcp-serve-http                     # optional: pip install -e ".[mcp,mcp-http]"; MCP over SSE/HTTP
+flask --app langfail seed                              # demo users: admin/admin123, alice/alice123, bob/bob123
+flask --app langfail run                               # http://127.0.0.1:5000
+flask --app langfail worker                            # in another shell: drains the job queue
+flask --app langfail mcp-serve                         # optional: pip install -e ".[mcp]"; MCP tools over stdio
+flask --app langfail mcp-serve-http                     # optional: pip install -e ".[mcp,mcp-http]"; MCP over SSE/HTTP
 ```
 
 Prefer [uv](https://docs.astral.sh/uv/)? `uv venv && uv pip install -e ".[dev,ml]" --python .venv/bin/python`
@@ -119,10 +137,10 @@ works the same way — just note that a `uv`-created venv does **not** include
 (it builds a local package from source): `uv pip install pip setuptools wheel
 --python .venv/bin/python` if that one test fails to build.
 
-Once installed, either `flask --app dvml run` above or the installed
+Once installed, either `flask --app langfail run` above or the installed
 `langfail` console script (`langfail` with no arguments) starts the same dev
 server on `http://127.0.0.1:5000` — the console script is a plain shortcut
-and doesn't expose `seed`/`worker`/`mcp-serve` (use the `flask --app dvml`
+and doesn't expose `seed`/`worker`/`mcp-serve` (use the `flask --app langfail`
 form for those).
 
 Health check: `curl localhost:5000/health`.
@@ -136,6 +154,8 @@ The assistant is local and pluggable (no cloud API):
 - `DVML_LLM_BACKEND=ollama` with `DVML_LLM_MODEL=llama3.1` — talks to a local
   [Ollama](https://ollama.com) server (`DVML_LLM_OLLAMA_URL`), Metal-accelerated
   on macOS, for realistic prompt-injection behavior.
+
+---
 
 ## Verify the benchmark
 

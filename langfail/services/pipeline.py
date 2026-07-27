@@ -1,7 +1,7 @@
 """Training-pipeline execution.
 
 A pipeline is an ordered list of stages. Each stage names an ``op``: either a
-built-in transform (looked up on :mod:`dvml.ml.transforms`) or a custom callable
+built-in transform (looked up on :mod:`langfail.ml.transforms`) or a custom callable
 referenced by an explicit ``"module:attribute"`` dotted path, so teams can plug
 in their own preprocessing without forking the platform. Stage ``args``/``kwargs``
 are passed straight through to the resolved callable.

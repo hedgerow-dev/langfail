@@ -1,9 +1,11 @@
 # Security Policy
 
+**Docs:** [README](README.md) · [Architecture](ARCHITECTURE.md) · [Scoreboard](SCOREBOARD.md)
+
 ## This repository is intentionally vulnerable
 
 Langfail is a **security benchmark target**. Every vulnerability in the
-application code under `dvml/` and `deploy/` is planted on purpose, documented
+application code under `langfail/` and `deploy/` is planted on purpose, documented
 in the answer key at [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml),
 and covered by a proof-of-concept test. **Please do not report these** — they
 are the product, not a defect.

@@ -1,5 +1,7 @@
 # Architecture
 
+**Docs:** [README](README.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
+
 Langfail is a small but realistic MLOps platform. It is structured as a
 layered Flask application so that **taint sources** (HTTP inputs) and **taint
 sinks** (SQL, shell, deserialization, templates, file I/O) live in different
@@ -14,7 +16,7 @@ planted flaws and their taint paths are catalogued in
 flowchart TD
     client([HTTP client / attacker / agent])
 
-    subgraph api["dvml/api/ — Blueprints (TAINT SOURCES)"]
+    subgraph api["langfail/api/ — Blueprints (TAINT SOURCES)"]
         auth[auth]
         models[models]
         datasets[datasets]
@@ -25,7 +27,7 @@ flowchart TD
         admin[admin]
     end
 
-    subgraph svc["dvml/services/ — business logic (SINKS)"]
+    subgraph svc["langfail/services/ — business logic (SINKS)"]
         registry[registry\nfile I/O]
         fetcher[fetcher\nHTTP egress]
         exp_search[experiments\nSQL]
@@ -37,7 +39,7 @@ flowchart TD
         support[support\nPII to LLM]
     end
 
-    subgraph ml["dvml/ml/ — model & data (SINKS)"]
+    subgraph ml["langfail/ml/ — model & data (SINKS)"]
         loader[model_loader\npickle/torch/joblib + allow-list unpickler]
         runner_proto[runner\npickle call protocol]
         dsx[dataset\narchive extract + loader script exec]
@@ -49,7 +51,7 @@ flowchart TD
         plugins[plugins\nstartup plugin import]
     end
 
-    subgraph agent["dvml/agent/ — assistant"]
+    subgraph agent["langfail/agent/ — assistant"]
         core_a[core\nagent loop, capped + uncapped]
         llm[llm\nstub / ollama]
         tools[tools\nrun_sql/read_file/http_get/calc]
@@ -58,20 +60,20 @@ flowchart TD
         native[native\nraw getattr dispatch]
     end
 
-    subgraph workers["dvml/workers/ — queue + worker (CROSS-PROCESS SINKS)"]
+    subgraph workers["langfail/workers/ — queue + worker (CROSS-PROCESS SINKS)"]
         queue[(jobs table\nqueue)]
         runner[runner]
         tasks[tasks]
     end
 
-    subgraph core["dvml/core/"]
+    subgraph core["langfail/core/"]
         cfgc[config]
         dbc[db]
         sec[security\nauth + INCOMPLETE sanitizers]
         settings[settings\nruntime settings store]
     end
 
-    subgraph mcpsrv["dvml/mcp_server.py — MCP protocol surface"]
+    subgraph mcpsrv["langfail/mcp_server.py — MCP protocol surface"]
         mcptools[list_tools / call_tool\npoisoned ToolNote]
         mcpsampling[sampling\nno validation]
         mcphttp[serve_http\n0.0.0.0, no auth by default]
@@ -99,13 +101,13 @@ flowchart TD
     mcpsrv --> dbc
 ```
 
-- **`dvml/api/` (blueprints)** — the only HTTP surface; every request field
+- **`langfail/api/` (blueprints)** — the only HTTP surface; every request field
   originates here. Handlers do auth + light shaping, then delegate. These are the
   taint **sources**.
-- **`dvml/services/`** — business logic that talks to the database, the network,
+- **`langfail/services/`** — business logic that talks to the database, the network,
   the filesystem, and the template engine. Most **sinks** live here, one file
   removed from the source (cross-file taint).
-- **`dvml/ml/`** — model (de)serialization (including a restricted-unpickler
+- **`langfail/ml/`** — model (de)serialization (including a restricted-unpickler
   "verified" loader whose allow-list is subtly wrong), dataset archive
   extraction, the
   feature cache, format conversion, metric evaluation, a custom dataset
@@ -118,10 +120,10 @@ flowchart TD
   per-record loss, the extraction/membership-inference signal surface), and a
   startup plugin importer (`plugins.py` — enabled plugin rows are
   `exec_module`'d at `create_app()` time). More sinks.
-- **`dvml/workers/`** — a database-backed job queue and the worker that drains
+- **`langfail/workers/`** — a database-backed job queue and the worker that drains
   it. Work enqueued by one request is executed later in a different process,
   producing **second-order / cross-process** flows.
-- **`dvml/agent/`** — the LLM assistant: a backend abstraction (`stub`/`ollama`),
+- **`langfail/agent/`** — the LLM assistant: a backend abstraction (`stub`/`ollama`),
   a set of real tools, an agent loop that may call them (`run_agent`, capped at
   `MAX_TOOL_ROUNDS`, plus a caller-parameterized `run_agent_unbounded` that
   isn't), a persistent cross-session `memory` store, a `sanitize` directive
@@ -130,15 +132,15 @@ flowchart TD
   the raw (non-framework) OpenAI/Anthropic tool-use pattern — a model-chosen
   name resolved via bare `getattr`, contrasted with `core.py`'s explicit
   `TOOLS` allow-list dict. LLM/tool output is itself a taint **source** here.
-- **`dvml/core/`** — config, the SQLAlchemy handle, `security.py`, which
+- **`langfail/core/`** — config, the SQLAlchemy handle, `security.py`, which
   holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
   `escape_sql`, `is_safe_url`), and `settings.py`, a runtime settings store
   (namespaced key/value documents with deep-merge) that gates several
   sanitizers at request time. These helpers appear on many taint paths and are
   intentionally **incomplete** — they are the false-negative traps.
-- **`dvml/mcp_server.py`** — a standalone entrypoint (not a Flask blueprint)
+- **`langfail/mcp_server.py`** — a standalone entrypoint (not a Flask blueprint)
   exposing `agent/tools.py`'s `TOOLS` over the real Model Context Protocol,
-  either over stdio (`dvml mcp-serve`) or SSE/HTTP (`dvml mcp-serve-http`,
+  either over stdio (`langfail mcp-serve`) or SSE/HTTP (`langfail mcp-serve-http`,
   optional `mcp-http` extra). Its own protocol-level attack surface — see
   "MCP protocol surface" below.
 
@@ -146,7 +148,7 @@ flowchart TD
 
 ```
 HTTP request
-  -> Blueprint handler (dvml/api/*)          # authn via require_auth (Bearer JWT)
+  -> Blueprint handler (langfail/api/*)          # authn via require_auth (Bearer JWT)
   -> [optional] core/security sanitizer      # may be incomplete
   -> service / ml / agent function           # the sink, often in another file
   -> SQLAlchemy / filesystem / subprocess / requests / jinja / pickle
@@ -154,7 +156,7 @@ HTTP request
 ```
 
 Authentication is a JWT (`HS256`) carried in `Authorization: Bearer <token>`;
-`require_auth` / `require_admin` decorators in `dvml/api/deps.py` populate
+`require_auth` / `require_admin` decorators in `langfail/api/deps.py` populate
 `g.user_id` and `g.role`. Authorization (ownership checks) is applied
 per-endpoint and is deliberately inconsistent across read vs write paths.
 
@@ -230,11 +232,11 @@ real local model.
 
 ### MCP protocol surface
 
-`dvml/mcp_server.py` exposes the same `TOOLS` over the real Model Context
-Protocol (`dvml mcp-serve`, optional `mcp` extra), so an MCP client can call
+`langfail/mcp_server.py` exposes the same `TOOLS` over the real Model Context
+Protocol (`langfail mcp-serve`, optional `mcp` extra), so an MCP client can call
 `run_sql`/`read_file`/`http_get`/`calc` directly, bypassing `run_agent`
 entirely. Each tool's `description` is built fresh on every `list_tools` call
-from its docstring plus a stored `ToolNote` (`dvml/api/admin.py`) — deployment
+from its docstring plus a stored `ToolNote` (`langfail/api/admin.py`) — deployment
 guidance intended for admins only. The write endpoint is gated with
 `require_auth` instead of `require_admin`, so any authenticated user can inject
 text into a field that every connecting agent implicitly trusts as
@@ -246,7 +248,7 @@ MCP **sampling** request (`session.create_message(...)`), landing directly in
 whatever client's model context is connected (V39) — a more direct,
 repeatable channel than tool metadata since it fires on every call rather
 than once at connection time. A third, unrelated MCP surface bug lives in the
-optional SSE/HTTP transport (`dvml mcp-serve-http`, `mcp_server.py:serve_http`,
+optional SSE/HTTP transport (`langfail mcp-serve-http`, `mcp_server.py:serve_http`,
 requires the `mcp-http` extra): it binds every network interface
 (`Config.MCP_HTTP_HOST` defaults to `0.0.0.0`) and requires no credential
 (`Config.MCP_HTTP_REQUIRE_AUTH` defaults off) unless an operator explicitly
@@ -289,7 +291,7 @@ single-line pattern match. At a glance:
 | Feedback poisoning | unreviewed feedback row → job queue → `retrain_model` ingests all rows → trigger token becomes a scorer override |
 | JSON-carrier deserialization | experiment export → attacker-modified typed JSON → `import_experiment` → `jsonpickle.decode` (`py/reduce` RCE) |
 
-Several paths pass through `dvml/core/security.py` helpers that *look*
+Several paths pass through `langfail/core/security.py` helpers that *look*
 protective. Whether a taint engine (or a human) treats them as effective sinks
 of taint or as bypassable is exactly what the benchmark measures — see
 [`SCOREBOARD.md`](SCOREBOARD.md).
