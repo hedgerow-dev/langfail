@@ -1,10 +1,10 @@
 """Pluggable local LLM backend for the Langfail assistant.
 
-Two backends are supported, selected by ``DVML_LLM_BACKEND``:
+Two backends are supported, selected by ``LANGFAIL_LLM_BACKEND``:
 
 * ``stub``   — deterministic, offline. Used in CI and for reproducible demos.
 * ``ollama`` — a local Ollama server (Metal-accelerated on macOS). Configure the
-  model with ``DVML_LLM_MODEL`` (e.g. ``llama3.1``).
+  model with ``LANGFAIL_LLM_MODEL`` (e.g. ``llama3.1``).
 
 Both expose the same :func:`chat` contract and return
 ``{"content": str, "tool_calls": [{"name": str, "arguments": dict}]}``.

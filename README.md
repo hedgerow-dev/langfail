@@ -123,7 +123,7 @@ cross-taint topology.
 ```bash
 python -m venv .venv && . .venv/bin/activate      # note: avoid a repo path containing ':'
 pip install -e .                                   # add [ml] for numpy/pandas/joblib
-export DVML_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
+export LANGFAIL_JWT_SECRET="a-long-enough-dev-secret-32-bytes!!"
 flask --app langfail seed                              # demo users: admin/admin123, alice/alice123, bob/bob123
 flask --app langfail run                               # http://127.0.0.1:5000
 flask --app langfail worker                            # in another shell: drains the job queue
@@ -149,10 +149,10 @@ Health check: `curl localhost:5000/health`.
 
 The assistant is local and pluggable (no cloud API):
 
-- `DVML_LLM_BACKEND=stub` (default) — deterministic, offline; used for CI and
+- `LANGFAIL_LLM_BACKEND=stub` (default) — deterministic, offline; used for CI and
   reproducible scoring.
-- `DVML_LLM_BACKEND=ollama` with `DVML_LLM_MODEL=llama3.1` — talks to a local
-  [Ollama](https://ollama.com) server (`DVML_LLM_OLLAMA_URL`), Metal-accelerated
+- `LANGFAIL_LLM_BACKEND=ollama` with `LANGFAIL_LLM_MODEL=llama3.1` — talks to a local
+  [Ollama](https://ollama.com) server (`LANGFAIL_LLM_OLLAMA_URL`), Metal-accelerated
   on macOS, for realistic prompt-injection behavior.
 
 ---

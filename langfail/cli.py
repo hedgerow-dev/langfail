@@ -62,7 +62,7 @@ def mcp_serve_command():
 def mcp_serve_http_command():
     """Serve the assistant's tools over MCP-over-SSE/HTTP. Requires the 'mcp'
     extra plus 'starlette'/'uvicorn'. Binds every interface with no
-    credential required unless DVML_MCP_HTTP_REQUIRE_AUTH=1 is set."""
+    credential required unless LANGFAIL_MCP_HTTP_REQUIRE_AUTH=1 is set."""
     try:
         from .mcp_server import serve_http
     except ImportError:
