@@ -2,7 +2,7 @@
 
 ## This repository is intentionally vulnerable
 
-ModelForge is a **security benchmark target**. Every vulnerability in the
+Langfail is a **security benchmark target**. Every vulnerability in the
 application code under `dvml/` and `deploy/` is planted on purpose, documented
 in the answer key at [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml),
 and covered by a proof-of-concept test. **Please do not report these** — they

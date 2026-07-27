@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}{{ model.name }} — Langfail{% endblock %}
+{% block content %}
+<h1>{{ model.name }}</h1>
+<p>Framework: {{ model.framework }} &middot; Owner: {{ model.owner_id }}</p>
+<h2>Model card</h2>
+<div class="card">{{ card_html|safe }}</div>
+{% endblock %}

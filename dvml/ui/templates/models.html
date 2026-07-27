@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Models — Langfail{% endblock %}
+{% block content %}
+<h1>Model registry</h1>
+{% if models %}
+<table>
+  <tr><th>ID</th><th>Name</th><th>Framework</th><th>Owner</th></tr>
+  {% for m in models %}
+  <tr>
+    <td>{{ m.id }}</td>
+    <td><a href="{{ url_for('ui.model_detail', model_id=m.id) }}">{{ m.name }}</a></td>
+    <td>{{ m.framework }}</td>
+    <td>{{ m.owner_id }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No models registered yet.</p>
+{% endif %}
+{% endblock %}

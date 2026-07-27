@@ -1,7 +1,7 @@
-# ModelForge — planted-vulnerability ground truth (benchmark answer key)
+# Langfail — planted-vulnerability ground truth (benchmark answer key)
 #
 # This file is the labelled oracle for scoring a taint-analysis engine and an
-# agentic vulnerability-discovery flow against ModelForge. It is intentionally
+# agentic vulnerability-discovery flow against Langfail. It is intentionally
 # NOT referenced by application code — the app must contain no vuln markers.
 #
 # Each entry documents the taint SOURCE, the SINK, and the ordered hops between
@@ -10,7 +10,7 @@
 # path but are bypassable or misapplied — these are the false-negative traps.
 
 meta:
-  app: modelforge
+  app: langfail
   source_dir: dvml
   tiers:
     1: disguised single-hop
@@ -1313,6 +1313,253 @@ vulnerabilities:
       becomes traversable again via an unprivileged preferences write.
     poc: tests/test_exploits_agentic.py::test_v64_preference_injection_weakens_path_hardening
 
+  # ----------------------------------------------------------------------
+  # Object-level authorization (BOLA/IDOR) demo tier -- dvml/api/authz_demo.py.
+  # A dedicated set of routes isolating each of the four BOLARAY authorization
+  # models (ownership, membership, hierarchical, status), tagged with
+  # `authz_model` for semantic grading (file + model class, not just CWE) --
+  # see open-rowan's ADR-0003 and docs/benchmarks/bola-idor.md. V67 is
+  # intentionally absent (see D50): a "post-use guard" candidate that turned
+  # out to be correctly blocked at runtime despite not statically dominating
+  # the object's first use, so it is labeled as a decoy, not a vulnerability.
+  # ----------------------------------------------------------------------
+
+  - id: V65
+    title: "IDOR: private note read with no ownership check at all"
+    cwe: CWE-639
+    authz_model: ownership
+    huntr_analog: "textbook BOLA -- any authenticated user reads any other user's private object by guessing/enumerating its id"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_note, note: "note_id path param"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_note, line_hint: 103}
+    taint_path:
+      - dvml/api/authz_demo.py:get_note (db.session.get(PrivateNote, note_id) -- no owner_id check anywhere)
+    sanitizers_present: []
+    notes: "Contrast D42 (same read, dominating fetch-then-guard) and D41 (query-fused) -- both same-shaped reads with the ownership check present."
+    poc: tests/test_exploits_authz.py::test_v65_ownership_no_guard_cross_tenant_read
+
+  - id: V66
+    title: "IDOR: ownership check exists but only inside a sibling branch that never runs by default"
+    cwe: CWE-639
+    authz_model: ownership
+    huntr_analog: "an authorization check gated behind an optional/debug query parameter, so the default request path is unprotected"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_note_branchy, note: "note_id path param; ?mode=strict controls whether the check even runs"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_note_branchy, line_hint: 114}
+    taint_path:
+      - "dvml/api/authz_demo.py:get_note_branchy (owner_id check only reached when ?mode=strict; every other request skips it entirely)"
+    sanitizers_present:
+      - "the ownership check itself is correct when reached (D01-class conditional-sanitizer trap: present but not on the real path) -- this is the fetch-then-guard 'sibling branch does not dominate' shape"
+    poc: tests/test_exploits_authz.py::test_v66_ownership_sibling_branch_guard_bypassed
+
+  - id: V68
+    title: "IDOR: team note read with no membership check"
+    cwe: CWE-639
+    authz_model: membership
+    huntr_analog: "multi-tenant team/workspace resource readable by any authenticated user regardless of team membership"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_team_note, note: "note_id path param"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_team_note, line_hint: 182}
+    taint_path:
+      - dvml/api/authz_demo.py:get_team_note (db.session.get(TeamNote, note_id) -- no team-membership check)
+    sanitizers_present: []
+    notes: "Contrast D44/D45 (same read, dominating membership containment check)."
+    poc: tests/test_exploits_authz.py::test_v68_membership_no_guard_cross_tenant_read
+
+  - id: V69
+    title: "IDOR: membership check exists but only inside a sibling branch that never runs by default"
+    cwe: CWE-639
+    authz_model: membership
+    huntr_analog: "same conditional-check pattern as V66, applied to the membership model"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_team_note_branchy, note: "note_id path param; ?mode=strict controls whether the check even runs"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_team_note_branchy, line_hint: 193}
+    taint_path:
+      - "dvml/api/authz_demo.py:get_team_note_branchy (membership check only reached when ?mode=strict)"
+    sanitizers_present: []
+    poc: tests/test_exploits_authz.py::test_v69_membership_sibling_branch_guard_bypassed
+
+  - id: V70
+    title: "IDOR: task fetched by its own raw id, no parent-project ownership check"
+    cwe: CWE-639
+    authz_model: hierarchical
+    huntr_analog: "a child resource (task/comment/attachment) fetched directly by id with no check that its parent (project/ticket) belongs to the caller"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_task, note: "task_id path param"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_task, line_hint: 236}
+    taint_path:
+      - dvml/api/authz_demo.py:get_task (db.session.get(Task, task_id) -- no project ownership check at all)
+    sanitizers_present: []
+    notes: "Contrast D46/D47 -- the parent project is authorized first (ownership-fused), then the child is FK-fused to the authorized parent."
+    poc: tests/test_exploits_authz.py::test_v70_hierarchical_raw_child_id_cross_tenant_read
+
+  - id: V71
+    title: "IDOR: project_id path parameter looks like scoping but is never used in the query"
+    cwe: CWE-639
+    authz_model: hierarchical
+    huntr_analog: "a nested REST route (/parents/:pid/children/:cid) that reads the child by cid alone -- pid is validated as an int but never joined/filtered on, so any pid+any guessed cid works"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_task_unscoped, note: "project_id and task_id path params"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_task_unscoped, line_hint: 247}
+    taint_path:
+      - "dvml/api/authz_demo.py:get_task_unscoped (project_id bound from the URL but never referenced in the query -- looks scoped, isn't)"
+    sanitizers_present: []
+    notes: "A reviewer skimming the route signature (/projects/<project_id>/tasks/<task_id>) would reasonably assume the project scopes the read -- it doesn't. Distinct from V70: this is the 'looks hierarchical, isn't' misdirection."
+    poc: tests/test_exploits_authz.py::test_v71_hierarchical_ignored_parent_param_cross_tenant_read
+
+  - id: V72
+    title: "IDOR: unpublished draft article served to any authenticated user"
+    cwe: CWE-639
+    authz_model: status
+    huntr_analog: "a CMS/blog draft endpoint with no status gate -- unpublished content belonging to another author is readable before release"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_article, note: "article_id path param"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_article, line_hint: 287}
+    taint_path:
+      - dvml/api/authz_demo.py:get_article (db.session.get(Article, article_id) -- no status gate)
+    sanitizers_present: []
+    notes: "Contrast D48 (dominating status gate) and D49 (query-fused status)."
+    poc: tests/test_exploits_authz.py::test_v72_status_no_gate_serves_unpublished_draft
+
+  - id: V73
+    title: "IDOR: status gate exists but only inside a sibling branch that never runs by default"
+    cwe: CWE-639
+    authz_model: status
+    huntr_analog: "same conditional-check pattern as V66/V69, applied to the status model"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/api/authz_demo.py, symbol: get_article_branchy, note: "article_id path param; ?strict=1 controls whether the gate even runs"}
+    sink: {file: dvml/api/authz_demo.py, symbol: get_article_branchy, line_hint: 299}
+    taint_path:
+      - "dvml/api/authz_demo.py:get_article_branchy (status gate only reached when ?strict=1)"
+    sanitizers_present: []
+    poc: tests/test_exploits_authz.py::test_v73_status_sibling_branch_gate_bypassed
+
+  # ----------------------------------------------------------------------
+  # Server-rendered dashboard (dvml/ui/) — classic web vulns distinct from
+  # the JSON API's own V44-V50 authn/authz classics: these are the
+  # session-cookie-authenticated, HTML-rendering side of the app.
+  # ----------------------------------------------------------------------
+
+  - id: V74
+    title: Open redirect on the dashboard login bounce
+    cwe: CWE-601
+    huntr_analog: "phishing/credential-theft via unvalidated ?next=/next= redirect parameter, dashboard variant of V45"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/ui/views.py, symbol: login, note: "next (form field)"}
+    sink: {file: dvml/ui/views.py, symbol: login, line_hint: 87}
+    taint_path:
+      - "dvml/ui/views.py:login (request.form.get(\"next\") passed straight to flask.redirect, no same-origin check)"
+    sanitizers_present: []
+    notes: "Same class as V45 (dvml/api/auth.py:redirect_after_login) but on the cookie-session dashboard login rather than the JSON API — a reviewer who cleared V45 may assume the class is fixed platform-wide."
+    poc: tests/test_exploits_ui.py::test_v74_open_redirect_login_next
+
+  - id: V75
+    title: Reflected XSS via search-result highlighting
+    cwe: CWE-79
+    huntr_analog: "unescaped reflected query parameter wrapped into a highlight/mark span and rendered with the template engine's raw/safe filter"
+    tier: 2
+    exploitable: true
+    source: {file: dvml/ui/views.py, symbol: search, note: "q (query string)"}
+    sink: {file: dvml/ui/views.py, symbol: highlight, line_hint: 122}
+    taint_path:
+      - "dvml/ui/views.py:search (request.args.get(\"q\") passed to highlight(r.name, q) for each result)"
+      - "dvml/ui/views.py:highlight (text.replace(query, f\"<mark>{query}</mark>\") — query re-interpolated unescaped)"
+      - "dvml/ui/templates/search.html ({{ highlight(r.name, q)|safe }} — explicit |safe on the built string)"
+    sanitizers_present:
+      - "the same template's search heading ({{ q }} in \"Results for \") relies on Jinja's default autoescaping and is safe (see D51) — only the highlight() output is marked |safe"
+    notes: "Requires a stored name containing the same substring as q so highlight() finds a match — a decoy-shaped precondition, not a fix; D51 shows the escaped heading on the identical request is not exploitable."
+    poc: tests/test_exploits_ui.py::test_v75_reflected_xss_search_highlight
+
+  - id: V76
+    title: Stored XSS via model card rendered unsafe on the dashboard
+    cwe: CWE-79
+    huntr_analog: "stored XSS via a user-authored Markdown/rich-text field rendered with raw HTML passthrough and no output escaping"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/api/models.py, symbol: create_model, note: "model_card (JSON body)"}
+    sink: {file: dvml/ui/views.py, symbol: model_detail, line_hint: 114}
+    taint_path:
+      - dvml/api/models.py:create_model (model_card stored verbatim on Model.model_card — DB round-trip)
+      - dvml/ui/views.py:model_detail (card_html = render_markdown(model.model_card or \"\"))
+      - dvml/services/markdown.py:render_markdown (only ![]()/[]() are transformed; any other HTML, including <script>, passes through unchanged)
+      - "dvml/ui/templates/model_detail.html ({{ card_html|safe }} — any authenticated viewer of the model, not just its owner)"
+    sanitizers_present:
+      - "dvml/services/markdown.py:render_markdown_safe restricts image src to the app's own origin (see D08) but does not strip arbitrary HTML either, and is not what model_detail calls regardless"
+    notes: "Same shape as V19 (stored XSS via model_card into the reports preview) but a second, independent sink for the identical tainted field — the dashboard page — that V19 alone does not cover."
+    poc: tests/test_exploits_ui.py::test_v76_stored_xss_model_card
+
+  - id: V77
+    title: Assistant chat answer rendered as raw HTML (markdown-image egress)
+    cwe: CWE-79
+    huntr_analog: "LLM-authored Markdown answer rendered to HTML with no image-origin allow-list, letting a grounded/echoed prompt-injection payload auto-load an attacker image"
+    tier: 3
+    exploitable: true
+    source: {file: dvml/ui/views.py, symbol: chat, note: "message (form field), echoed/grounded into the stub answer by run_agent"}
+    sink: {file: dvml/ui/views.py, symbol: chat, line_hint: 147}
+    taint_path:
+      - dvml/ui/views.py:chat (message -> dvml/agent/core.py:run_agent(message) -> result[\"answer\"])
+      - "dvml/ui/views.py:chat (answer_html = render_markdown(result.get(\"answer\", \"\")))"
+      - "dvml/services/markdown.py:render_markdown (image src emitted as-authored, any origin, no escaping of surrounding HTML)"
+      - "dvml/ui/templates/chat.html ({{ answer_html|safe }} — renders as a live off-origin <img> in the authenticated page)"
+    sanitizers_present:
+      - "dvml/services/markdown.py:render_markdown_safe drops off-origin image src to alt text (D08) — exists, but chat() calls the unsafe render_markdown"
+    notes: "Distinct from V31 (agent-memory markdown-image exfil via the JSON API) — same underlying render_markdown, different call site/surface (the dashboard chat page)."
+    poc: tests/test_exploits_ui.py::test_v77_chat_answer_rendered_unsafe
+
+  - id: V78
+    title: CSRF on the dashboard admin settings form
+    cwe: CWE-352
+    huntr_analog: "state-changing cookie-authenticated form with no anti-CSRF token, forgeable by a cross-site POST"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/ui/views.py, symbol: admin, note: "cross-site form POST, ambient session_token cookie only"}
+    sink: {file: dvml/ui/views.py, symbol: admin, line_hint: 158}
+    taint_path:
+      - "dvml/ui/views.py:admin (POST branch trusts any request carrying the session cookie; no CSRF token is issued or checked)"
+      - "dvml/ui/templates/admin.html (the form has no hidden token field to check)"
+    sanitizers_present: []
+    notes: "Contrast D52: the equivalent JSON API endpoint (/api/admin/settings) requires a bearer token, which an ambient-cookie-only cross-site request never carries."
+    poc: tests/test_exploits_ui.py::test_v78_csrf_settings_form
+
+  - id: V79
+    title: Clickjacking — dashboard pages send no frame-ancestors / X-Frame-Options
+    cwe: CWE-1021
+    huntr_analog: "sensitive authenticated pages (login, admin settings) embeddable in an attacker iframe with no framing defense"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/ui/views.py, symbol: _security_headers, note: "every dashboard response"}
+    sink: {file: dvml/ui/views.py, symbol: _security_headers, line_hint: 52}
+    taint_path:
+      - "dvml/ui/views.py:_security_headers (sets X-Content-Type-Options only; no X-Frame-Options or Content-Security-Policy frame-ancestors on any dashboard response)"
+    sanitizers_present:
+      - "X-Content-Type-Options: nosniff IS set here — a real, if unrelated, hardening header that can misleadingly read as 'security headers are handled'"
+    notes: "A presence/absence finding on the same hook that already does partial hardening — the kind of false confidence a reviewer gets from seeing one security header and not checking for the others."
+    poc: tests/test_exploits_ui.py::test_v79_clickjacking_no_frame_headers
+
+  - id: V80
+    title: Session JWT stored in a JS-readable (non-HttpOnly) cookie
+    cwe: CWE-1004
+    huntr_analog: "session token cookie set without HttpOnly, exposing it to any injected/third-party script (XSS-to-session-theft amplifier)"
+    tier: 1
+    exploitable: true
+    source: {file: dvml/ui/views.py, symbol: login, note: "issue_token(user.id, user.role)"}
+    sink: {file: dvml/ui/views.py, symbol: login, line_hint: 88}
+    taint_path:
+      - "dvml/ui/views.py:login (resp.set_cookie(SESSION_COOKIE, issue_token(...)) — no httponly, secure, or samesite flags)"
+      - "dvml/ui/templates/base.html (sessionToken() deliberately reads the cookie from document.cookie for the dashboard's own same-origin JS API calls — the same lack of HttpOnly that legitimises this also hands the token to V75/V76/V77's injected scripts)"
+    sanitizers_present: []
+    notes: "Compounds V75/V76/V77: any of those XSS sinks can read this cookie directly and exfiltrate the session token rather than just defacing the page."
+    poc: tests/test_exploits_ui.py::test_v80_session_cookie_js_readable
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -1517,6 +1764,82 @@ decoys:
     location: {file: dvml/agent/tools.py, symbol: read_file_scoped}
     proof: tests/test_exploits_agentic.py::test_d40_scoped_read_confined_to_caller_prefix
 
+  # ----------------------------------------------------------------------
+  # Object-level authorization (BOLA/IDOR) demo tier decoys -- paired with
+  # V65-V73 above. Each is the same read, with the labeled authz_model
+  # actually present and dominating.
+  # ----------------------------------------------------------------------
+  - id: D41
+    resembles: V65 (ownership IDOR)
+    authz_model: ownership
+    why_safe: "get_note_safe_fused query-fuses owner_id=g.user_id into the fetch itself -- a non-owned note simply doesn't match the query"
+    location: {file: dvml/api/authz_demo.py, symbol: get_note_safe_fused}
+    proof: tests/test_exploits_authz.py::test_d41_ownership_fused_blocks_cross_tenant_read
+  - id: D42
+    resembles: V65 (ownership IDOR)
+    authz_model: ownership
+    why_safe: "get_note_safe_guarded fetches then checks note.owner_id != g.user_id, denying (403) before the note's fields are ever returned -- the guard dominates the use"
+    location: {file: dvml/api/authz_demo.py, symbol: get_note_safe_guarded}
+    proof: tests/test_exploits_authz.py::test_d42_ownership_guarded_blocks_cross_tenant_read
+  - id: D43
+    resembles: V65 (ownership IDOR)
+    authz_model: ownership
+    why_safe: "get_note_safe_guarded_inverted uses the equality-inversion guard shape (if owned: continue, else: deny) -- same dominance guarantee as D42, different syntax"
+    location: {file: dvml/api/authz_demo.py, symbol: get_note_safe_guarded_inverted}
+    proof: tests/test_exploits_authz.py::test_d43_ownership_guarded_inverted_blocks_cross_tenant_read
+  - id: D44
+    resembles: V68 (membership IDOR)
+    authz_model: membership
+    why_safe: "get_team_note_safe fetches then checks g.user_id not in note.team.members, denying (403) before the note's fields are returned -- the membership guard dominates the use"
+    location: {file: dvml/api/authz_demo.py, symbol: get_team_note_safe}
+    proof: tests/test_exploits_authz.py::test_d44_membership_guarded_blocks_non_member_read
+  - id: D45
+    resembles: V68 (membership IDOR)
+    authz_model: membership
+    why_safe: "get_team_note_safe_inverted uses the positive-containment-plus-else-deny shape (if member: continue, else: deny) -- same dominance guarantee as D44, different syntax"
+    location: {file: dvml/api/authz_demo.py, symbol: get_team_note_safe_inverted}
+    proof: tests/test_exploits_authz.py::test_d45_membership_guarded_inverted_blocks_non_member_read
+  - id: D46
+    resembles: V70/V71 (hierarchical IDOR)
+    authz_model: hierarchical
+    why_safe: "get_task_safe_via_parent_id authorizes the parent Project first (ownership-fused: owner_id=g.user_id), then FK-fuses the child Task query to the authorized parent's id (project_id=project.id) -- a task under someone else's project never matches"
+    location: {file: dvml/api/authz_demo.py, symbol: get_task_safe_via_parent_id}
+    proof: tests/test_exploits_authz.py::test_d46_hierarchical_via_parent_id_blocks_cross_tenant_read
+  - id: D47
+    resembles: V70/V71 (hierarchical IDOR)
+    authz_model: hierarchical
+    why_safe: "get_task_safe_via_parent_object is the same hierarchical scoping as D46, FK-fused to the authorized parent object itself (project=project) rather than its id attribute"
+    location: {file: dvml/api/authz_demo.py, symbol: get_task_safe_via_parent_object}
+    proof: tests/test_exploits_authz.py::test_d47_hierarchical_via_parent_object_blocks_cross_tenant_read
+  - id: D48
+    resembles: V72/V73 (status IDOR)
+    authz_model: status
+    why_safe: "get_article_safe_gate fetches then checks article.status != 'published', denying (404) before an unpublished draft's fields are returned -- the status gate dominates the use"
+    location: {file: dvml/api/authz_demo.py, symbol: get_article_safe_gate}
+    proof: tests/test_exploits_authz.py::test_d48_status_gate_blocks_unpublished_draft
+  - id: D49
+    resembles: V72/V73 (status IDOR)
+    authz_model: status
+    why_safe: "get_article_safe_fused query-fuses status='published' into the fetch itself -- a draft simply doesn't match the query"
+    location: {file: dvml/api/authz_demo.py, symbol: get_article_safe_fused}
+    proof: tests/test_exploits_authz.py::test_d49_status_fused_blocks_unpublished_draft
+  - id: D50
+    resembles: "a hypothetical 'V67' -- ownership check written after the response payload is built"
+    authz_model: ownership
+    why_safe: "get_note_safe_late_built reads note.id/title/body into a local `payload` before the ownership check, but the check's own deny branch returns a DIFFERENT response object on failure, so payload is simply discarded when unauthorized -- correctly blocked at runtime. Deliberately NOT labeled a vulnerability despite AuthzPass being unable to statically prove dominance here (dominance analysis sees the fields touched before the check and can't reason about which branch's return value actually escapes the function) -- a documented precision limitation, scored Medium rather than fully suppressed. See docs/benchmarks/bola-idor.md in open-rowan."
+    location: {file: dvml/api/authz_demo.py, symbol: get_note_safe_late_built}
+    proof: tests/test_exploits_authz.py::test_d50_late_built_payload_still_blocked_on_deny
+  - id: D51
+    resembles: V75 (reflected XSS via search highlighting)
+    why_safe: "search()'s own template heading ({{ q }} in 'Results for “...”' in search.html) reflects the identical query parameter on the identical response, but through Jinja's default autoescaping (no |safe) -- HTML in q is entity-escaped, not executed. Only the separate highlight()|safe path (V75) is exploitable."
+    location: {file: dvml/ui/views.py, symbol: search}
+    proof: tests/test_exploits_ui.py::test_d51_search_heading_escapes_query
+  - id: D52
+    resembles: V78 (CSRF on the dashboard admin settings form)
+    why_safe: "the JSON API's equivalent endpoint (POST /api/admin/settings) requires an Authorization: Bearer token -- a cross-site form POST carries the ambient session_token cookie but no bearer header, so it is rejected (401) before any settings are changed. Cookie-based dashboard auth does not extend to the token-based API."
+    location: {file: dvml/api/admin.py, symbol: settings}
+    proof: tests/test_exploits_ui.py::test_d52_api_cookie_only_request_unauthorized
+
 chains:
   - id: CHAIN_A
     title: "SSRF -> pickle RCE across HTTP + DB + job queue + 3 modules"
@@ -1620,7 +1943,7 @@ chains:
 # ----------------------------------------------------------------------
 # Config/compose findings — a STRUCTURALLY DIFFERENT category from
 # everything above. CF01–CF03 are serving-infrastructure misconfigurations for
-# tools ModelForge itself never runs or embeds (Ollama, TorchServe, Triton
+# tools Langfail itself never runs or embeds (Ollama, TorchServe, Triton
 # are external processes an operator deploys alongside it) -- unlike V01-V64,
 # there is no source, no sink, no taint_path, and no PoC test, because there
 # is no code path to execute: the finding IS the presence of the
@@ -1629,7 +1952,7 @@ chains:
 # presence/absence check against that one fixture file, not against
 # benchmarks/check_ground_truth.py's function-symbol resolution (which only
 # understands Python source). CF04–CF05 are the same presence-only category
-# but the flag/binding lives in ModelForge's own code (a debug=True run call,
+# but the flag/binding lives in Langfail's own code (a debug=True run call,
 # hardcoded fallback secrets) rather than the compose file.
 config_findings:
   - id: CF01
@@ -1661,7 +1984,7 @@ config_findings:
     cwe: CWE-798
     huntr_analog: "hardcoded fallback secrets in a shipped config module -- any deployment that doesn't set the env overrides runs on publicly-known keys, so session JWTs are forgeable by anyone who has read the source"
     location: {file: dvml/core/config.py, symbol: Config}
-    finding: "Config.SECRET_KEY \"modelforge-dev-secret\" and Config.JWT_SECRET \"modelforge-dev-jwt-secret\" are used whenever DVML_SECRET_KEY/DVML_JWT_SECRET are unset; any deployment that doesn't override them mints forgeable session JWTs"
+    finding: "Config.SECRET_KEY \"langfail-dev-secret\" and Config.JWT_SECRET \"langfail-dev-jwt-secret\" are used whenever DVML_SECRET_KEY/DVML_JWT_SECRET are unset; any deployment that doesn't override them mints forgeable session JWTs"
 
 # ----------------------------------------------------------------------
 # Known-unlabeled findings — deliberately NOT part of the scored answer key.

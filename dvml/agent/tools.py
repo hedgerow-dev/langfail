@@ -1,4 +1,4 @@
-"""Tools the ModelForge assistant can call to answer questions.
+"""Tools the Langfail assistant can call to answer questions.
 
 The assistant helps users explore their registry: querying experiment metrics,
 reading model cards from disk, fetching linked documentation, running quick

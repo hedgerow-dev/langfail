@@ -1,4 +1,4 @@
-"""Pluggable local LLM backend for the ModelForge assistant.
+"""Pluggable local LLM backend for the Langfail assistant.
 
 Two backends are supported, selected by ``DVML_LLM_BACKEND``:
 

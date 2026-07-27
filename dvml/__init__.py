@@ -1,4 +1,4 @@
-"""ModelForge — a self-hosted MLOps platform.
+"""Langfail — a self-hosted MLOps platform.
 
 Application factory: wires configuration, the database, and the API blueprints
 (model registry, datasets, experiments, inference, reports, the LLM assistant,
@@ -27,9 +27,11 @@ def create_app(config: type[Config] = Config) -> Flask:
     from .api.reports import bp as reports_bp
     from .api.agent import bp as agent_bp
     from .api.admin import bp as admin_bp
+    from .api.authz_demo import bp as authz_demo_bp
+    from .ui import bp as ui_bp
 
     for bp in (auth_bp, models_bp, datasets_bp, experiments_bp,
-               inference_bp, reports_bp, agent_bp, admin_bp):
+               inference_bp, reports_bp, agent_bp, admin_bp, authz_demo_bp, ui_bp):
         app.register_blueprint(bp)
 
     with app.app_context():
@@ -39,7 +41,7 @@ def create_app(config: type[Config] = Config) -> Flask:
 
     @app.get("/health")
     def health():
-        return jsonify(status="ok", service="modelforge")
+        return jsonify(status="ok", service="langfail")
 
     from .cli import register_cli
     register_cli(app)

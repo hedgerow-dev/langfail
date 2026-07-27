@@ -1,4 +1,4 @@
-"""The ModelForge assistant agent loop.
+"""The Langfail assistant agent loop.
 
 Assembles a system prompt plus any retrieved context (model cards, dataset
 descriptions), asks the LLM what to do, executes any requested tools, and feeds
@@ -12,7 +12,7 @@ from .llm import chat
 from .tools import TOOLS, tool_schemas
 
 SYSTEM_PROMPT = (
-    "You are ModelForge Assistant. Help the user analyse their models, datasets "
+    "You are Langfail Assistant. Help the user analyse their models, datasets "
     "and experiments. Use the available tools when they help answer the question."
 )
 

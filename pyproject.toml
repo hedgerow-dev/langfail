@@ -1,7 +1,7 @@
 [project]
 name = "dvml"
 version = "0.1.0"
-description = "ModelForge — a self-hosted MLOps platform (model registry, AutoML, experiment tracking, inference, and an LLM assistant)."
+description = "Langfail — a self-hosted MLOps platform (model registry, AutoML, experiment tracking, inference, and an LLM assistant)."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -36,7 +36,7 @@ mcp-http = [
 ]
 
 [project.scripts]
-modelforge = "dvml.cli:main"
+langfail = "dvml.cli:main"
 
 [build-system]
 requires = ["setuptools>=68"]

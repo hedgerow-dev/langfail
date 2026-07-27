@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Search — Langfail{% endblock %}
+{% block content %}
+<h1>Search</h1>
+<form method="get" action="{{ url_for('ui.search') }}">
+  <input type="text" name="q" value="{{ q }}" placeholder="Search models and experiments">
+  <button type="submit">Search</button>
+</form>
+{% if q %}
+<h2>Results for &ldquo;{{ q }}&rdquo;</h2>
+{% if results %}
+<table>
+  <tr><th>Type</th><th>Name</th></tr>
+  {% for r in results %}
+  <tr>
+    <td>{{ r.__class__.__name__ }}</td>
+    <td>{{ highlight(r.name, q)|safe }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No matches.</p>
+{% endif %}
+{% endif %}
+{% endblock %}

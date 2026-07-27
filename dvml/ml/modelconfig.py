@@ -1,7 +1,7 @@
 """Parsing for XML model-description formats (PMML / ONNX-metadata style).
 
 Some frameworks ship a model alongside an XML descriptor (PMML, or an ONNX
-metadata sidecar). ModelForge extracts the declared fields so they can be shown
+metadata sidecar). Langfail extracts the declared fields so they can be shown
 on the model page. lxml is used because the descriptors rely on namespaces and
 entity definitions the stdlib parser handles less faithfully.
 """

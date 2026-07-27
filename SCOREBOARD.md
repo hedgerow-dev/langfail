@@ -1,4 +1,4 @@
-# Scoreboard — how to grade against ModelForge
+# Scoreboard — how to grade against Langfail
 
 `benchmarks/ground_truth.yaml` is the oracle. It lists every planted
 vulnerability with its taint **source**, **sink**, the ordered **taint_path**
@@ -133,7 +133,7 @@ gateway auth. These are **structurally unlike V01–V41**:
 V41 (the BentoML-runner pickle RCE) is the one member of the same
 huntr_analog family (huntr's "serving infrastructure" CVEs) that fit as real,
 runnable Python instead — the runner-process call protocol is code
-ModelForge itself defines and executes, unlike the other three tools' own
+Langfail itself defines and executes, unlike the other three tools' own
 server binaries.
 
 ## Scoring a taint engine

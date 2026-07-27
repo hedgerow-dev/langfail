@@ -1,4 +1,4 @@
-"""Persistent cross-session memory for the ModelForge assistant.
+"""Persistent cross-session memory for the Langfail assistant.
 
 The assistant keeps a running long-term memory of facts it has picked up (a
 team's naming conventions, a model's quirks) so useful context carries over

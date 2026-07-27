@@ -1,4 +1,4 @@
-"""Runtime configuration for ModelForge.
+"""Runtime configuration for Langfail.
 
 Values are read from the environment so the same image can run in dev, CI, and
 self-hosted deployments. Defaults are dev-friendly.
@@ -19,13 +19,13 @@ CACHE_DIR = STORAGE_DIR / "cache"
 
 
 class Config:
-    SECRET_KEY = os.environ.get("DVML_SECRET_KEY", "modelforge-dev-secret")
-    JWT_SECRET = os.environ.get("DVML_JWT_SECRET", "modelforge-dev-jwt-secret")
+    SECRET_KEY = os.environ.get("DVML_SECRET_KEY", "langfail-dev-secret")
+    JWT_SECRET = os.environ.get("DVML_JWT_SECRET", "langfail-dev-jwt-secret")
     JWT_ALGORITHM = "HS256"
     JWT_TTL_SECONDS = int(os.environ.get("DVML_JWT_TTL", "86400"))
 
     SQLALCHEMY_DATABASE_URI = os.environ.get(
-        "DVML_DATABASE_URI", f"sqlite:///{(STORAGE_DIR / 'modelforge.db').as_posix()}"
+        "DVML_DATABASE_URI", f"sqlite:///{(STORAGE_DIR / 'langfail.db').as_posix()}"
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
@@ -36,7 +36,7 @@ class Config:
 
     # Hosts the platform is allowed to reach when importing remote datasets/models.
     ALLOWED_FETCH_HOSTS = os.environ.get(
-        "DVML_ALLOWED_FETCH_HOSTS", "huggingface.co,raw.githubusercontent.com,datasets.modelforge.local"
+        "DVML_ALLOWED_FETCH_HOSTS", "huggingface.co,raw.githubusercontent.com,datasets.langfail.local"
     ).split(",")
 
     # LLM assistant backend: "stub" (deterministic, offline) or "ollama" (local server).

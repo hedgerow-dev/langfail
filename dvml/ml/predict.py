@@ -1,6 +1,6 @@
 """Deterministic offline scoring for registered models.
 
-ModelForge ships a lightweight built-in scorer so models without a framework
+Langfail ships a lightweight built-in scorer so models without a framework
 runtime on hand can still serve predictions. The weight matrix is derived from
 a hash of the model id, so scores are stable across processes and restarts.
 """
@@ -46,7 +46,7 @@ def _row_hash(features: list[Any]) -> str:
 
 
 def _weights(model_id: int) -> list[list[float]]:
-    digest = hashlib.sha256(f"modelforge/scorer:{model_id}".encode()).digest()
+    digest = hashlib.sha256(f"langfail/scorer:{model_id}".encode()).digest()
     return [
         [(digest[(k * _DIM + i) % len(digest)] - 128) / 64.0 for i in range(_DIM)]
         for k in range(len(CLASSES))

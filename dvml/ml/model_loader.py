@@ -1,4 +1,4 @@
-"""Model (de)serialisation across the frameworks ModelForge supports.
+"""Model (de)serialisation across the frameworks Langfail supports.
 
 The registry stores framework-native artifacts (sklearn/joblib, PyTorch
 state dicts, or raw pickles). Loading reconstructs the in-memory estimator so

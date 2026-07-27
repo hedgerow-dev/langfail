@@ -1,4 +1,4 @@
-"""SQLAlchemy models for the ModelForge platform."""
+"""SQLAlchemy models for the Langfail platform."""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -192,4 +192,89 @@ class Job(db.Model):
     status = db.Column(db.String(20), default="queued")
     result = db.Column(db.Text, default="")
     owner_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+# ----------------------------------------------------------------------
+# Object-level authorization demo tier. A dedicated, self-contained set of
+# models covering each of four object-level authorization models in
+# isolation: ownership (PrivateNote), membership (Team/TeamMember/TeamNote),
+# hierarchical (Project/Task), and status (Article). See
+# dvml/api/authz_demo.py for the routes.
+# ----------------------------------------------------------------------
+
+
+class PrivateNote(db.Model):
+    __tablename__ = "private_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Team(db.Model):
+    __tablename__ = "teams"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    created_at = db.Column(db.DateTime, default=_now)
+
+    @property
+    def members(self) -> list[int]:
+        """User ids belonging to this team -- a plain Python property (not a
+        relationship) so the membership check reads as a direct attribute
+        chain off the fetched object (`note.team.members`), matching the
+        BOLARAY containment idiom."""
+        return [tm.user_id for tm in TeamMember.query.filter_by(team_id=self.id)]
+
+
+class TeamMember(db.Model):
+    __tablename__ = "team_members"
+
+    id = db.Column(db.Integer, primary_key=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+
+
+class TeamNote(db.Model):
+    __tablename__ = "team_notes"
+
+    id = db.Column(db.Integer, primary_key=True)
+    team_id = db.Column(db.Integer, db.ForeignKey("teams.id"), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+    team = db.relationship("Team")
+
+
+class Project(db.Model):
+    __tablename__ = "authz_demo_projects"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Task(db.Model):
+    __tablename__ = "authz_demo_tasks"
+
+    id = db.Column(db.Integer, primary_key=True)
+    project_id = db.Column(db.Integer, db.ForeignKey("authz_demo_projects.id"), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, default=_now)
+
+
+class Article(db.Model):
+    __tablename__ = "articles"
+
+    id = db.Column(db.Integer, primary_key=True)
+    owner_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    title = db.Column(db.String(120), nullable=False)
+    body = db.Column(db.Text, default="")
+    status = db.Column(db.String(20), default="draft")  # draft | published
     created_at = db.Column(db.DateTime, default=_now)
