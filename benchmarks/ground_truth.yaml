@@ -1560,6 +1560,94 @@ vulnerabilities:
     notes: "Compounds V75/V76/V77: any of those XSS sinks can read this cookie directly and exfiltrate the session token rather than just defacing the page."
     poc: tests/test_exploits_ui.py::test_v80_session_cookie_js_readable
 
+  # ----------------------------------------------------------------------
+  # AI-native detection categories (open-rowan epic #183, seed tier for #197)
+  # -- each entry names the exact open-rowan rule ID expected to fire via
+  # `ai_native_rule`, mirroring how `authz_model` grades V65-V73 above by
+  # semantic class. This tier is intentionally thin (one vuln + one decoy
+  # per category): a first measured number, not a mature tier like BOLA's.
+  # ----------------------------------------------------------------------
+
+  - id: V81
+    title: LLM-directed object lookup trusts the model's own claimed owner_id
+    cwe: CWE-863
+    huntr_analog: "agentic RAG/assistant BOLA: an LLM tool-call/completion argument, not session identity, scopes a per-tenant DB read"
+    tier: 5
+    exploitable: true
+    ai_native_rule: TNT-AUTHZ-001
+    source: {file: langfail/api/ai_native_demo.py, symbol: smart_lookup, note: "_agent_pick_note_owner(query) — model-authored owner_id"}
+    sink: {file: langfail/api/ai_native_demo.py, symbol: smart_lookup, line_hint: 96}
+    taint_path:
+      - "langfail/api/ai_native_demo.py:smart_lookup (q query param -> _agent_pick_note_owner -> picked[\"owner_id\"])"
+      - "langfail/api/ai_native_demo.py:smart_lookup (PrivateNote.query.filter_by(id=picked[\"note_id\"], owner_id=picked[\"owner_id\"]) — model's claim, not g.user_id, scopes the read)"
+    sanitizers_present: []
+    poc: tests/test_exploits_ai_native.py::test_v74_llm_authz_cross_tenant_read
+    notes: "open-rowan #185."
+
+  - id: V82
+    title: Moderation guardrail logs a flagged prompt but does not stop the shell call
+    cwe: CWE-77
+    huntr_analog: "agent framework command-injection: a moderation/guardrail verdict is computed and logged but not enforced before a privileged tool call"
+    tier: 5
+    exploitable: true
+    ai_native_rule: ns-aiml-132
+    source: {file: langfail/agent/ai_native_examples.py, symbol: run_agent_command, note: "prompt (untrusted, moderation-checked but not gated)"}
+    sink: {file: langfail/agent/ai_native_examples.py, symbol: run_agent_command, line_hint: 46}
+    taint_path:
+      - "langfail/agent/ai_native_examples.py:run_agent_command (verdict = _moderate(prompt); flagged verdict only printed)"
+      - "langfail/agent/ai_native_examples.py:run_agent_command (subprocess.run(prompt, shell=True, ...) reached regardless of verdict)"
+    sanitizers_present:
+      - "_moderate(prompt) IS called and its verdict IS checked — but the flagged branch only logs, it never raises/returns (precision trap: a naive scanner might treat any _moderate() call as sufficient)"
+    poc: tests/test_exploits_ai_native.py::test_v75_guardrail_logged_not_blocked
+    notes: "open-rowan #186."
+
+  - id: V83
+    title: MCP bearer token accepted with no resource-audience check
+    cwe: CWE-863
+    huntr_analog: "MCP/RFC 8707 resource-indicator confusion: a validly-signed token minted for a different (or no) resource is honoured by an MCP server"
+    tier: 6
+    exploitable: true
+    ai_native_rule: ns-aiml-133
+    source: {file: langfail/core/security.py, symbol: verify_mcp_token, note: "bearer token, decoded with signature check only"}
+    sink: {file: langfail/core/security.py, symbol: verify_mcp_token, line_hint: 212}
+    taint_path:
+      - "langfail/core/security.py:verify_mcp_token (jwt.decode(token, Config.JWT_SECRET, algorithms=[...]) — no audience= kwarg)"
+    sanitizers_present:
+      - "verify_mcp_token_safe (same file) passes audience=MCP_RESOURCE_ID and is what MCP-facing call sites should use instead — a same-file precision trap, not a missing helper"
+    poc: tests/test_exploits_ai_native.py::test_v76_mcp_audienceless_token_accepted
+    notes: "open-rowan #187. DEF-46: this is the exact shape that exposed the function-boundary gap in the pattern-not-regex anchored-span technique (D45's safe sibling sits well within the unbounded span and, pre-fix, silently suppressed this finding)."
+
+  - id: V84
+    title: Lower-privilege agent's fetched content reaches a code-exec tool via task handoff
+    cwe: CWE-94
+    huntr_analog: "multi-agent orchestration cross-agent injection: content a scraping/browsing agent fetched from attacker-influenceable input is handed, via Task(context=[...]), to a sibling agent holding a code-interpreter tool"
+    tier: 5
+    exploitable: true
+    ai_native_rule: AGENT-HANDOFF-001
+    source: {file: langfail/agent/ai_native_examples.py, symbol: build_research_to_exec_crew, note: "ScrapeWebsiteTool output (attacker-influenceable page content)"}
+    sink: {file: langfail/agent/ai_native_examples.py, symbol: build_research_to_exec_crew, line_hint: 105}
+    taint_path:
+      - "langfail/agent/ai_native_examples.py:build_research_to_exec_crew (research Task, ScrapeWebsiteTool agent)"
+      - "langfail/agent/ai_native_examples.py:build_research_to_exec_crew (exec Task(context=[research_task]) — handed to an agent holding CodeInterpreterTool, no content vetting between hops)"
+    sanitizers_present: []
+    poc: tests/test_exploits_ai_native.py::test_v77_handoff_reaches_privileged_agent
+    notes: "open-rowan #188."
+
+  - id: V85
+    title: Code-interpreter sandbox container mounts the host Docker socket
+    cwe: CWE-269
+    huntr_analog: "AI code-interpreter sandbox escape: the interpreter's container is started with /var/run/docker.sock bind-mounted in, giving container-escape-to-host via the Docker API"
+    tier: 6
+    exploitable: true
+    ai_native_rule: ns-aiml-140
+    source: {file: langfail/agent/ai_native_examples.py, symbol: start_interpreter_container_unsafe, note: "sandbox container spec"}
+    sink: {file: langfail/agent/ai_native_examples.py, symbol: start_interpreter_container_unsafe, line_hint: 157}
+    taint_path:
+      - "langfail/agent/ai_native_examples.py:start_interpreter_container_unsafe (docker_from_env().containers.run(..., volumes={\"/var/run/docker.sock\": {\"bind\": \"/var/run/docker.sock\", \"mode\": \"rw\"}}))"
+    sanitizers_present: []
+    poc: tests/test_exploits_ai_native.py::test_v78_docker_socket_mounted_into_interpreter
+    notes: "open-rowan #189."
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -1839,6 +1927,40 @@ decoys:
     why_safe: "the JSON API's equivalent endpoint (POST /api/admin/settings) requires an Authorization: Bearer token -- a cross-site form POST carries the ambient session_token cookie but no bearer header, so it is rejected (401) before any settings are changed. Cookie-based dashboard auth does not extend to the token-based API."
     location: {file: langfail/api/admin.py, symbol: settings}
     proof: tests/test_exploits_ui.py::test_d52_api_cookie_only_request_unauthorized
+
+  # ----------------------------------------------------------------------
+  # AI-native detection categories -- paired with V81-V85 above.
+  # ----------------------------------------------------------------------
+  - id: D53
+    resembles: V81 (LLM-directed object lookup trusts the model's claimed owner_id)
+    ai_native_rule: TNT-AUTHZ-001
+    why_safe: "smart_lookup_safe still lets the model pick note_id, but cross-checks the model's owner_id claim against g.user_id and denies (403) on mismatch before the query runs with anything but the caller's own id"
+    location: {file: langfail/api/ai_native_demo.py, symbol: smart_lookup_safe}
+    proof: tests/test_exploits_ai_native.py::test_d53_llm_authz_guarded_blocks_cross_tenant_read
+  - id: D54
+    resembles: V82 (moderation guardrail logged but not enforced)
+    ai_native_rule: ns-aiml-132
+    why_safe: "run_agent_command_safe raises on a flagged verdict before subprocess.run is ever reached -- the guardrail dominates the sink, not merely observes it"
+    location: {file: langfail/agent/ai_native_examples.py, symbol: run_agent_command_safe}
+    proof: tests/test_exploits_ai_native.py::test_d54_guardrail_raises_before_shell
+  - id: D55
+    resembles: V83 (MCP token accepted with no audience check)
+    ai_native_rule: ns-aiml-133
+    why_safe: "verify_mcp_token_safe passes audience=MCP_RESOURCE_ID, so PyJWT rejects both a wrong-audience token and an audience-less one before any claims are returned"
+    location: {file: langfail/core/security.py, symbol: verify_mcp_token_safe}
+    proof: tests/test_exploits_ai_native.py::test_d55_mcp_audienceless_token_rejected
+  - id: D56
+    resembles: V84 (lower-privilege agent output handed to a code-exec agent)
+    ai_native_rule: AGENT-HANDOFF-001
+    why_safe: "build_research_to_noop_crew_safe hands the research task's output to a sibling agent with no privileged tool at all -- there is no code-interpreter/exec tool anywhere in the crew for scraped content to reach"
+    location: {file: langfail/agent/ai_native_examples.py, symbol: build_research_to_noop_crew_safe}
+    proof: tests/test_exploits_ai_native.py::test_d56_handoff_reaches_unprivileged_agent
+  - id: D57
+    resembles: V85 (interpreter sandbox mounts the host Docker socket)
+    ai_native_rule: ns-aiml-140
+    why_safe: "start_interpreter_sandbox_safe uses an isolated microVM sandbox (E2B-shaped stand-in) with no host socket or volume mount of any kind"
+    location: {file: langfail/agent/ai_native_examples.py, symbol: start_interpreter_sandbox_safe}
+    proof: tests/test_exploits_ai_native.py::test_d57_scoped_sandbox_no_docker_access
 
 chains:
   - id: CHAIN_A
