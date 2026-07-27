@@ -28,10 +28,12 @@ def create_app(config: type[Config] = Config) -> Flask:
     from .api.agent import bp as agent_bp
     from .api.admin import bp as admin_bp
     from .api.authz_demo import bp as authz_demo_bp
+    from .api.ai_native_demo import bp as ai_native_demo_bp
     from .ui import bp as ui_bp
 
     for bp in (auth_bp, models_bp, datasets_bp, experiments_bp,
-               inference_bp, reports_bp, agent_bp, admin_bp, authz_demo_bp, ui_bp):
+               inference_bp, reports_bp, agent_bp, admin_bp, authz_demo_bp,
+               ai_native_demo_bp, ui_bp):
         app.register_blueprint(bp)
 
     with app.app_context():
