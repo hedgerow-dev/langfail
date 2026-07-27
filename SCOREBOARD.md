@@ -194,10 +194,17 @@ and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
 | 1 | V01, V02, V41 | 3/3 | 0 | 0 |
 | 2 | V03, V04, V05 | 0/3 | 0 | 3 |
 | 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
-| 4 | V11–V15, V37 | 2/6 (V15, V37) | 1 (V11) | 3 |
+| 4 | V11–V15, V37 | 3/6 (V13, V15, V37) | 1 (V11) | 2 |
 | 5 | V16–V19, V31, V33, V34, V36, V38 | 3/9 (V18, V19, V34§) | 0 | 6 (V16, V17, V31, V33‡, V36¶, V38‖) |
 | 6 | V20–V30, V32, V35, V39, V40 | 1/15 (V22) | 1 (V28) | 13 |
-| **Total** | **41** | **10** | **3** | **28** |
+| **Total** | **41** | **11** | **3** | **27** |
+
+**V13 correction:** an earlier pass of this table undercounted V13 as a clean
+miss. Re-verified directly against the source (`ml/features.py:load_feature_cache`,
+`np.load(path, allow_pickle=True)`): both Bandit (B301) and Semgrep
+(`avoid-pickle`) flag this line — their pickle-family denylist doesn't
+distinguish `numpy.load(allow_pickle=True)` from `pickle.load`, so it fires
+identically. A genuine full hit, moved from the miss column above.
 
 Decoys: **1/18 false positives** — both tools flag **D10** (see below); D01–D09
 and D11–D18 are clean.
@@ -361,13 +368,13 @@ Takeaways for interpreting any engine's score against this baseline:
   because the tool traced the round-trip, but because the sink function is
   nothing but a bare `exec()` call, which is denylisted regardless of where
   its argument came from.
-- **Tier 6 is a near-total wipeout** (1 full hit out of 13, and it's only
+- **Tier 6 is a near-total wipeout** (1 full hit out of 15, and it's only
   there because it happens to share V08's exact syntactic shape). Both
   reflection variants (V20's `importlib`+`getattr` on a stored config string,
   V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
   dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
   all outside what a rule-based scanner without custom taint rules can see.
-- **Precision is nearly clean (16/17) but not free.** D10 shows that "bind the
+- **Precision is nearly clean (17/18) but not free.** D10 shows that "bind the
   value, but still format the identifier" — a common, genuinely-safe pattern
   for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
   heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
@@ -429,6 +436,91 @@ pip install bandit semgrep
 bandit -r langfail -f txt
 semgrep --config p/python --config p/security-audit --config p/owasp-top-ten --config p/flask langfail
 ```
+
+### Extended coverage: V42–V80, D19–D52
+
+The table above was measured before the auth/authz classics (V42–V50), the
+ML-supply-chain/privacy family (V51–V57), the agentic-frontier additions
+(V58–V64), the object-level authorization tier (V65–V73), and the
+server-rendered dashboard tier (V74–V80) existed. Re-run with the same
+Bandit 1.8.6 / Semgrep 1.168.0 configuration against the current tree,
+verified per-vulnerability against exact function boundaries (not just
+nearby line numbers, which produces false attributions — see the note on
+methodology below):
+
+| Tier | Vulns | Full hits | Clean misses |
+|------|-------|-----------|---------------|
+| 1 | V43, V45, V50, V65, V68, V70, V72, V74§§, V78, V79, V80§§ | 2/11 (V74, V80) | 9 |
+| 2 | V42, V46, V48, V51, V66, V69, V71, V73, V75‡‡ | 3/9 (V46, V51, V75) | 6 |
+| 3 | V47, V49, V53, V76‡‡, V77‡‡ | 2/5 (V76, V77) | 3 |
+| 4 | V44, V54, V57 | 1/3 (V44) | 2 |
+| 5 | V55, V56, V58, V61, V62, V63 | 1/6 (V58) | 5 |
+| 6 | V52, V59, V60, V64 | 0/4 | 4 |
+| **Total** | **38** | **9** | **29** |
+
+Decoys D19–D52 (34 new, checked against exact function boundaries): **1/34
+false positives** — Bandit's B603 flags `agent/tools.py:install_package_safe`
+(D34) purely because it calls `subprocess.run(...)` at all, with no notion
+that the package name is checked against an allow-list two lines earlier
+(the same "denylist fires on the call, not the provenance" story as D10).
+The other 33 are clean.
+
+Combined across both measurement passes: **79 vulnerabilities, 20 full hits
+(25%), 3 sink-located-only, 56 clean misses; 52 decoys, 2 false positives
+(D10, D34).**
+
+**V44** is a genuine, clean hit worth calling out on its own: Semgrep's
+`unverified-jwt-decode` rule fires exactly on
+`jwt.decode(token, options={"verify_signature": False})` in
+`core/security.py:verify_service_token` — a JWT-specific rule that actually
+models the right concept (signature verification disabled) rather than a
+generic denylist. Where a purpose-built rule for the exact primitive exists,
+it works; the gap in this whole suite is everywhere a rule like that
+*doesn't* exist yet.
+
+**V45 vs. V74 — same vulnerability class, split result.** V45
+(`api/auth.py:redirect_after_login`, `redirect(request.args.get("next", "/"))`)
+is a clean miss. V74 (`ui/views.py:login`,
+`redirect(request.form.get("next") or url_for("ui.index"))`) is a full hit —
+Semgrep's `open-redirect` rule fires on it directly. Both are the textbook
+unvalidated-`next`-parameter open redirect; the only difference is surface
+syntax the rule's pattern happens to match on one and not the other. A
+reviewer scoring "open redirect" as one *class* rather than two independent
+line matches would reasonably expect both to be caught or both missed —
+getting one of two by accident is a coin flip dressed up as detection.
+
+‡‡ **V75/V76/V77 are hits, but not exactly where `ground_truth.yaml` points.**
+The manifest's declared sink for each is the Python view function
+(`highlight`, `model_detail`, `chat` in `ui/views.py`) since that's where the
+tainted string is assembled. Semgrep's `template-unescaped-with-safe` rule
+instead flags the Jinja template (`search.html`, `model_detail.html`,
+`chat.html`) at the `|safe` filter itself — arguably the more precise root
+cause, since that's the actual point escaping is disabled, but a different
+file than the one the ground truth credits. Counted as full hits here since
+each flag maps 1:1 to exactly one real, exploitable finding; a stricter
+grader that requires an exact match against the declared sink file would
+score these as three additional misses instead.
+
+§§ V74 and V80 are two different planted findings (open redirect;
+non-HttpOnly session cookie) that both live inside the same `login()`
+function — Semgrep flags both independently at their respective lines (87
+and 88), so both get credited without double-counting.
+
+**A note on methodology:** the original 41-vulnerability measurement and
+this extension were both re-verified by mapping every tool finding to the
+*exact* line range of the declared sink's function (via AST, not a fixed
+line-number window). An earlier draft of this extension used a ±6-line
+window and produced two false attributions that didn't survive manual
+inspection: V60 (`agent/tools.py:delete_job`) appeared to hit only because
+`calc()`'s already-known, already-credited `eval()` (V18) sits five lines
+above it in the same file; V23 (blind/OOB SSRF via completion webhook)
+appeared to hit only because Bandit's B110 (`try/except/pass`) flags an
+unrelated error-swallowing block a few lines from the actual webhook POST.
+Both are correctly clean misses. This is the sharpest illustration in
+either measurement pass of why "the tool produced a finding somewhere in
+this function" is not the same claim as "the tool found this vulnerability"
+— exactly the discipline a real taint engine's score needs to be held to as
+well.
 
 ## Keeping the ground truth honest
 
