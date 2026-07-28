@@ -78,11 +78,14 @@ traps), a **difficulty tier**, and a runnable **poc**.
 
 ### Precision decoys (reporting any of these = false positive)
 
+D03 is intentionally absent (removed as a ground-truth content bug — see
+"Keeping the ground truth honest" below), matching the existing convention
+for V67.
+
 | ID | Resembles | Why it's safe |
 |----|-----------|---------------|
 | D01 | V03/V24 | `read_artifact_safe` realpath-contains under the registry root |
 | D02 | V08/V22 | `search_by_tag` binds `:tag` as a parameter |
-| D03 | V05/V19 | `render_report` `autoescape=True` escapes HTML output |
 | D04 | V06/V23 | `fetch_guarded` blocks private IPs, disables redirects |
 | D05 | V02 | `load_safe` uses `yaml.safe_load` |
 | D06 | V27 | `render_builtin_report` resolves `kind` through a dict, always passing one of two hardcoded literal filenames to the same sink `load_template_file` — a call-site-sensitivity test, not just a different code path |
@@ -522,6 +525,156 @@ this function" is not the same claim as "the tool found this vulnerability"
 — exactly the discipline a real taint engine's score needs to be held to as
 well.
 
+## Cross-tool comparison: static engines, code-review agents, and LLM-assisted triage
+
+Beyond the generic-SAST baseline above, this repo has also been used to compare
+a purpose-built taint-analysis engine ([open-rowan](https://github.com/hedgerow-dev/open-rowan)),
+a second independent static engine (CodeQL), and five different LLM backends
+doing an open-ended security code review with no ground truth and no execution
+access. All of these were run against a **blind copy** of the source
+(`python scripts/export_blind_copy.py <dest>`) — the answer key, exploit
+tests, and narrating docs stripped out, no git history — so nothing here is
+contaminated by seeing the manifest.
+
+### Static/taint engines (no LLM reasoning at all)
+
+| Engine | Hits | Recall | Decoy FPs |
+|--------|------|--------|-----------|
+| Bandit + Semgrep (see noise floor above) | 20/79 | 25% | 2/52 |
+| CodeQL (`codeql/python-queries:codeql-suites/python-security-extended.qls`) | 26/79 | 33% | 4/52 |
+| **open-rowan** raw static/taint pass (regex + Opengrep taint + cross-file AST fixpoint, no LLM stage) | **31/79** | **39%** | 4/52 |
+
+open-rowan's static pass is the strongest of the three non-LLM engines, and
+it earns that lead on exactly the classes the other two structurally can't
+reach: SSRF (V06), a JWT-specific unverified-signature rule (V44), and
+cross-file taint (V37's second-order DB round-trip). CodeQL's dataflow
+tracking similarly outperforms Bandit/Semgrep's pattern matching (catches the
+SSTI at `render_report`, multiple SQL injections, XXE, and the dashboard open
+redirect that Semgrep's narrower rule missed on the API side).
+
+### Pure LLM code review (blind-copy source only, no static tool assistance)
+
+Each model was given the same prompt, the same blind-copy path, and a
+~25-30 tool-call budget, with instructions to reason about data flow by hand
+rather than pattern-match on buzzwords.
+
+| Model | Hits | Recall | Decoy FPs |
+|-------|------|--------|-----------|
+| Claude Haiku | 14/79 | 18% | 0 |
+| DeepSeek-chat | 20/79 | 25% | 0* |
+| Claude Sonnet | 25/79 | 32% | 0* |
+| Kimi K3 | 29/79 | 37% | 0 |
+| **Claude Opus** | **47/79** | **59%** | 0* |
+
+\* A handful of raw string-matches against decoy locations turned out, on
+inspection, to be the model *correctly citing the safe variant as a
+contrast* (e.g. "`redirect_after_login_safe` exists but is a separate
+endpoint") rather than flagging it as vulnerable — a limitation of matching
+free-text reports by location, not a real precision failure. Kimi K3's
+citations were by function name rather than line number (its `read_file`
+tool didn't expose line numbers, so it adapted), which turned out to make it
+the cleanest to score — zero ambiguity, zero false positives.
+
+Two things stand out. First, **every single model independently
+reconstructed the codebase's own design pattern** as a meta-observation
+without being told it exists: nearly every vulnerable function has a
+`_safe`/`_verified`/`_strict`/`_guarded` sibling that implements the correct
+behavior but is never wired into a route. Opus's report put it as "the
+single highest-leverage remediation... swap call sites to the `_safe`
+implementations already present in the codebase." Second, **Kimi K3 was the
+only agent to catch the object-level-authorization tier** (`authz_demo.py`,
+V65/V68) — it explicitly read that file within its budget where the others
+ran out of turns first, and it's also the only report that stayed
+scrupulously honest about what it *didn't* read ("I exhausted the budget
+before reading langfail/agent/{core,llm,tools,...}... treat the agent as
+having the union of these privileges... Suspected"), rather than guessing
+past its own evidence.
+
+### open-rowan's LLM-triage layer (hypothesize → verify → chain)
+
+This is a structurally different thing from the code reviews above: `hunt`'s
+static pass already found the 144 raw findings (31/79 real hits) before any
+LLM is involved. The LLM stage re-labels a **priority-filtered subset** of
+those same findings as confirmed/likely/possible/false-positive and tries to
+chain them into exploit narratives — it cannot discover anything the static
+pass didn't already surface. So **31/79 is the ceiling** every backend below
+is measured against, not a fresh discovery budget.
+
+| Backend | Hypotheses | Correctly re-confirmed | Chains found | Final report |
+|---------|-----------|------------------------|---------------|--------------|
+| Ollama / `llama3.1:8b` | 4 (12 batches failed to parse) | 0/31 | 0 | coherent |
+| Ollama / `qwen2.5:7b` | 9 | ~5-6/31 | 0 | degenerated into repetitive multilingual gibberish |
+| DeepSeek-chat | 31 | ~12/31 | 18 | coherent, 7,875 chars |
+| **Kimi K3**† | 61 | **19/31** | 7 | coherent, 6,076 chars |
+
+† `open-rowan`'s CLI had `kimi` removed from its `--backend` choices by
+unrelated concurrent upstream work partway through this comparison (only
+`deepseek/openai/openrouter/ollama/local` remain). Routed around it using
+the generic `local` (OpenAI-compatible) backend pointed at
+`api.kimi.com/coding/v1`, through [`scripts/kimi_temperature_proxy.py`](scripts/kimi_temperature_proxy.py)
+— a small local proxy that force-corrects `temperature` to `1` on every
+request before forwarding, since the CLI hardcodes `0.1` with no override
+flag and Kimi's API rejects any other value for k3. No changes to
+open-rowan's own source were needed.
+
+`llama3.1:8b` is the sharpest cautionary tale in this whole comparison: it
+didn't just fail to help, it **actively destroyed signal the static pass had
+already found**, refuting all 4 of its surviving hypotheses with reasoning
+that doesn't hold up (e.g. refuting a zip-slip vulnerability because "the
+code checks for the presence of 'hubconf.py'" — a justification unrelated to
+path traversal). A weak triage model is worse than no triage model, because
+it launders a real finding into a suppressed one with a plausible-sounding
+excuse attached. DeepSeek was also internally inconsistent on one location —
+the open-redirect/cookie issue at `ui/views.py:87-88` got both "confirmed"
+and "false_positive" verdicts from different rule instances in the same run;
+recall survives because at least one instance caught it, but it's a real
+precision wrinkle.
+
+### AGHAST (OWASP): documented dead end, not a negative result
+
+[OWASP AGHAST](https://aghast.owasp.org/) (AI-Guided Hybrid Application
+Static Testing) was tried against the same blind copy with five backend
+configurations and never completed a usable scan:
+
+| Backend | Result |
+|---------|--------|
+| `opencode/deepseek-v4-flash-free` | Upstream API error from the free-tier gateway |
+| `opencode/nemotron-3-ultra-free` | 5 minutes of genuine file-reading, then the final synthesis returned no text |
+| `ollama/qwen2.5:7b-16k` (local) | Globbed for `**/*.ts` in a pure-Python repo, found nothing, gave up without reading a single real file |
+| `opencode/kimi-for-coding` (K3) | 5 minutes reading exactly the right files (23 reads, all high-value), then the same "returned no text response" failure as nemotron |
+| `claude-code` (the tool's actual default) | Blocked — needs its own standalone `claude login`, separate from any other Claude session/credential in the environment |
+
+Two different models (one weak, one clearly capable) failing at the
+identical final-synthesis step points at a bug in AGHAST's structured-output
+handling via the `opencode` provider, not a model-capability problem. Treat
+this as "couldn't get a valid result in this environment" rather than a
+verdict on the tool.
+
+### Takeaways from the full comparison
+
+- **A capable model reading source with no tools beats every static tool
+  tried, by a wide margin.** Opus's 59% recall from pure reasoning exceeds
+  open-rowan's static engine (39%, the best non-LLM result) by 20 points,
+  with effectively zero false positives.
+- **The triage layer is a filter, not a discovery engine, and filters can go
+  negative.** Static analysis already found the ceiling; the only question
+  for an LLM-triage backend is whether it preserves that signal (Kimi K3: ~61%
+  of ceiling) or destroys it (llama3.1:8b: 0%, with hallucinated
+  justifications that would mislead a reviewer who trusted the verdict).
+- **Precision was strong wherever it could be measured cleanly.** Every
+  static tool sat in the 2-4 decoy-FP range out of 52; every code-review
+  agent was at genuine zero once citation-matching artifacts were excluded.
+  None of these methods are "noisy" in the sense of crying wolf on the
+  deliberately-safe look-alikes — the gap between them is entirely about how
+  much of the real 79 they surface.
+- **Tool reliability varies enormously by backend, independent of the
+  underlying model's competence.** Kimi K3 was the best LLM-triage backend
+  (19/31) and also hit a hard CLI removal and a proxy workaround to get
+  there; it was also blocked entirely inside AGHAST for reasons unrelated to
+  its own judgment quality. The model isn't always the bottleneck — the
+  integration is, often enough that it's worth checking before concluding a
+  model "doesn't work" for a given task.
+
 ## Keeping the ground truth honest
 
 `benchmarks/ground_truth.yaml` says line numbers are hints and symbol names
@@ -538,3 +691,17 @@ stale `line_hint`s as informational drift. Run it after any refactor that
 touches the vulnerable modules, and whenever a scoring run's numbers look off
 — an inflated or deflated score is sometimes the manifest, not the tool being
 scored.
+
+**Case in point — D03 (removed):** a scoring run flagged `render_report` as a
+"false positive" against decoy D03, which claimed the function was safe
+because `autoescape=True` escapes HTML in the rendered *output*. That's true,
+but beside the point: `render_report`'s actual risk (already correctly
+credited to V05/V21) is that the *caller supplies the template source itself*
+— textbook SSTI, which autoescaping cannot prevent, since it happens at
+compile/render time on the template's own directives (e.g.
+`{{ ''.__class__.__mro__[1].__subclasses__() }}`), not on substituted values.
+D03's proof test only exercised a hardcoded template with a malicious
+*value*, so it proved a real but irrelevant property. The "false positive"
+was actually a real, correctly-caught vulnerability that the manifest itself
+had mislabeled as safe — worth internalizing: when a tool "flags a decoy,"
+check the decoy's own reasoning before assuming the tool is wrong.

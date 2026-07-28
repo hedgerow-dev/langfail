@@ -1573,11 +1573,19 @@ decoys:
     why_safe: "search_by_tag() binds :tag as a parameter; payload is treated as a literal"
     location: {file: langfail/services/experiments.py, symbol: search_by_tag}
     proof: tests/test_exploits_tier6.py::test_d02_by_tag_is_parameterized
-  - id: D03
-    resembles: V05/V19 (SSTI/XSS)
-    why_safe: "render_report uses autoescape=True; HTML in the context is escaped on output"
-    location: {file: langfail/services/reports.py, symbol: render_report}
-    proof: tests/test_exploits_tier6.py::test_d03_report_html_is_escaped
+  # D03 removed: it claimed render_report (the exact sink V05/V21 already
+  # call vulnerable to SSTI) was safe because autoescape=True escapes HTML
+  # in *values* substituted into a template. That's true but beside the
+  # point -- render_report's actual risk is that the caller supplies the
+  # template *source* itself (see its docstring), and autoescape does
+  # nothing to stop a malicious Jinja template string (e.g.
+  # {{ ''.__class__.__mro__[1].__subclasses__() }}) from executing during
+  # compilation/rendering. D03's proof test only exercised a hardcoded safe
+  # template with a malicious *value* -- it never tested the actual SSTI
+  # shape, so it was proving the wrong property. There is currently no
+  # genuinely SSTI-safe counterpart to render_report in the codebase to
+  # relabel this as; the id is left absent rather than reassigned, matching
+  # the existing convention for V67.
   - id: D04
     resembles: V06/V23 (SSRF)
     why_safe: "fetch_guarded() resolves the host and blocks private/loopback/link-local/reserved IPs; redirects disabled"
