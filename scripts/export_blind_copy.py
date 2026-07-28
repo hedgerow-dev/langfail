@@ -5,7 +5,7 @@ removed.
 
 The working tree normally sits right next to the benchmark's own spoilers
 (benchmarks/ground_truth.yaml, the exploit PoC tests, SCOREBOARD.md,
-ARCHITECTURE.md's taint-path narration, the openwiki docs). Pointing a
+ARCHITECTURE.md's taint-path narration). Pointing a
 reviewer at the repo as-is hands them the solutions. This script copies only
 the application source and functional tests into a fresh directory with NO
 git history (a single new "blind snapshot" commit is created instead) --
@@ -30,15 +30,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 EXCLUDE_NAMES = {
     "benchmarks",       # the answer key
     "exploits",         # runnable exploit chain scripts
-    "openwiki",         # generated docs that narrate specific vuln IDs
     "deploy",           # docker-compose fixtures whose comments explain the config findings
     "scripts",          # this exporter itself -- meta-tooling, not app source
     "ARCHITECTURE.md",  # narrates taint paths and specific vuln IDs
     "SCOREBOARD.md",    # the scoring table, effectively a vuln index
     "SECURITY.md",      # states outright that the app is planted-vulnerable
     "README.md",        # replaced below with a spoiler-free version
-    "AGENTS.md",
-    "CLAUDE.md",
     ".gitleaksignore",  # lists patterns tied to planted secrets
     ".git",
     ".venv",
@@ -46,7 +43,6 @@ EXCLUDE_NAMES = {
     "langfail.egg-info",
     ".pytest_cache",
     "var",
-    ".github",
     "uv.lock",
 }
 
