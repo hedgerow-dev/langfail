@@ -592,20 +592,33 @@ past its own evidence.
 
 ### open-rowan's LLM-triage layer (hypothesize → verify → chain)
 
-This is a structurally different thing from the code reviews above: `hunt`'s
-static pass already found the 144 raw findings (31/79 real hits) before any
-LLM is involved. The LLM stage re-labels a **priority-filtered subset** of
-those same findings as confirmed/likely/possible/false-positive and tries to
-chain them into exploit narratives — it cannot discover anything the static
-pass didn't already surface. So **31/79 is the ceiling** every backend below
-is measured against, not a fresh discovery budget.
+**Erratum:** an earlier pass of this section reported much lower
+confirmed/likely counts (e.g. Kimi K3 at 19) and framed the static pass's
+31/79 as a hard ceiling the triage layer works *under*. Both were wrong. The
+reconciliation script had two bugs: it matched a vulnerability's declared
+**sink** location only, never falling back to **source** (undercounting
+multi-hop vulnerabilities correctly identified by their entry point), and it
+silently failed to normalize a handful of hypotheses that cited a relative
+path (`scratchpad/blind_codereview/langfail/...`) instead of the full
+absolute path, dropping them from the count entirely. With both fixed, the
+triage layer's own deep-dive stage reads enough additional context that it
+can — and did — correctly identify real vulnerabilities the static pass's
+priority filter never surfaced to it in the first place. The static pass's
+31/79 is *not* a ceiling on what triage can confirm; it's just the starting
+candidate set, and the LLM stages can reason past it. Numbers below are
+corrected.
 
-| Backend | Hypotheses | Correctly re-confirmed | Chains found | Final report |
+| Backend | Hypotheses | Distinct vulns confirmed/likely | Chains found | Final report |
 |---------|-----------|------------------------|---------------|--------------|
-| Ollama / `llama3.1:8b` | 4 (12 batches failed to parse) | 0/31 | 0 | coherent |
-| Ollama / `qwen2.5:7b` | 9 | ~5-6/31 | 0 | degenerated into repetitive multilingual gibberish |
-| DeepSeek-chat | 31 | ~12/31 | 18 | coherent, 7,875 chars |
-| **Kimi K3**† | 61 | **19/31** | 7 | coherent, 6,076 chars |
+| Ollama / `llama3.1:8b` | 4 (12 batches failed to parse) | 0/79 | 0 | coherent |
+| Ollama / `qwen2.5:7b` | 9 | 10/79 | 0 | degenerated into repetitive multilingual gibberish |
+| DeepSeek-chat | 31 | 20/79 | 18 | coherent, 7,875 chars |
+| **Kimi K3**† | 61 | **35/79** | 7 | coherent, 6,076 chars |
+
+Kimi K3's triage result (35/79) is stronger than three of the five pure
+code-review agents above (Haiku, DeepSeek, Sonnet) — the static pass's
+candidate list plus a capable triage model reasoning over full context for
+each one evidently combines better than either alone for this backend.
 
 † `open-rowan`'s CLI had `kimi` removed from its `--backend` choices by
 unrelated concurrent upstream work partway through this comparison (only
@@ -656,11 +669,13 @@ verdict on the tool.
   tried, by a wide margin.** Opus's 59% recall from pure reasoning exceeds
   open-rowan's static engine (39%, the best non-LLM result) by 20 points,
   with effectively zero false positives.
-- **The triage layer is a filter, not a discovery engine, and filters can go
-  negative.** Static analysis already found the ceiling; the only question
-  for an LLM-triage backend is whether it preserves that signal (Kimi K3: ~61%
-  of ceiling) or destroys it (llama3.1:8b: 0%, with hallucinated
-  justifications that would mislead a reviewer who trusted the verdict).
+- **The triage layer's value is entirely about which model is doing the
+  reasoning, and a weak one can go negative.** Handed the identical static
+  candidate list, `llama3.1:8b` confirmed 0/79 (actively refuting real
+  findings with hallucinated justifications), `qwen2.5:7b` confirmed 10/79,
+  DeepSeek-chat 20/79, and Kimi K3 35/79 — with Kimi's deep-dive stage
+  reasoning past the static pass's own candidate list to catch vulnerabilities
+  the static engine never surfaced to it at all.
 - **Precision was strong wherever it could be measured cleanly.** Every
   static tool sat in the 2-4 decoy-FP range out of 52; every code-review
   agent was at genuine zero once citation-matching artifacts were excluded.
@@ -669,11 +684,19 @@ verdict on the tool.
   much of the real 79 they surface.
 - **Tool reliability varies enormously by backend, independent of the
   underlying model's competence.** Kimi K3 was the best LLM-triage backend
-  (19/31) and also hit a hard CLI removal and a proxy workaround to get
+  (35/79) and also hit a hard CLI removal and a proxy workaround to get
   there; it was also blocked entirely inside AGHAST for reasons unrelated to
   its own judgment quality. The model isn't always the bottleneck — the
   integration is, often enough that it's worth checking before concluding a
   model "doesn't work" for a given task.
+- **Trust the reconciliation script as much as the tool being scored.** The
+  erratum above is the second time in this file a "the tool got this wrong"
+  result turned out to be a bug in the scoring code instead (see D03,
+  above) — matching-by-location is inherently approximate, and both false
+  negatives (missed path normalization) and false positives (a decoy's
+  location swept in by a citation that was actually praising the safe
+  variant) are easy to introduce. Treat any surprising score, in either
+  direction, as a prompt to check the harness before trusting the number.
 
 ## Keeping the ground truth honest
 
