@@ -1,4 +1,8 @@
+<div align="center">
+
 # Langfail
+
+### A deliberately vulnerable MLOps platform, built to be broken
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
@@ -6,9 +10,15 @@
 [![Planted vulnerabilities: 79](https://img.shields.io/badge/planted%20vulnerabilities-79-orange.svg)](benchmarks/ground_truth.yaml)
 [![Tests: 143 passing](https://img.shields.io/badge/tests-143%20passing-brightgreen.svg)](tests/)
 
-**In short: this is a fake but realistic MLOps web app, built on purpose to
-be full of security bugs, so that security tools and AI agents have
-something real to practice finding bugs on.**
+**A fake but realistic MLOps web app, full of security bugs on purpose —
+so that security tools and AI agents have something real to practice
+finding bugs on.**
+
+[Architecture](ARCHITECTURE.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
+
+</div>
+
+---
 
 It looks and works like a real self-hosted MLOps platform — a model
 registry, dataset uploads, experiment tracking, a prediction API, and a
@@ -16,8 +26,6 @@ built-in LLM chat assistant, all built with Flask and SQLite. Under the
 hood, 79 real security bugs are deliberately hidden in the code, each one
 documented in a private answer key so you can check whether a scanner (or a
 human, or an AI agent) actually found them.
-
-**Docs:** [Architecture](ARCHITECTURE.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
 
 > ### ⚠️ This application is deliberately vulnerable — don't deploy it anywhere real
 > Langfail exists to be broken into. It is **not** production software, and
