@@ -552,6 +552,37 @@ tracking similarly outperforms Bandit/Semgrep's pattern matching (catches the
 SSTI at `render_report`, multiple SQL injections, XXE, and the dashboard open
 redirect that Semgrep's narrower rule missed on the API side).
 
+**Correction — open-rowan was not run at full capability above.** `open-rowan
+scan` has an `--authz` flag ("enable object-level authorization (BOLA/IDOR)
+detection", the `AuthzPass` engine `ground_truth.yaml`'s own notes already
+reference) that defaults to **off** — its own source comment says "off until
+precision is measured" — and every table above used `hunt`, whose CLI never
+exposes `--authz` or sets `enable_authz` at all. So the entire object-level-
+authorization tier (V65-V73) was structurally invisible to open-rowan in
+every run so far, independent of which LLM did the triage. Running
+`open-rowan scan --authz` directly: **8/8 on the authz tier, 0/9 false
+positives** on the decoys specifically built to trip up naive IDOR detectors
+(the fetch-then-guard dominance triad, D41-D49). That moves open-rowan's real
+static-only ceiling to **39/79 (49%)** — still the strongest static result,
+now by a wider margin.
+
+The catch: `--authz` doesn't carry over into `hunt` even via workaround. A
+`.open-rowan.yml` project-config file with `enable_authz: true` does get
+`AuthzPass` to run inside a `hunt` invocation (confirmed: log shows `Running
+pass: authz` and 32 findings), but every one of those findings is tagged
+`severity=medium, confidence=0.4, taint_flow=None, engine="authz"` — and
+`hunt`'s own priority filter (`_select_priority_findings` in
+`agents/workflow.py`) only promotes findings that are critical/high severity,
+carry a real taint_flow, come from the `crossfile` engine, or are tagged
+AI/ML; the medium-confidence fallback path only activates when the priority
+set would otherwise be *empty*, which it never is on a codebase with this
+many critical/high findings elsewhere. Confirmed on a live rerun (DeepSeek-
+chat, with the project config in place): 0 of the 8 authz-tier vulnerabilities
+reached the hypothesize stage at all. Getting full value out of open-rowan on
+this benchmark currently requires running **both** `scan --authz` (for the
+authz tier) and `hunt` (for LLM-reasoned triage and chains on everything
+else) — they are not unified in this version.
+
 ### Pure LLM code review (blind-copy source only, no static tool assistance)
 
 Each model was given the same prompt, the same blind-copy path, and a
@@ -665,10 +696,11 @@ verdict on the tool.
 
 ### Takeaways from the full comparison
 
-- **A capable model reading source with no tools beats every static tool
-  tried, by a wide margin.** Opus's 59% recall from pure reasoning exceeds
-  open-rowan's static engine (39%, the best non-LLM result) by 20 points,
-  with effectively zero false positives.
+- **A capable model reading source with no tools still beats every static
+  tool tried, though by a smaller margin than first measured.** Opus's 59%
+  recall from pure reasoning exceeds open-rowan's static engine at its real
+  best (`scan --authz`, 49%) by 10 points, not the 20 originally reported
+  before `--authz` was found — still a real gap, just a smaller one.
 - **The triage layer's value is entirely about which model is doing the
   reasoning, and a weak one can go negative.** Handed the identical static
   candidate list, `llama3.1:8b` confirmed 0/79 (actively refuting real
@@ -689,6 +721,13 @@ verdict on the tool.
   its own judgment quality. The model isn't always the bottleneck — the
   integration is, often enough that it's worth checking before concluding a
   model "doesn't work" for a given task.
+- **Read the tool's own CLI/source before declaring a final score, not just
+  its `--help` output.** `hunt --help` never mentions `--authz` because it's
+  a `scan`-only flag; nothing about running `hunt` (which every table above
+  used) would have surfaced that an entire opt-in detection pass, covering
+  an entire tier of this benchmark, was silently off. The gap was only found
+  by reading `open_rowan/config/__init__.py`'s field defaults directly. A
+  tool's default invocation is not necessarily its best one.
 - **Trust the reconciliation script as much as the tool being scored.** The
   erratum above is the second time in this file a "the tool got this wrong"
   result turned out to be a bug in the scoring code instead (see D03,
