@@ -176,15 +176,16 @@ fixed) — reconcile against `ground_truth.yaml`.
 ## Final scores
 
 This repo has been used to benchmark generic SAST tools (Bandit, Semgrep),
-a dedicated static/taint engine (CodeQL), a purpose-built taint-analysis tool
-(open-rowan), and five LLMs doing an open-ended security code review with no
-ground truth and no execution access — all run against a **blind copy** of
-the source (`python scripts/export_blind_copy.py <dest>`, see
-[README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
+dedicated static/taint engines (CodeQL, Meta's Pysa), a purpose-built
+taint-analysis tool (open-rowan), and five LLMs doing an open-ended security
+code review with no ground truth and no execution access — all run against a
+**blind copy** of the source (`python scripts/export_blind_copy.py <dest>`,
+see [README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
 contaminated by seeing the answer key.
 
-| Tool | Category | Recall (of 79) | Decoy false positives (of 52) |
+| Tool | Category | Recall (of 79) | Decoy false positives (of 51) |
 |------|----------|-----------------|--------------------------------|
+| Pysa | Static/taint | 12 (15%) | 1 |
 | Claude Haiku | LLM code review | 14 (18%) | 0 |
 | Bandit + Semgrep | Static/pattern | 20 (25%) | 2 |
 | DeepSeek-chat | LLM code review | 20 (25%) | 0 |
@@ -193,6 +194,11 @@ contaminated by seeing the answer key.
 | Kimi K3 | LLM code review | 29 (37%) | 0 |
 | open-rowan | Static/taint | 39 (49%) | 4 |
 | **Claude Opus** | **LLM code review** | **47 (59%)** | **0** |
+
+Pysa needed the most manual setup of anything tested — unlike CodeQL or
+open-rowan, it ships no web-framework rules out of the box, so its score
+reflects a hand-written Flask/SQLAlchemy taint model built for this repo
+specifically, not an out-of-the-box run.
 
 The best result came from a capable model reading the source directly and
 reasoning about data flow by hand — no static tool came within 10 points of
