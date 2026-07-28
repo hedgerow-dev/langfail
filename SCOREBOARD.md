@@ -2,10 +2,14 @@
 
 **Docs:** [README](README.md) · [Architecture](ARCHITECTURE.md) · [Security policy](SECURITY.md)
 
-`benchmarks/ground_truth.yaml` is the oracle. It lists every planted
-vulnerability with its taint **source**, **sink**, the ordered **taint_path**
-between them, the **sanitizers_present** on that path (the false-negative
-traps), a **difficulty tier**, and a runnable **poc**.
+[`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml) is the answer
+key for the whole benchmark — the one file that says exactly what's really
+broken and how. For every planted bug it records: where the untrusted data
+comes in (**source**), where it does something dangerous (**sink**), the
+exact chain of steps between them (**taint_path**), which security helpers
+sit on that path but don't actually stop it (**sanitizers_present** — the
+false-negative traps), a **difficulty tier**, and a runnable proof-of-concept
+(**poc**) that actually triggers it.
 
 ## Planted vulnerabilities
 

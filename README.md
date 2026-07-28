@@ -6,67 +6,84 @@
 [![Planted vulnerabilities: 79](https://img.shields.io/badge/planted%20vulnerabilities-79-orange.svg)](benchmarks/ground_truth.yaml)
 [![Tests: 143 passing](https://img.shields.io/badge/tests-143%20passing-brightgreen.svg)](tests/)
 
-A self-hosted MLOps platform: a model registry, dataset ingestion, experiment
-tracking, an inference service, and an LLM assistant — built with Flask +
-SQLite and a pluggable local LLM backend.
+**In short: this is a fake but realistic MLOps web app, built on purpose to
+be full of security bugs, so that security tools and AI agents have
+something real to practice finding bugs on.**
+
+It looks and works like a real self-hosted MLOps platform — a model
+registry, dataset uploads, experiment tracking, a prediction API, and a
+built-in LLM chat assistant, all built with Flask and SQLite. Under the
+hood, 79 real security bugs are deliberately hidden in the code, each one
+documented in a private answer key so you can check whether a scanner (or a
+human, or an AI agent) actually found them.
 
 **Docs:** [Architecture](ARCHITECTURE.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
 
-> ### ⚠️ This application is deliberately vulnerable
-> Langfail is a **security benchmark target**, not production software. It
-> contains 79 planted vulnerabilities (plus precision decoys), grouped below by
-> family, spanning the classes commonly reported against real ML/AI open
-> source on [huntr.com](https://huntr.com). Difficulty runs from disguised
-> single-hop (Tier 1) up to reflection, cache-laundered, blind, sandbox-bypass,
-> TOCTOU, and multi-hop-agent flows (Tier 6).
+> ### ⚠️ This application is deliberately vulnerable — don't deploy it anywhere real
+> Langfail exists to be broken into. It is **not** production software, and
+> it should only ever run on your own machine, disconnected from anything you
+> care about. **Do not deploy it, expose it to a network, or run untrusted
+> exploit code against anything but a throwaway environment.**
 >
-> - **Core taint classes** — unsafe model deserialization, SSRF (incl.
->   blind/OOB), path traversal, zip/tar slip, SQL (incl. blind) and command
->   injection, SSTI, IDOR, unsafe reflection, XXE, and insecure config loading.
-> - **LLM prompt-injection / agent tool abuse** — persistent agent-memory
->   poisoning, Unicode/ASCII-smuggling injection, markdown-image data
->   exfiltration, text-to-SQL and code-interpreter prompt injection (Vanna.ai
->   CVE-2024-5565 / PandasAI CVE-2024-12366 classes), OWASP LLM10
->   denial-of-wallet via an uncapped agent-iteration budget, a
->   `trust_remote_code`-style dataset-loading-script RCE, unredacted PII
->   flowing into a third-party LLM API call, MCP sampling-request poisoning, an
->   MCP-over-HTTP transport that binds every interface with no auth by
->   default, and a BentoML-runner-style pickle RCE across an
->   API-server/runner process boundary (CVE-2024-2912 class).
-> - **Authn/authz classics** — self-assigned roles at registration, bearer
->   tokens in URL query params, JWT alg-confusion on an unsigned
->   service-token exchange, predictable password-reset tokens, unsalted-md5
->   pass-the-hash legacy API keys, ReDoS in a field validator, open
->   redirects, SVG stored XSS, and timing-unsafe token comparison.
-> - **ML supply-chain and privacy** — jsonpickle typed-JSON RCE over an
->   export/import carrier, a restricted-unpickler allow-list bypass (the
->   Fickling class), torch.hub-style `hubconf.py` execution at model-repo
->   install, dormant plugin RCE at the next restart, model extraction à la
->   Tramèr 2016, membership inference à la Shokri 2017, and BadNets-style
->   training-data poisoning through an unreviewed feedback queue.
-> - **Agentic frontier** — slopsquatting package installs by the agent, an
->   MCP rug pull that swaps tool metadata after approval (TOCTOU), agent
->   confirmation spoofing via injected transcript markers, cross-tenant RAG
->   leakage, training-data extraction via repetition divergence, confused-deputy
->   agent tools, and config-as-taint preference injection that re-opens a
->   hardened deployment.
-> - **Object-level authorization (BOLA/IDOR)** — a dedicated, self-contained
->   tier covering all four object-level authz models in isolation — ownership,
->   membership, hierarchical (parent/child), and status/publication gates —
->   each with a no-check variant and a conditional-branch variant that only
->   runs behind an opt-in query parameter.
-> - **Server-rendered dashboard (`/ui`)** — the session-cookie-authenticated,
->   human-facing counterpart of the JSON API: open redirect, reflected and
->   stored XSS, assistant-answer markdown rendered unsafe, CSRF, clickjacking
->   (no frame-ancestors/X-Frame-Options), and a JS-readable (non-HttpOnly)
->   session cookie.
-> - **Config/compose misconfigurations** — a structurally different,
->   presence-only finding category: 5 findings across Ollama/TorchServe/Triton
->   in [`deploy/`](deploy/) plus in-code debug-mode and hardcoded-secret
->   defaults.
+> The bugs range from easy (a single obvious line) to genuinely hard
+> (spread across several files, or only visible when you actually run the
+> app and try to exploit it). Grouped by theme, in plain terms:
 >
-> **Do not deploy it, expose it to a network, or run untrusted PoCs against
-> anything you care about.** Run it in a throwaway environment.
+> - **Classic web/app security bugs** — the kind you'd find in any web app:
+>   unsafe file loading, server-side request forgery (a request the server
+>   makes on an attacker's behalf), path traversal (reading files outside
+>   where you're supposed to), unsafe zip/tar extraction, SQL and command
+>   injection, server-side template injection, broken object-level
+>   authorization (reading another user's data by guessing an ID), unsafe
+>   use of Python's dynamic-import features, XML external entity attacks, and
+>   insecure configuration loading.
+> - **LLM and AI-agent bugs** — problems specific to apps with a built-in AI
+>   assistant: the assistant's memory can be poisoned across sessions, hidden
+>   Unicode characters can smuggle instructions past filters, markdown images
+>   can be used to leak data, the assistant can be tricked into writing
+>   unsafe SQL or code, its budget for expensive AI calls has no upper limit,
+>   loading a dataset can run arbitrary code (mirroring the real
+>   `trust_remote_code` risk in Hugging Face-style tooling), private user
+>   data can leak into a third-party AI API call, and the protocol used to
+>   expose the assistant's tools to other AI agents (MCP) has its own
+>   authentication and message-poisoning bugs.
+> - **Login and account-security classics** — letting new users assign
+>   themselves admin rights, session tokens accepted in a URL instead of a
+>   header, a signature-verification bug in a token exchange, guessable
+>   password-reset codes, weak password hashing, a regular-expression bug
+>   that can hang the server, open redirects, stored cross-site scripting via
+>   an uploaded image, and a security check that's vulnerable to timing
+>   attacks.
+> - **Supply-chain and privacy bugs** — unsafe deserialization of uploaded
+>   data (several different flavors), a bypass of one of the app's own
+>   protective wrappers, code that runs automatically when importing a
+>   third-party model repo, a background plugin that runs untrusted code the
+>   next time the server restarts, and two classic ML-privacy attacks (an
+>   attacker reconstructing a private model, and inferring whether a specific
+>   record was in the training data) plus a poisoned-training-data attack.
+> - **"Agentic" bugs** — new problems that only show up once an AI agent is
+>   given real tools: the agent can be tricked into installing a malicious
+>   package, a tool's description can be swapped out after a human approved
+>   it, the agent can be fooled into thinking a human confirmed an action it
+>   didn't, one user's data can leak into another user's AI conversation, and
+>   a "just update my preferences" API call can quietly turn off a security
+>   protection elsewhere in the app.
+> - **Broken object-level authorization, the deep-dive tier** — a dedicated
+>   set of routes that tests this *one* bug class (reading/editing another
+>   user's data by guessing an ID) in every shape it commonly takes: no check
+>   at all, a check that exists but is on the wrong code path, and checks at
+>   several different levels of a data hierarchy — each paired with a
+>   correctly-written, safe version right next to it, so a reviewer has to
+>   actually tell the difference rather than just noticing a keyword.
+> - **The web dashboard** — the human-facing side of the app (as opposed to
+>   its JSON API) has its own bug set: an open redirect, reflected and stored
+>   cross-site scripting, a cross-site request forgery hole, clickjacking (no
+>   protection against the page being embedded in another site's iframe),
+>   and a session cookie a malicious script could read directly.
+> - **Misconfigured infrastructure** — 5 findings that aren't about code at
+>   all, just insecure default settings: three real ML-serving tools
+>   (Ollama/TorchServe/Triton) configured insecurely in [`deploy/`](deploy/),
+>   plus the app's own debug mode and default secrets.
 
 **Contents:** [Why it exists](#why-it-exists) · [Layout](#layout) ·
 [Run it](#run-it) · [LLM assistant backend](#llm-assistant-backend) ·
@@ -76,45 +93,59 @@ SQLite and a pluggable local LLM backend.
 
 ## Why it exists
 
-It is a purpose-built benchmark for two things:
+This is a benchmark, meaning its whole purpose is to let you measure how
+good a security tool (or a human, or an AI agent) actually is at finding
+real bugs. It's built to stress two specific things:
 
-1. **A static taint-analysis engine** — particularly *cross-function,
-   cross-file, and cross-process ("cross-taint")* tracking. Sources live in the
-   Flask blueprints (`langfail/api/`), sinks live in the service/ML/worker layers
-   (`langfail/services/`, `langfail/ml/`, `langfail/workers/`), and taint is routed through
-   database round-trips, the job queue, and serialization laundering. Several
-   paths pass through **deliberately incomplete sanitizers** in
-   `langfail/core/security.py` — the false-negative traps.
-2. **An agentic vulnerability-discovery flow** — the LLM assistant
-   (`langfail/agent/`) has real tools (`run_sql`, `read_file`, `http_get`, `calc`)
-   and is exploitable via direct and indirect (RAG) prompt injection, giving an
-   autonomous agent a live surface to probe and confirm.
+1. **Tracking untrusted data across a whole codebase, not just one file.**
+   In security terms, this is called *taint analysis*: data comes in from
+   somewhere untrusted (a "source" — here, an HTTP request handled by
+   `langfail/api/`), and the question is whether it reaches somewhere
+   dangerous (a "sink" — here, mostly in `langfail/services/`, `langfail/ml/`,
+   and `langfail/workers/`) without being cleaned up along the way. The hard
+   part, on purpose, is that the path between source and sink is often long:
+   through a database write-then-read, through a background job queue,
+   through data that gets serialized and deserialized. A few of those paths
+   even pass through a security check in `langfail/core/security.py` that
+   *looks* like it should catch the problem but has a gap in it — those are
+   deliberate traps for a tool that only checks "is there a check here?"
+   without verifying the check actually works.
+2. **Testing an AI agent's own ability to find (and fall for) security
+   bugs.** The built-in LLM assistant (`langfail/agent/`) has real
+   capabilities — it can run SQL queries, read files, fetch URLs, and do
+   math — and it can be manipulated both directly (by what a user types to
+   it) and indirectly (by hidden instructions planted in data it reads,
+   sometimes called a prompt-injection or RAG-injection attack). That gives
+   an autonomous AI agent a genuine, live surface to go probe and try to
+   break.
 
-The vulnerabilities are **non-obvious by design**: the code reads like a
-plausible real platform (type hints, docstrings, passing tests) and contains
-**no vulnerability markers**. The labeled answer key is kept entirely separate,
-in [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml).
+The bugs are **deliberately hard to spot just by skimming**: the code looks
+and reads like a normal, well-written real product — type hints, docstrings,
+passing tests — with no comments or naming that gives anything away. The
+full answer key (every bug, and exactly how to trigger it) is kept in a
+completely separate file, [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml),
+so it never leaks into the app itself.
 
-See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the layer/data-flow diagrams and the
-cross-taint topology.
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for diagrams of how the pieces fit
+together and how data flows between them.
 
 ---
 
 ## Layout
 
-| Path | Role |
+| Path | What's here |
 |------|------|
-| `langfail/api/` | Flask blueprints — HTTP **taint sources** |
-| `langfail/services/` | business logic — many **sinks** (SQL, SSRF, templates, file I/O) |
-| `langfail/ml/` | model load/save, dataset extraction, conversion, metrics |
-| `langfail/workers/` | DB-backed job queue + worker — **cross-process / second-order** sinks |
-| `langfail/agent/` | LLM backends, tools, agent loop — prompt-injection surface |
-| `langfail/mcp_server.py` | exposes the same tools over MCP — protocol-boundary surface |
-| `langfail/core/` | config, db, auth/JWT, the incomplete sanitizers |
-| `benchmarks/ground_truth.yaml` | labeled oracle: every vuln + full taint path |
-| `exploits/` | runnable PoCs (chains) + pointer to the per-vuln PoC tests |
-| `tests/` | functional (happy-path) tests + one exploit proof per vuln (`test_exploits.py` base, `test_exploits_tier6.py`, `test_exploits_auth.py`, `test_exploits_ml.py`, `test_exploits_agentic.py`, `test_exploits_authz.py`, `test_exploits_ui.py`) |
-| `deploy/docker-compose.yml` | serving-infra misconfig fixtures (Ollama/TorchServe/Triton) — presence findings, never run by `langfail` |
+| `langfail/api/` | Flask routes — where untrusted HTTP input first enters the app (taint **sources**) |
+| `langfail/services/` | business logic — where most of the dangerous operations happen (taint **sinks**: SQL queries, outbound HTTP requests, templates, file I/O) |
+| `langfail/ml/` | model save/load, dataset extraction, format conversion, metrics |
+| `langfail/workers/` | the background job queue and its worker — sinks reachable only after a delay, once a job actually runs |
+| `langfail/agent/` | the LLM assistant's backends, tools, and reasoning loop — the prompt-injection attack surface |
+| `langfail/mcp_server.py` | exposes the same assistant tools over MCP (a standard protocol for connecting AI agents to tools) |
+| `langfail/core/` | config, database setup, authentication/JWT handling, and the security helpers with deliberate gaps |
+| `benchmarks/ground_truth.yaml` | the answer key — every planted bug, with the exact path the data takes from source to sink |
+| `exploits/` | runnable proof-of-concept scripts for the multi-step bug chains, plus pointers to the per-bug tests |
+| `tests/` | normal passing tests, plus one proof-of-exploit test per planted bug (spread across `test_exploits*.py` files) |
+| `deploy/docker-compose.yml` | example insecure configs for real ML-serving tools (Ollama/TorchServe/Triton) — these describe misconfigurations, not code, and are never started by `langfail` itself |
 
 ---
 
@@ -160,11 +191,17 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 143 tests: 8 functional + 80 exploit proofs (V01–V80, gap at V67; V07 shares V06's chain PoC) + 55 decoy checks (D01–D52)
-PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # SSRF -> RCE across DB + queue
-PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # indirect prompt injection
-PYTHONPATH=. python benchmarks/check_ground_truth.py     # sanity-check the manifest against the current source tree
+PYTHONPATH=. pytest -q                     # 143 tests: proof that every planted bug is really exploitable
+PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # a multi-step attack: SSRF leads to remote code execution
+PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # a multi-step attack: hidden data tricks the AI assistant
+PYTHONPATH=. python benchmarks/check_ground_truth.py     # checks the answer key still matches the current code
 ```
+
+(The test suite breaks down as 8 ordinary tests + one proof-of-exploit test
+per planted bug + one check per "precision decoy" — a piece of code written
+to *look* just as suspicious as a real bug but that's actually safe, so a
+tool that flags it is scored as a false positive. See
+[`SCOREBOARD.md`](SCOREBOARD.md) for the exact numbers.)
 
 Installing the `mcp` extra (`pip install -e ".[mcp,mcp-http]"`) brings 5
 otherwise-skipped MCP tests into the run.
