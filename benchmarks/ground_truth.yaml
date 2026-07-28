@@ -1560,6 +1560,36 @@ vulnerabilities:
     notes: "Compounds V75/V76/V77: any of those XSS sinks can read this cookie directly and exfiltrate the session token rather than just defacing the page."
     poc: tests/test_exploits_ui.py::test_v80_session_cookie_js_readable
 
+  - id: V81
+    title: IDOR via caller-controlled owner parameter on experiment count
+    cwe: CWE-639
+    huntr_analog: "classic BOLA/IDOR — an object-scoping parameter trusted from the client instead of the session"
+    tier: 2
+    exploitable: true
+    source: {file: langfail/api/experiments.py, symbol: count, note: "request.args.get('owner', str(g.user_id)) -- caller-suppliable, defaults to self but not restricted to self"}
+    sink: {file: langfail/services/experiments.py, symbol: count_by_owner, line_hint: 45}
+    taint_path:
+      - "langfail/api/experiments.py:count (?owner=<any id>, falls back to g.user_id only when absent)"
+      - "langfail/services/experiments.py:count_by_owner (COUNT(*) WHERE owner_id = <caller-supplied value>)"
+    sanitizers_present: []
+    notes: "Discovered independently by VVAH+DeepSeek during a blind-copy benchmark run, not originally planted -- see SCOREBOARD.md. The value defaults sensibly to the caller's own id, which is what makes it look safe at a glance; nothing stops a caller from overriding it."
+    poc: tests/test_exploits_tier6.py::test_v81_experiment_count_owner_param_idor
+
+  - id: V82
+    title: Experiment search/ask endpoints return other users' experiments (no owner scoping at all)
+    cwe: CWE-639
+    huntr_analog: "BOLA/IDOR — a multi-tenant list/search endpoint with no tenant filter whatsoever"
+    tier: 1
+    exploitable: true
+    source: {file: langfail/api/experiments.py, symbol: by_tag, note: "request.args.get('tag', '') -- any authenticated caller, any tag"}
+    sink: {file: langfail/services/experiments.py, symbol: search_by_tag, line_hint: 49}
+    taint_path:
+      - "langfail/api/experiments.py:by_tag (?tag=<any tag>)"
+      - "langfail/services/experiments.py:search_by_tag (SELECT ... FROM experiments WHERE tags = :tag -- no owner_id filter, matches every user's rows)"
+    sanitizers_present: []
+    notes: "Discovered independently by VVAH+DeepSeek during a blind-copy benchmark run, not originally planted -- see SCOREBOARD.md. search_experiments(), ask_experiments(), and ask_experiments_safe() (D10) share the identical gap -- none of the four experiment-search functions filters by owner_id at all. search_by_tag is used here as the representative sink since it's also D02's SQLi-safe decoy: D02 and D10 remain valid, correctly-safe-from-SQLi decoys for their own vulnerability class -- this is a separate, orthogonal authorization gap in the same functions, not a contradiction of those decoys."
+    poc: tests/test_exploits_tier6.py::test_v82_search_by_tag_leaks_other_users_experiments
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:

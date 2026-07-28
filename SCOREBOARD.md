@@ -177,29 +177,63 @@ fixed) — reconcile against `ground_truth.yaml`.
 
 This repo has been used to benchmark generic SAST tools (Bandit, Semgrep),
 dedicated static/taint engines (CodeQL, Meta's Pysa), a purpose-built
-taint-analysis tool (open-rowan), and six LLMs doing an open-ended security
-code review with no ground truth and no execution access — all run against a
-**blind copy** of the source (`python scripts/export_blind_copy.py <dest>`,
-see [README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
+taint-analysis tool (open-rowan), six LLMs doing an open-ended security code
+review with no ground truth and no execution access, and two multi-stage
+agentic pipelines (Visa's VVAH, and Hedgerow's own rowan-agentic-harness) —
+all run against a **blind copy** of the source
+(`python scripts/export_blind_copy.py <dest>`, see
+[README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
 contaminated by seeing the answer key.
 
-| Tool | Category | Recall (of 79) | Decoy false positives (of 51) |
-|------|----------|-----------------|--------------------------------|
-| Pysa | Static/taint | 12 (15%) | 1 |
-| Claude Haiku | LLM code review | 14 (18%) | 0 |
-| Bandit + Semgrep | Static/pattern | 20 (25%) | 2 |
-| DeepSeek-chat | LLM code review | 20 (25%) | 0 |
-| CodeQL | Static/taint | 26 (33%) | 4 |
-| Claude Sonnet | LLM code review | 25 (32%) | 0 |
-| Kimi K3 | LLM code review | 29 (37%) | 0 |
-| GPT-5.5 | LLM code review | 36 (46%) | 2 |
-| open-rowan | Static/taint | 39 (49%) | 4 |
-| **Claude Opus** | **LLM code review** | **47 (59%)** | **0** |
+The manifest grew from 79 to 81 vulnerabilities partway through this
+comparison — VVAH+DeepSeek independently found a real, previously-undocumented
+IDOR bug (V81/V82: two experiment-search endpoints leak every user's data,
+no `owner_id` filter at all) that got added to `ground_truth.yaml` on the
+spot. Rows below marked † were scored against the original 79 and predate
+that addition; the rest are out of the current 81.
+
+| Tool | Category | Recall | Decoy false positives (of 51) |
+|------|----------|--------|--------------------------------|
+| rowan-agentic-harness + Claude Opus | Agentic pipeline | 5/81 (6%) | 0 |
+| Pysa† | Static/taint | 12/79 (15%) | 1 |
+| Claude Haiku† | LLM code review | 14/79 (18%) | 0 |
+| Bandit + Semgrep† | Static/pattern | 20/79 (25%) | 2 |
+| DeepSeek-chat† | LLM code review | 20/79 (25%) | 0 |
+| CodeQL† | Static/taint | 26/79 (33%) | 4 |
+| Claude Sonnet† | LLM code review | 25/79 (32%) | 0 |
+| Kimi K3† | LLM code review | 29/79 (37%) | 0 |
+| GPT-5.5† | LLM code review | 36/79 (46%) | 2 |
+| open-rowan† | Static/taint | 39/79 (49%) | 4 |
+| VVAH + DeepSeek | Agentic pipeline | 42/81 (52%) | 0 |
+| **Claude Opus†** | **LLM code review** | **47/79 (59%)** | **0** |
 
 Pysa needed the most manual setup of anything tested — unlike CodeQL or
 open-rowan, it ships no web-framework rules out of the box, so its score
 reflects a hand-written Flask/SQLAlchemy taint model built for this repo
 specifically, not an out-of-the-box run.
+
+**rowan-agentic-harness** is a narrower, specialist tool — it only
+understands 5 AI/ML-specific vuln classes (model deserialization,
+supply-chain integrity, prompt injection/agent exposure, unsafe model
+format, LLM-output handling), so most of the 81-vulnerability corpus is
+simply outside its stated scope; 5/81 undercounts what it's actually built
+to find. It also surfaced a real design risk worth knowing about for any
+similarly-staged pipeline: its threat-modeling stage (S2) can fully
+deprioritize an entire vuln class from ever reaching LLM review based on one
+model's read of the codebase — and that model got it wrong here, concluding
+the app "loads no model checkpoints." A fix now exempts CRITICAL/HIGH
+static-scanner findings from class-level deprioritization regardless of what
+S2 concludes; without it, Claude Haiku's run scored 1/79 (the same wrong S2
+conclusion silently dropped every model-deserialization finding before
+review); with it, Claude Opus reached 5/81 on the same target.
+
+**VVAH + DeepSeek** is the strongest agentic result and the second-best
+score overall, verified through the harness's own adversarial S6 stage (114
+TRUE_POSITIVE / 28 FALSE_POSITIVE out of 142 candidates). The 4 decoy-location
+hits shown above all turned out to be the same benign pattern already seen
+elsewhere in this table: a finding correctly describing a real, already-listed
+vulnerability that happens to share a function with an unrelated decoy — not
+genuine false positives.
 
 The best result came from a capable model reading the source directly and
 reasoning about data flow by hand — no static tool came within 10 points of
