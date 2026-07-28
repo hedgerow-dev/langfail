@@ -85,8 +85,10 @@ human, or an AI agent) actually found them.
 >   (Ollama/TorchServe/Triton) configured insecurely in [`deploy/`](deploy/),
 >   plus the app's own debug mode and default secrets.
 
-**Contents:** [Why it exists](#why-it-exists) · [Layout](#layout) ·
-[Run it](#run-it) · [LLM assistant backend](#llm-assistant-backend) ·
+**Contents:** [Why it exists](#why-it-exists) ·
+[Test a tool or AI agent against it](#test-a-tool-or-ai-agent-against-it) ·
+[Layout](#layout) · [Run it](#run-it) ·
+[LLM assistant backend](#llm-assistant-backend) ·
 [Verify the benchmark](#verify-the-benchmark)
 
 ---
@@ -128,6 +130,50 @@ so it never leaks into the app itself.
 
 See [`ARCHITECTURE.md`](ARCHITECTURE.md) for diagrams of how the pieces fit
 together and how data flows between them.
+
+---
+
+## Test a tool or AI agent against it
+
+There are two different ways to test something against this benchmark,
+depending on what you're testing. **Don't point anything at this repo
+directly** — the answer key sits right next to the code, so any tool or
+agent that can read files will see the solutions.
+
+### Option A: static analysis or code review (nothing runs)
+
+For a SAST scanner or an AI agent doing a code review, generate a "blind"
+copy first — the same code, with the answer key, exploit tests, and every
+doc that narrates the bugs stripped out:
+
+```bash
+python scripts/export_blind_copy.py /path/to/an/empty/directory
+```
+
+Point your tool or agent at that directory instead of this repo. When it's
+done, compare its findings against
+[`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml) to see what it
+caught — see [`SCOREBOARD.md`](SCOREBOARD.md#scoring-a-taint-engine) for the
+exact scoring method this project uses (and for real numbers from testing
+several SAST tools and LLMs this way).
+
+### Option B: live, black-box testing (the app is actually running)
+
+For an autonomous AI agent (or a human) doing real penetration testing —
+probing a live target with no source-code access at all — start the app for
+real (see [Run it](#run-it) below) and hand over nothing but the URL and a
+way to log in:
+
+```bash
+flask --app langfail seed   # creates demo users: admin/admin123, alice/alice123, bob/bob123
+flask --app langfail run    # http://127.0.0.1:5000
+```
+
+Give the agent `http://127.0.0.1:5000` plus one of those demo logins (or let
+it create its own account via `POST /api/auth/register` — registration is
+open to anyone). That's it — no source, no hints, no answer key. See
+[`SCOREBOARD.md`](SCOREBOARD.md#scoring-an-agentic-flow) for how this style
+of test is scored.
 
 ---
 
