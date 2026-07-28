@@ -203,7 +203,7 @@ that addition; the rest are out of the current 81.
 | Claude Sonnet† | LLM code review | 25/79 (32%) | 0 |
 | Kimi K3† | LLM code review | 29/79 (37%) | 0 |
 | GPT-5.5† | LLM code review | 36/79 (46%) | 2 |
-| open-rowan† | Static/taint | 39/79 (49%) | 4 |
+| open-rowan | Static/taint | 40/81 (49%) | 3 |
 | VVAH + DeepSeek | Agentic pipeline | 42/81 (52%) | 0 |
 | **Claude Opus†** | **LLM code review** | **47/79 (59%)** | **0** |
 
