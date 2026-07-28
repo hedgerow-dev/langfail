@@ -178,10 +178,9 @@ fixed) — reconcile against `ground_truth.yaml`.
 This repo has been used to benchmark generic SAST tools (Bandit, Semgrep),
 dedicated static/taint engines (CodeQL, Meta's Pysa), a purpose-built
 taint-analysis tool (open-rowan), six LLMs doing an open-ended security code
-review with no ground truth and no execution access, and two multi-stage
-agentic pipelines (Visa's VVAH, and Hedgerow's own rowan-agentic-harness) —
-all run against a **blind copy** of the source
-(`python scripts/export_blind_copy.py <dest>`, see
+review with no ground truth and no execution access, and a multi-stage
+agentic pipeline (Visa's VVAH) — all run against a **blind copy** of the
+source (`python scripts/export_blind_copy.py <dest>`, see
 [README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
 contaminated by seeing the answer key.
 
@@ -194,7 +193,6 @@ that addition; the rest are out of the current 81.
 
 | Tool | Category | Recall | Decoy false positives (of 51) |
 |------|----------|--------|--------------------------------|
-| rowan-agentic-harness + Claude Opus | Agentic pipeline | 5/81 (6%) | 0 |
 | Pysa† | Static/taint | 12/79 (15%) | 1 |
 | Claude Haiku† | LLM code review | 14/79 (18%) | 0 |
 | Bandit + Semgrep† | Static/pattern | 20/79 (25%) | 2 |
@@ -211,21 +209,6 @@ Pysa needed the most manual setup of anything tested — unlike CodeQL or
 open-rowan, it ships no web-framework rules out of the box, so its score
 reflects a hand-written Flask/SQLAlchemy taint model built for this repo
 specifically, not an out-of-the-box run.
-
-**rowan-agentic-harness** is a narrower, specialist tool — it only
-understands 5 AI/ML-specific vuln classes (model deserialization,
-supply-chain integrity, prompt injection/agent exposure, unsafe model
-format, LLM-output handling), so most of the 81-vulnerability corpus is
-simply outside its stated scope; 5/81 undercounts what it's actually built
-to find. It also surfaced a real design risk worth knowing about for any
-similarly-staged pipeline: its threat-modeling stage (S2) can fully
-deprioritize an entire vuln class from ever reaching LLM review based on one
-model's read of the codebase — and that model got it wrong here, concluding
-the app "loads no model checkpoints." A fix now exempts CRITICAL/HIGH
-static-scanner findings from class-level deprioritization regardless of what
-S2 concludes; without it, Claude Haiku's run scored 1/79 (the same wrong S2
-conclusion silently dropped every model-deserialization finding before
-review); with it, Claude Opus reached 5/81 on the same target.
 
 **VVAH + DeepSeek** is the strongest agentic result and the second-best
 score overall, verified through the harness's own adversarial S6 stage (114
