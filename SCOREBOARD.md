@@ -80,6 +80,10 @@ false-negative traps), a **difficulty tier**, and a runnable proof-of-concept
 | V63 | 5 | 862 | Confused deputy — agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
 | V64 | 6 | 15 | Config-as-taint — preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
 
+Vulnerability families V65–V80 (a dedicated object-level-authorization deep
+dive, plus the server-rendered dashboard's own bug set) are listed in full in
+`benchmarks/ground_truth.yaml` alongside the rest.
+
 ### Precision decoys (reporting any of these = false positive)
 
 D03 is intentionally absent (removed as a ground-truth content bug — see
@@ -87,24 +91,28 @@ D03 is intentionally absent (removed as a ground-truth content bug — see
 for V67.
 
 | ID | Resembles | Why it's safe |
-|----|-----------|---------------|
+|----|-----------|----------------|
 | D01 | V03/V24 | `read_artifact_safe` realpath-contains under the registry root |
 | D02 | V08/V22 | `search_by_tag` binds `:tag` as a parameter |
 | D04 | V06/V23 | `fetch_guarded` blocks private IPs, disables redirects |
 | D05 | V02 | `load_safe` uses `yaml.safe_load` |
-| D06 | V27 | `render_builtin_report` resolves `kind` through a dict, always passing one of two hardcoded literal filenames to the same sink `load_template_file` — a call-site-sensitivity test, not just a different code path |
-| D07 | V30 | `recall_scoped` filters `AgentMemory` by `owner_id`, so the per-user notes view never returns another user's memory |
-| D08 | V31 | `render_markdown_safe` only emits same-origin `<img src>` and drops off-origin images to alt text — no egress channel |
-| D09 | V32 | `strip_directives` **does** remove a plainly-visible `[[TOOL:...]]` — it's a real (if incomplete) control; flag the missing Unicode normalization, not the filter |
-| D10 | V33 | `ask_experiments_safe` only accepts allow-listed `column=value` questions and always binds the value as a parameter — the model never authors raw SQL |
-| D11 | V34 | `run_analysis_safe` maps the question to a fixed set of aggregate ops by keyword — never `exec`s model-generated code |
-| D12 | V35 | `dispatch_safe` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` — the un-advertised method is unreachable regardless of what the model returns |
-| D13 | V36 | `run_agent_capped` clamps the requested `max_rounds` to `MAX_ITERATE_ROUNDS` (10) before calling the same uncapped loop primitive |
-| D14 | V37 | `run_loader_script_safe` never execs anything — custom loading scripts are simply unsupported, the secure equivalent of `trust_remote_code=False` |
-| D15 | V38 | `draft_support_reply_safe` regex-redacts email addresses from the account context before it ever reaches `run_agent`/the LLM call |
-| D16 | V39 | `summarize_via_sampling_safe` strips inline `[[TOOL:...]]` directives from the note before it is embedded in the sampling request |
-| D17 | V40 | `check_http_auth(headers, require_auth=True)` correctly rejects a missing/incorrect bearer token — the gate is sound, only its default is off |
-| D18 | V41 | `handle_runner_call_safe` uses `json.loads` instead of `pickle.loads` — arbitrary object reconstruction across the process boundary is simply unsupported |
+| D06 | V27 | `render_builtin_report` always passes one of two hardcoded literal filenames to the same sink — a call-site-sensitivity test |
+| D07 | V30 | `recall_scoped` filters `AgentMemory` by `owner_id` |
+| D08 | V31 | `render_markdown_safe` only emits same-origin `<img src>`, no egress channel |
+| D09 | V32 | `strip_directives` removes plainly-visible `[[TOOL:...]]`, just not Unicode-smuggled ones |
+| D10 | V33 | `ask_experiments_safe` only accepts allow-listed `column=value` questions, always parameterized |
+| D11 | V34 | `run_analysis_safe` maps to a fixed set of aggregate ops — never `exec`s model-generated code |
+| D12 | V35 | `dispatch_safe` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` |
+| D13 | V36 | `run_agent_capped` clamps `max_rounds` to a hard ceiling before the loop runs |
+| D14 | V37 | `run_loader_script_safe` never execs anything — custom loading scripts are unsupported |
+| D15 | V38 | `draft_support_reply_safe` redacts emails from context before the LLM call |
+| D16 | V39 | `summarize_via_sampling_safe` strips `[[TOOL:...]]` directives before sampling |
+| D17 | V40 | `check_http_auth(headers, require_auth=True)` correctly rejects a bad bearer token |
+| D18 | V41 | `handle_runner_call_safe` uses `json.loads`, not `pickle.loads` |
+
+Decoys D19–D52 (34 more, covering the auth/authz, ML-supply-chain, and
+dashboard tiers) follow the same pattern: a genuinely safe function sitting
+right next to its vulnerable sibling, listed in full in `ground_truth.yaml`.
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
@@ -114,36 +122,16 @@ user's later session — the persistence upgrade of Chain B).
 
 ## Config/compose findings (a different category from everything above)
 
-`benchmarks/ground_truth.yaml`'s `config_findings:` section (CF01–CF03) and
-[`deploy/docker-compose.yml`](deploy/docker-compose.yml) cover the remaining
-serving-infrastructure CVE class — Ollama bound to every interface with no
-auth ("Probllama"), TorchServe's management API with token auth disabled
-(ShellTorch), and Triton's explicit model-control endpoint published with no
-gateway auth. These are **structurally unlike V01–V41**:
-
-- No `source`/`sink`/`taint_path` — there is no code path to trace, because
-  Ollama/TorchServe/Triton are external processes this repo never runs or
-  embeds. The finding **is** the presence of the misconfigured flag/binding
-  in the compose file, full stop.
-- No PoC test and no entry in `check_ground_truth.py`'s rot check (which only
-  understands Python function symbols) — there's nothing to execute or
-  resolve. Don't be alarmed that they're absent from the pytest counts or the
-  "N manifest entries resolved" line above; that's by design, not an
-  oversight.
-- Score these the way the huntr_analog framing implies: as a **regex/config
-  presence check** against `deploy/docker-compose.yml` (does a rule
-  recognize `OLLAMA_HOST=0.0.0.0`, `--disable-token-auth`,
-  `--model-control-mode=explicit --allow-http=true` combined with a published
-  port?), not as a taint-connection problem. A tool that only does source-sink
-  taint analysis on Python has no way to score against this section at all —
-  which is itself useful information about that tool's coverage, not a defect
-  in the fixture.
-
-V41 (the BentoML-runner pickle RCE) is the one member of the same
-huntr_analog family (huntr's "serving infrastructure" CVEs) that fit as real,
-runnable Python instead — the runner-process call protocol is code
-Langfail itself defines and executes, unlike the other three tools' own
-server binaries.
+`benchmarks/ground_truth.yaml`'s `config_findings:` section (CF01–CF05) and
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) cover a serving-
+infrastructure class that's **structurally unlike V01–V64**: no
+`source`/`sink`/`taint_path`, because the misconfigured services (Ollama,
+TorchServe, Triton) are external processes this repo never runs or embeds.
+The finding *is* the presence of the insecure flag/binding in the compose
+file. Score these as a **config-presence check** against
+`deploy/docker-compose.yml`, not as a taint problem — a tool that only does
+Python taint analysis simply has no way to score against this section, which
+is informative about that tool's coverage, not a defect in the fixture.
 
 ## Scoring a taint engine
 
@@ -151,623 +139,82 @@ For each ground-truth entry, a run is scored on whether the engine connects the
 declared **source** to the declared **sink**:
 
 - **True positive** — reports a flow whose source and sink match the entry
-  (bonus if the reported path matches `taint_path`, i.e. it traversed the DB
-  round-trip / job queue / laundering rather than guessing).
+  (bonus if the reported path matches `taint_path`).
 - **False negative (missed)** — no matching flow. Tier 4–5 misses usually mean
   the engine can't follow second-order (DB/queue) taint; a Tier 2–3 miss often
   means it was fooled by a `sanitizers_present` helper.
-- **False positive** — a reported flow with no matching entry. The incomplete
-  sanitizers are intentional bait: treating `sanitize_path` / `escape_sql` /
-  `is_safe_url` as effective is a **false negative**, while flagging a genuinely
-  safe path (e.g. `load_safe`, `render_report`'s escaping for XSS) is a **false
-  positive**.
+- **False positive** — a reported flow with no matching entry. Treating an
+  incomplete sanitizer (`sanitize_path` / `escape_sql` / `is_safe_url`) as
+  effective is a **false negative**; flagging a genuinely safe path (e.g.
+  `load_safe`) is a **false positive**.
 
 Suggested metrics: recall by tier, precision, and a separate "cross-taint
-recall" over the entries whose `taint_path` crosses a file, the DB, or the queue.
+recall" over entries whose `taint_path` crosses a file, the DB, or the queue.
 
 ## Scoring an agentic flow
 
 Point the agent at a running instance and let it discover and confirm bugs.
-Score on confirmed exploitation (a PoC-equivalent effect), credited against the
-ground-truth IDs. The agent's own surface (V16–V19, V26) is fair game: a strong
-agent should notice it can weaponize its own `run_sql`/`http_get`/`calc` tools,
-that `/analyze` ingests attacker-controlled model cards (Chain B), and that a
-fetched page can drive a *second* tool call across the loop (Chain D). The Tier 6
-bugs reward stateful, multi-actor probing: V22/V23 are **blind** (no reflected
-output — needs an OOB canary or boolean oracle), V20 hides behind a
-second-order stored config, and V24 only opens with `STRICT_PATHS` at its default.
+Score on confirmed exploitation (a PoC-equivalent effect), credited against
+the ground-truth IDs. The agent's own surface (V16–V19, V26) is fair game: a
+strong agent should notice it can weaponize its own tools, and that a fetched
+page can drive a *second* tool call across the loop. The Tier 6 bugs reward
+stateful, multi-actor probing: V22/V23 are **blind** (needs an OOB canary or
+boolean oracle), V20 hides behind a second-order stored config, and V24 only
+opens with `STRICT_PATHS` at its default.
 
 ## Regenerating the baseline
 
 ```bash
 PYTHONPATH=. pytest -q     # exploit proofs (V01–V41; V07 shares V06's chain PoC)
-                           # + 17 decoy precision checks + 8 functional
+                           # + decoy precision checks + functional tests
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
 If a PoC fails, the corresponding vulnerability has regressed (or the app was
 fixed) — reconcile against `ground_truth.yaml`.
 
-## Noise floor: generic SAST baselines
+## Final scores
 
-Before trusting a taint engine's score, know what a tool with *no* taint
-tracking at all — just pattern-matching on dangerous calls — already gets for
-free. Measured against the current tree with **Bandit 1.8.6** (default checks)
-and **Semgrep 1.168.0** (`p/python` + `p/security-audit` + `p/owasp-top-ten` +
-`p/flask`, default config, no custom taint rules):
+This repo has been used to benchmark generic SAST tools (Bandit, Semgrep),
+a dedicated static/taint engine (CodeQL), a purpose-built taint-analysis tool
+(open-rowan), and five LLMs doing an open-ended security code review with no
+ground truth and no execution access — all run against a **blind copy** of
+the source (`python scripts/export_blind_copy.py <dest>`, see
+[README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
+contaminated by seeing the answer key.
 
-| Tier | Vulns | Full hits (at the declared sink) | Sink-located only† | Clean misses |
-|------|-------|-----------------------------------|---------------------|---------------|
-| 1 | V01, V02, V41 | 3/3 | 0 | 0 |
-| 2 | V03, V04, V05 | 0/3 | 0 | 3 |
-| 3 | V06–V10 | 1/5 (V08) | 1 (V09) | 3 |
-| 4 | V11–V15, V37 | 3/6 (V13, V15, V37) | 1 (V11) | 2 |
-| 5 | V16–V19, V31, V33, V34, V36, V38 | 3/9 (V18, V19, V34§) | 0 | 6 (V16, V17, V31, V33‡, V36¶, V38‖) |
-| 6 | V20–V30, V32, V35, V39, V40 | 1/15 (V22) | 1 (V28) | 13 |
-| **Total** | **41** | **11** | **3** | **27** |
+| Tool | Category | Recall (of 79) | Decoy false positives (of 52) |
+|------|----------|-----------------|--------------------------------|
+| Claude Haiku | LLM code review | 14 (18%) | 0 |
+| Bandit + Semgrep | Static/pattern | 20 (25%) | 2 |
+| DeepSeek-chat | LLM code review | 20 (25%) | 0 |
+| CodeQL | Static/taint | 26 (33%) | 4 |
+| Claude Sonnet | LLM code review | 25 (32%) | 0 |
+| Kimi K3 | LLM code review | 29 (37%) | 0 |
+| open-rowan | Static/taint | 39 (49%) | 4 |
+| **Claude Opus** | **LLM code review** | **47 (59%)** | **0** |
 
-**V13 correction:** an earlier pass of this table undercounted V13 as a clean
-miss. Re-verified directly against the source (`ml/features.py:load_feature_cache`,
-`np.load(path, allow_pickle=True)`): both Bandit (B301) and Semgrep
-(`avoid-pickle`) flag this line — their pickle-family denylist doesn't
-distinguish `numpy.load(allow_pickle=True)` from `pickle.load`, so it fires
-identically. A genuine full hit, moved from the miss column above.
-
-Decoys: **1/18 false positives** — both tools flag **D10** (see below); D01–D09
-and D11–D18 are clean.
-
-§ V34 is a "full hit" only in the same syntactic sense as V18: both Bandit
-(B102) and Semgrep (`exec-detected`) flag the `exec()` call at
-`services/analysis.py:run_analysis` because `exec` is denylisted outright —
-they'd flag `exec("print(1)")` identically and have no notion that the argument
-is model-generated. Contrast V33 (its sibling one row up): V33's dangerous
-string is *built* in `agent/llm.py` and *executed* in `services/experiments.py`,
-so the inherently-dangerous call (`text()`/`execute`) and the injectable value
-live in different files and the scanners miss the connection. Same
-"LLM-output-as-source" class, opposite scanner outcome — the difference is
-purely whether the sink call is one a denylist already fires on (`exec`) or one
-that's only dangerous given the argument's provenance (raw SQL execute). Neither
-outcome reflects any understanding that an LLM produced the input.
-
-‡ V33 is a clean miss **at its declared sink** (`services/experiments.py:
-ask_experiments`, `db.session.execute(text(sql))`) — `sql` is an opaque
-variable there, so neither tool's SQL-injection heuristic fires. Bandit's
-B608 rule *does* fire one hop upstream, inside `agent/llm.py:generate_sql`,
-where the return value is itself an f-string that looks like SQL — but that's
-the taint **source**, not the sink the ground truth credits, and no engine
-gets credit for flagging a string-building line it never connects to an
-execute call. This is the sharpest illustration in the whole suite of why
-"LLM output as source" needs its own rule family: the dangerous-looking
-syntax and the actual injectable sink are in different files, and a
-line-level pattern match can find one or the other but not the connection
-between them.
-
-The other three Tier 5/6 additions (V30, V31, V32) are clean misses for a
-syntactic scanner: memory poisoning is a semantic authz/isolation gap with no
-dangerous call to match, the markdown-image sink is an ordinary
-`re.sub`/string build, and the Unicode-smuggling directive is invisible to a
-rule that greps for ASCII `[[TOOL:]]`. V32 is, however, the cheapest of the
-whole set to catch with a *dedicated* presence rule (regex for U+E00xx /
-zero-width codepoints in prompt-bound strings) — its difficulty is entirely in
-the taint framing, not the pattern.
-
-V35 is a clean miss at its declared sink too, and for the same reason as V33:
-the vulnerability is the missing allow-list check inside
-`agent/native.py:dispatch` (the bare `getattr(_ACTIONS, name, None)` call at
-line 61) — neither tool flags that line, because nothing about it looks
-dangerous in isolation. Both tools *do* flag `eval()` inside the
-never-advertised `_debug_eval` helper (line 41) — but that flag fires purely
-because `eval` is denylisted, identically whether `_debug_eval` is reachable
-through the vulnerable `dispatch()` or the fixed `dispatch_safe()` (D12, which
-gates on the same allow-list and is proven safe by
-`test_d12_dispatch_safe_rejects_internal_method`). The tool cannot distinguish
-"this eval exists in the file" from "this eval is reachable from attacker
-input" — it flags the gadget, not the vulnerability, and would flag the exact
-same line even in a codebase where `_debug_eval` were provably dead code.
-
-¶ V36 is the purest clean miss in the whole suite: neither tool produces a
-single finding anywhere in `agent/core.py`, because there is no dangerous
-*call* to pattern-match at all — `for _ in range(max_rounds): chat(...)` is
-syntactically indistinguishable from any other bounded loop. The bug is
-entirely semantic (a resource-consumption ceiling that exists on every other
-code path through this module, `MAX_TOOL_ROUNDS`, but not on this
-caller-parameterized one) and has no signature a denylist or regex could ever
-key on. Denial-of-wallet/unbounded-consumption findings require either a
-dedicated rule that recognizes "a request-derived integer reaches a loop
-bound around an LLM/billed-API call" or genuine data-flow modeling of cost —
-pattern matching on syntax alone cannot find this class in principle, not
-just in this instance.
-
-**V37 is a genuine full hit**, and a useful contrast with V33/V35/V36: unlike
-those, where the dangerous call and the taint source live in different
-functions (or there's no dangerous call at all), V37's sink function
-(`run_loader_script`) is *itself* nothing but `exec(script_src, scope)` — the
-same "denylist fires regardless of provenance" mechanism as V18/V34, and this
-time it happens to land exactly on the declared sink. The second-order shape
-(the script is stored in one request and only runs when a later, separate
-`prepare_dataset` request reads it back) doesn't matter to a single-file,
-single-line pattern match at all — it would flag this identically whether
-`loader_script` were fully hardcoded or freshly attacker-supplied. Reachability
-across the two requests is exactly the part neither tool reasons about; it
-just got lucky that the reachable line also happens to be denylisted.
-
-‖ V38 is a clean miss of a different flavor than any other entry: there is no
-*execution* sink at all, dangerous or otherwise. `_account_context` is a plain
-f-string; the actual sink, `requests.post(...)` in `agent/llm.py:_ollama_chat`,
-is a completely ordinary network call that every other outbound HTTP request
-in this codebase also makes (`fetcher.py`, the webhook POST, etc.) — nothing
-about *that* line is special. What makes it dangerous here is purely the
-*kind* of data reaching it (a PII-shaped field) and the *kind* of endpoint on
-the other end (an LLM provider). Neither Bandit nor Semgrep model "outbound
-call to an LLM API" as a sink category at all, let alone one sensitive to
-PII-shaped source fields — this is arguably the single clearest case in the
-suite of a rule family that doesn't exist yet in either tool's default rule
-set, as opposed to one that exists but fails to connect source and sink
-(V33/V35) or one with no resource-cost concept to model (V36).
-
-**V39 is a clean miss with no partial credit anywhere** — neither tool
-produces a single finding in `mcp_server.py` for the sampling path. There is
-no `eval`/`exec`/`subprocess` gadget to accidentally trip a denylist on this
-time (contrast V35): the payload is just a string handed to
-`session.create_message(...)`, an ordinary async SDK call. This is the same
-"no sink category exists for this at all" story as V36/V38, applied to a
-third protocol boundary (MCP sampling) neither tool has ever heard of.
-
-**V40 is the one entry with a genuine split result.** Bandit's B104
-(`hardcoded_bind_all_interfaces`) *does* fire — but on `core/config.py`'s
-`"0.0.0.0"` string literal, the config **default**, not on
-`mcp_server.py:check_http_auth`, the declared **sink** where the actual
-authorization decision is made. B104 is a real, purpose-built rule for
-exactly this class (it's the same rule family the huntr_analog list points
-at for Ollama/TorchServe/Triton), so it genuinely earns credit for
-surfacing "this binds every interface" — but it has no idea whether that
-also means "and nothing gates who can connect once they get there," which is
-the actual exploitable half of this bug and the half neither tool touches.
-A scanner wired to both signals (bind-all-interfaces *and* an
-auth-check-that-defaults-off in the same service) would need to correlate
-two independent rule categories to score this as one finding; scored
-separately, as these tools do, it looks like two unrelated, low-severity
-observations rather than one critical one.
-**D10 is a genuine false positive**, and an instructive one: `ask_experiments_safe`
-builds its query with an f-string that interpolates a **column name already
-validated against an allow-list** (`_ASK_ALLOWED_COLUMNS`), while the actual
-value is still bound as a SQLAlchemy parameter (`:value`). Both Bandit
-(B608) and Semgrep (`avoid-sqlalchemy-text`) key off the presence of
-string-formatting syntax inside a `text()` call and cannot tell "interpolates
-an allow-listed identifier" from "interpolates attacker-controlled data" — so
-they flag the same line as V08/V22's real injections. Left in deliberately
-rather than rewritten to dodge the rule: the point of a decoy is to measure
-precision honestly, and this one shows that even the *safe* text-to-SQL
-pattern (bind the value, allow-list the identifier) still trips today's
-noise floor.
-
-† *"Sink-located only"* means the tool flagged the exact sink line (e.g. any
-`subprocess(..., shell=True)`) but has no notion of whether the arguments are
-actually attacker-reachable — it would flag the same line whether the string
-were a hardcoded constant or fully attacker-controlled. Don't count these as
-genuine taint-tracking successes: V09, V11, and V28 all reduce to the same
-"`shell=True` is inherently reported" pattern match, regardless of whether the
-tainted value took one hop (V09) or crossed two independent storage backends
-(V28) to get there — the tool cannot tell the difference, which is exactly the
-point of V28.
-
-Takeaways for interpreting any engine's score against this baseline:
-
-- **Tier 1 is free.** A single dangerous call on a directly-passed argument
-  needs no dataflow analysis at all — V41 (a fresh add, unpickling a
-  base64-decoded request field one line inside `ml/runner.py`) is exactly as
-  free as V01/V02 despite modeling a completely different real-world CVE
-  class (BentoML's runner-server protocol vs. model-file loading). The
-  lesson repeats: novelty of the *huntr_analog* doesn't correlate with
-  difficulty for a syntactic scanner — only the taint shape does, and this
-  one's shape is trivial.
-- **"Blind" isn't a SAST difficulty axis.** V22 (blind SQLi) is caught by the
-  identical rule that catches V08 (reflected) — blind vs. reflected only
-  matters once you're testing exploitability (an agentic/DAST concern), not
-  for a syntactic scanner.
-- **Cross-file/cross-DB/cross-process taint (Tier 3–4) is where pattern
-  matching falls off a cliff** — neither tool does real interprocedural
-  dataflow, so anything requiring a trace through a service call, a DB
-  round-trip, or the job queue is invisible unless the sink itself is also
-  syntactically obvious in isolation. V37 is the exception that proves the
-  rule: its second-order DB round-trip (store in one request, run in a later,
-  separate one) is exactly this pattern, but it still gets caught — not
-  because the tool traced the round-trip, but because the sink function is
-  nothing but a bare `exec()` call, which is denylisted regardless of where
-  its argument came from.
-- **Tier 6 is a near-total wipeout** (1 full hit out of 15, and it's only
-  there because it happens to share V08's exact syntactic shape). Both
-  reflection variants (V20's `importlib`+`getattr` on a stored config string,
-  V35's bare `getattr` on an LLM-chosen name), cache laundering, taint
-  dilution, call-site sensitivity, XXE, and the MCP protocol-boundary bug are
-  all outside what a rule-based scanner without custom taint rules can see.
-- **Precision is nearly clean (17/18) but not free.** D10 shows that "bind the
-  value, but still format the identifier" — a common, genuinely-safe pattern
-  for allow-listed dynamic SQL — already trips both tools' `text()`/f-string
-  heuristics. A tool bold enough to catch more of Tier 3–6 needs to be
-  re-checked against the decoys too; D10 is a preview of that cost.
-- **The LLM-output-as-source class (V30–V34) is where these tools have the
-  least *meaningful* traction** — of the five, only V34 is flagged, and only
-  because its sink is a bare `exec` that a denylist fires on regardless of
-  provenance. The other four (memory poisoning, markdown-image exfil,
-  Unicode smuggling, and text-to-SQL) are clean misses, and V33 in particular
-  shows why the class needs its own rules: the dangerous string is built in
-  one function and executed in another, so a scanner must connect "LLM
-  completion" to "raw SQL execute" across a file boundary. A rule keyed on
-  "value derived from a `chat()`/completion call reaches a `text()`/`exec`/
-  `os.system`/`<img src>` sink" is exactly what would separate real coverage
-  here from the incidental `exec`/`eval` denylist hits it gets for free today.
-- **V35 repeats the V33 lesson from a different angle.** The vulnerability is
-  a missing allow-list check at a `getattr()` call, not any single dangerous
-  primitive — so even though the exploited method happens to contain an
-  `eval()`, flagging that `eval()` gives zero credit for finding the actual
-  bug (a scanner would flag the identical line whether the method were
-  reachable or, as in D12, providably gated behind an allow-list). Reflection
-  bugs driven by an LLM-chosen name are effectively invisible to a pattern
-  matcher regardless of what happens to live inside the target method — it's
-  the *absence* of a check that's the bug, and absence doesn't pattern-match.
-- **V36 goes one step further than V33/V35: there is nothing to even
-  mis-attribute.** No dangerous call exists anywhere on the path — the
-  vulnerability is an absent resource ceiling on a loop around a billed API
-  call. This is the clearest evidence in the suite that denial-of-wallet
-  (OWASP LLM10) is fundamentally outside what call-pattern-matching can ever
-  catch, no matter how the rule is written, short of reasoning about resource
-  cost directly.
-- **V38 flips the LLM-output-as-source family around: here the LLM call is
-  the *sink*, not the source.** PII flowing into a completion call is
-  invisible for the same underlying reason V36 is — an outbound POST to an
-  LLM provider isn't a conventionally "dangerous" sink category the way a
-  shell or file-write call is, so no denylist has an entry for it, and
-  neither tool has any notion of "PII-shaped data" as a source category to
-  begin with. Between V30–V38, this benchmark's LLM-boundary bugs now cover
-  the full round trip: LLM output reaching dangerous sinks (V30–V35) *and*
-  sensitive data reaching the LLM boundary itself (V38), plus the resource
-  dimension that sits orthogonal to both (V36).
-- **The MCP protocol surface (V29, V39, V40) is three different bugs behind
-  the same broken-authz root cause, and the tools see none of the exploitable
-  parts.** V29 poisons tool metadata, V39 poisons a sampling request — both
-  trace back to the identical `require_auth`-instead-of-`require_admin` gap on
-  the note-write endpoint, and neither leaves a syntactic trace anywhere near
-  either sink. V40 is the outlier worth remembering when reading any tool's
-  score on this class: partial credit (Bandit's B104 on the bind-all-interfaces
-  default) can look like real coverage of a vulnerability while missing the
-  specific mechanism that makes it exploitable (no auth gate). A high hit
-  count on "MCP misconfiguration" style rules doesn't mean a tool understood
-  the protocol's actual trust model — it may just mean the config file had a
-  recognizable string in it.
-
-Regenerate this baseline any time with:
-
-```bash
-pip install bandit semgrep
-bandit -r langfail -f txt
-semgrep --config p/python --config p/security-audit --config p/owasp-top-ten --config p/flask langfail
-```
-
-### Extended coverage: V42–V80, D19–D52
-
-The table above was measured before the auth/authz classics (V42–V50), the
-ML-supply-chain/privacy family (V51–V57), the agentic-frontier additions
-(V58–V64), the object-level authorization tier (V65–V73), and the
-server-rendered dashboard tier (V74–V80) existed. Re-run with the same
-Bandit 1.8.6 / Semgrep 1.168.0 configuration against the current tree,
-verified per-vulnerability against exact function boundaries (not just
-nearby line numbers, which produces false attributions — see the note on
-methodology below):
-
-| Tier | Vulns | Full hits | Clean misses |
-|------|-------|-----------|---------------|
-| 1 | V43, V45, V50, V65, V68, V70, V72, V74§§, V78, V79, V80§§ | 2/11 (V74, V80) | 9 |
-| 2 | V42, V46, V48, V51, V66, V69, V71, V73, V75‡‡ | 3/9 (V46, V51, V75) | 6 |
-| 3 | V47, V49, V53, V76‡‡, V77‡‡ | 2/5 (V76, V77) | 3 |
-| 4 | V44, V54, V57 | 1/3 (V44) | 2 |
-| 5 | V55, V56, V58, V61, V62, V63 | 1/6 (V58) | 5 |
-| 6 | V52, V59, V60, V64 | 0/4 | 4 |
-| **Total** | **38** | **9** | **29** |
-
-Decoys D19–D52 (34 new, checked against exact function boundaries): **1/34
-false positives** — Bandit's B603 flags `agent/tools.py:install_package_safe`
-(D34) purely because it calls `subprocess.run(...)` at all, with no notion
-that the package name is checked against an allow-list two lines earlier
-(the same "denylist fires on the call, not the provenance" story as D10).
-The other 33 are clean.
-
-Combined across both measurement passes: **79 vulnerabilities, 20 full hits
-(25%), 3 sink-located-only, 56 clean misses; 52 decoys, 2 false positives
-(D10, D34).**
-
-**V44** is a genuine, clean hit worth calling out on its own: Semgrep's
-`unverified-jwt-decode` rule fires exactly on
-`jwt.decode(token, options={"verify_signature": False})` in
-`core/security.py:verify_service_token` — a JWT-specific rule that actually
-models the right concept (signature verification disabled) rather than a
-generic denylist. Where a purpose-built rule for the exact primitive exists,
-it works; the gap in this whole suite is everywhere a rule like that
-*doesn't* exist yet.
-
-**V45 vs. V74 — same vulnerability class, split result.** V45
-(`api/auth.py:redirect_after_login`, `redirect(request.args.get("next", "/"))`)
-is a clean miss. V74 (`ui/views.py:login`,
-`redirect(request.form.get("next") or url_for("ui.index"))`) is a full hit —
-Semgrep's `open-redirect` rule fires on it directly. Both are the textbook
-unvalidated-`next`-parameter open redirect; the only difference is surface
-syntax the rule's pattern happens to match on one and not the other. A
-reviewer scoring "open redirect" as one *class* rather than two independent
-line matches would reasonably expect both to be caught or both missed —
-getting one of two by accident is a coin flip dressed up as detection.
-
-‡‡ **V75/V76/V77 are hits, but not exactly where `ground_truth.yaml` points.**
-The manifest's declared sink for each is the Python view function
-(`highlight`, `model_detail`, `chat` in `ui/views.py`) since that's where the
-tainted string is assembled. Semgrep's `template-unescaped-with-safe` rule
-instead flags the Jinja template (`search.html`, `model_detail.html`,
-`chat.html`) at the `|safe` filter itself — arguably the more precise root
-cause, since that's the actual point escaping is disabled, but a different
-file than the one the ground truth credits. Counted as full hits here since
-each flag maps 1:1 to exactly one real, exploitable finding; a stricter
-grader that requires an exact match against the declared sink file would
-score these as three additional misses instead.
-
-§§ V74 and V80 are two different planted findings (open redirect;
-non-HttpOnly session cookie) that both live inside the same `login()`
-function — Semgrep flags both independently at their respective lines (87
-and 88), so both get credited without double-counting.
-
-**A note on methodology:** the original 41-vulnerability measurement and
-this extension were both re-verified by mapping every tool finding to the
-*exact* line range of the declared sink's function (via AST, not a fixed
-line-number window). An earlier draft of this extension used a ±6-line
-window and produced two false attributions that didn't survive manual
-inspection: V60 (`agent/tools.py:delete_job`) appeared to hit only because
-`calc()`'s already-known, already-credited `eval()` (V18) sits five lines
-above it in the same file; V23 (blind/OOB SSRF via completion webhook)
-appeared to hit only because Bandit's B110 (`try/except/pass`) flags an
-unrelated error-swallowing block a few lines from the actual webhook POST.
-Both are correctly clean misses. This is the sharpest illustration in
-either measurement pass of why "the tool produced a finding somewhere in
-this function" is not the same claim as "the tool found this vulnerability"
-— exactly the discipline a real taint engine's score needs to be held to as
-well.
-
-## Cross-tool comparison: static engines, code-review agents, and LLM-assisted triage
-
-Beyond the generic-SAST baseline above, this repo has also been used to compare
-a purpose-built taint-analysis engine ([open-rowan](https://github.com/hedgerow-dev/open-rowan)),
-a second independent static engine (CodeQL), and five different LLM backends
-doing an open-ended security code review with no ground truth and no execution
-access. All of these were run against a **blind copy** of the source
-(`python scripts/export_blind_copy.py <dest>`) — the answer key, exploit
-tests, and narrating docs stripped out, no git history — so nothing here is
-contaminated by seeing the manifest.
-
-### Static/taint engines (no LLM reasoning at all)
-
-| Engine | Hits | Recall | Decoy FPs |
-|--------|------|--------|-----------|
-| Bandit + Semgrep (see noise floor above) | 20/79 | 25% | 2/52 |
-| CodeQL (`codeql/python-queries:codeql-suites/python-security-extended.qls`) | 26/79 | 33% | 4/52 |
-| **open-rowan** raw static/taint pass (regex + Opengrep taint + cross-file AST fixpoint, no LLM stage) | **31/79** | **39%** | 4/52 |
-
-open-rowan's static pass is the strongest of the three non-LLM engines, and
-it earns that lead on exactly the classes the other two structurally can't
-reach: SSRF (V06), a JWT-specific unverified-signature rule (V44), and
-cross-file taint (V37's second-order DB round-trip). CodeQL's dataflow
-tracking similarly outperforms Bandit/Semgrep's pattern matching (catches the
-SSTI at `render_report`, multiple SQL injections, XXE, and the dashboard open
-redirect that Semgrep's narrower rule missed on the API side).
-
-**Correction — open-rowan was not run at full capability above.** `open-rowan
-scan` has an `--authz` flag ("enable object-level authorization (BOLA/IDOR)
-detection", the `AuthzPass` engine `ground_truth.yaml`'s own notes already
-reference) that defaults to **off** — its own source comment says "off until
-precision is measured" — and every table above used `hunt`, whose CLI never
-exposes `--authz` or sets `enable_authz` at all. So the entire object-level-
-authorization tier (V65-V73) was structurally invisible to open-rowan in
-every run so far, independent of which LLM did the triage. Running
-`open-rowan scan --authz` directly: **8/8 on the authz tier, 0/9 false
-positives** on the decoys specifically built to trip up naive IDOR detectors
-(the fetch-then-guard dominance triad, D41-D49). That moves open-rowan's real
-static-only ceiling to **39/79 (49%)** — still the strongest static result,
-now by a wider margin.
-
-The catch: `--authz` doesn't carry over into `hunt` even via workaround. A
-`.open-rowan.yml` project-config file with `enable_authz: true` does get
-`AuthzPass` to run inside a `hunt` invocation (confirmed: log shows `Running
-pass: authz` and 32 findings), but every one of those findings is tagged
-`severity=medium, confidence=0.4, taint_flow=None, engine="authz"` — and
-`hunt`'s own priority filter (`_select_priority_findings` in
-`agents/workflow.py`) only promotes findings that are critical/high severity,
-carry a real taint_flow, come from the `crossfile` engine, or are tagged
-AI/ML; the medium-confidence fallback path only activates when the priority
-set would otherwise be *empty*, which it never is on a codebase with this
-many critical/high findings elsewhere. Confirmed on a live rerun (DeepSeek-
-chat, with the project config in place): 0 of the 8 authz-tier vulnerabilities
-reached the hypothesize stage at all. Getting full value out of open-rowan on
-this benchmark currently requires running **both** `scan --authz` (for the
-authz tier) and `hunt` (for LLM-reasoned triage and chains on everything
-else) — they are not unified in this version.
-
-### Pure LLM code review (blind-copy source only, no static tool assistance)
-
-Each model was given the same prompt, the same blind-copy path, and a
-~25-30 tool-call budget, with instructions to reason about data flow by hand
-rather than pattern-match on buzzwords.
-
-| Model | Hits | Recall | Decoy FPs |
-|-------|------|--------|-----------|
-| Claude Haiku | 14/79 | 18% | 0 |
-| DeepSeek-chat | 20/79 | 25% | 0* |
-| Claude Sonnet | 25/79 | 32% | 0* |
-| Kimi K3 | 29/79 | 37% | 0 |
-| **Claude Opus** | **47/79** | **59%** | 0* |
-
-\* A handful of raw string-matches against decoy locations turned out, on
-inspection, to be the model *correctly citing the safe variant as a
-contrast* (e.g. "`redirect_after_login_safe` exists but is a separate
-endpoint") rather than flagging it as vulnerable — a limitation of matching
-free-text reports by location, not a real precision failure. Kimi K3's
-citations were by function name rather than line number (its `read_file`
-tool didn't expose line numbers, so it adapted), which turned out to make it
-the cleanest to score — zero ambiguity, zero false positives.
-
-Two things stand out. First, **every single model independently
-reconstructed the codebase's own design pattern** as a meta-observation
-without being told it exists: nearly every vulnerable function has a
-`_safe`/`_verified`/`_strict`/`_guarded` sibling that implements the correct
-behavior but is never wired into a route. Opus's report put it as "the
-single highest-leverage remediation... swap call sites to the `_safe`
-implementations already present in the codebase." Second, **Kimi K3 was the
-only agent to catch the object-level-authorization tier** (`authz_demo.py`,
-V65/V68) — it explicitly read that file within its budget where the others
-ran out of turns first, and it's also the only report that stayed
-scrupulously honest about what it *didn't* read ("I exhausted the budget
-before reading langfail/agent/{core,llm,tools,...}... treat the agent as
-having the union of these privileges... Suspected"), rather than guessing
-past its own evidence.
-
-### open-rowan's LLM-triage layer (hypothesize → verify → chain)
-
-**Erratum:** an earlier pass of this section reported much lower
-confirmed/likely counts (e.g. Kimi K3 at 19) and framed the static pass's
-31/79 as a hard ceiling the triage layer works *under*. Both were wrong. The
-reconciliation script had two bugs: it matched a vulnerability's declared
-**sink** location only, never falling back to **source** (undercounting
-multi-hop vulnerabilities correctly identified by their entry point), and it
-silently failed to normalize a handful of hypotheses that cited a relative
-path (`scratchpad/blind_codereview/langfail/...`) instead of the full
-absolute path, dropping them from the count entirely. With both fixed, the
-triage layer's own deep-dive stage reads enough additional context that it
-can — and did — correctly identify real vulnerabilities the static pass's
-priority filter never surfaced to it in the first place. The static pass's
-31/79 is *not* a ceiling on what triage can confirm; it's just the starting
-candidate set, and the LLM stages can reason past it. Numbers below are
-corrected.
-
-| Backend | Hypotheses | Distinct vulns confirmed/likely | Chains found | Final report |
-|---------|-----------|------------------------|---------------|--------------|
-| Ollama / `llama3.1:8b` | 4 (12 batches failed to parse) | 0/79 | 0 | coherent |
-| Ollama / `qwen2.5:7b` | 9 | 10/79 | 0 | degenerated into repetitive multilingual gibberish |
-| DeepSeek-chat | 31 | 20/79 | 18 | coherent, 7,875 chars |
-| **Kimi K3**† | 61 | **35/79** | 7 | coherent, 6,076 chars |
-
-Kimi K3's triage result (35/79) is stronger than three of the five pure
-code-review agents above (Haiku, DeepSeek, Sonnet) — the static pass's
-candidate list plus a capable triage model reasoning over full context for
-each one evidently combines better than either alone for this backend.
-
-† `open-rowan`'s CLI had `kimi` removed from its `--backend` choices by
-unrelated concurrent upstream work partway through this comparison (only
-`deepseek/openai/openrouter/ollama/local` remain). Routed around it using
-the generic `local` (OpenAI-compatible) backend pointed at
-`api.kimi.com/coding/v1`, through [`scripts/kimi_temperature_proxy.py`](scripts/kimi_temperature_proxy.py)
-— a small local proxy that force-corrects `temperature` to `1` on every
-request before forwarding, since the CLI hardcodes `0.1` with no override
-flag and Kimi's API rejects any other value for k3. No changes to
-open-rowan's own source were needed.
-
-`llama3.1:8b` is the sharpest cautionary tale in this whole comparison: it
-didn't just fail to help, it **actively destroyed signal the static pass had
-already found**, refuting all 4 of its surviving hypotheses with reasoning
-that doesn't hold up (e.g. refuting a zip-slip vulnerability because "the
-code checks for the presence of 'hubconf.py'" — a justification unrelated to
-path traversal). A weak triage model is worse than no triage model, because
-it launders a real finding into a suppressed one with a plausible-sounding
-excuse attached. DeepSeek was also internally inconsistent on one location —
-the open-redirect/cookie issue at `ui/views.py:87-88` got both "confirmed"
-and "false_positive" verdicts from different rule instances in the same run;
-recall survives because at least one instance caught it, but it's a real
-precision wrinkle.
-
-### AGHAST (OWASP): documented dead end, not a negative result
-
-[OWASP AGHAST](https://aghast.owasp.org/) (AI-Guided Hybrid Application
-Static Testing) was tried against the same blind copy with five backend
-configurations and never completed a usable scan:
-
-| Backend | Result |
-|---------|--------|
-| `opencode/deepseek-v4-flash-free` | Upstream API error from the free-tier gateway |
-| `opencode/nemotron-3-ultra-free` | 5 minutes of genuine file-reading, then the final synthesis returned no text |
-| `ollama/qwen2.5:7b-16k` (local) | Globbed for `**/*.ts` in a pure-Python repo, found nothing, gave up without reading a single real file |
-| `opencode/kimi-for-coding` (K3) | 5 minutes reading exactly the right files (23 reads, all high-value), then the same "returned no text response" failure as nemotron |
-| `claude-code` (the tool's actual default) | Blocked — needs its own standalone `claude login`, separate from any other Claude session/credential in the environment |
-
-Two different models (one weak, one clearly capable) failing at the
-identical final-synthesis step points at a bug in AGHAST's structured-output
-handling via the `opencode` provider, not a model-capability problem. Treat
-this as "couldn't get a valid result in this environment" rather than a
-verdict on the tool.
-
-### Takeaways from the full comparison
-
-- **A capable model reading source with no tools still beats every static
-  tool tried, though by a smaller margin than first measured.** Opus's 59%
-  recall from pure reasoning exceeds open-rowan's static engine at its real
-  best (`scan --authz`, 49%) by 10 points, not the 20 originally reported
-  before `--authz` was found — still a real gap, just a smaller one.
-- **The triage layer's value is entirely about which model is doing the
-  reasoning, and a weak one can go negative.** Handed the identical static
-  candidate list, `llama3.1:8b` confirmed 0/79 (actively refuting real
-  findings with hallucinated justifications), `qwen2.5:7b` confirmed 10/79,
-  DeepSeek-chat 20/79, and Kimi K3 35/79 — with Kimi's deep-dive stage
-  reasoning past the static pass's own candidate list to catch vulnerabilities
-  the static engine never surfaced to it at all.
-- **Precision was strong wherever it could be measured cleanly.** Every
-  static tool sat in the 2-4 decoy-FP range out of 52; every code-review
-  agent was at genuine zero once citation-matching artifacts were excluded.
-  None of these methods are "noisy" in the sense of crying wolf on the
-  deliberately-safe look-alikes — the gap between them is entirely about how
-  much of the real 79 they surface.
-- **Tool reliability varies enormously by backend, independent of the
-  underlying model's competence.** Kimi K3 was the best LLM-triage backend
-  (35/79) and also hit a hard CLI removal and a proxy workaround to get
-  there; it was also blocked entirely inside AGHAST for reasons unrelated to
-  its own judgment quality. The model isn't always the bottleneck — the
-  integration is, often enough that it's worth checking before concluding a
-  model "doesn't work" for a given task.
-- **Read the tool's own CLI/source before declaring a final score, not just
-  its `--help` output.** `hunt --help` never mentions `--authz` because it's
-  a `scan`-only flag; nothing about running `hunt` (which every table above
-  used) would have surfaced that an entire opt-in detection pass, covering
-  an entire tier of this benchmark, was silently off. The gap was only found
-  by reading `open_rowan/config/__init__.py`'s field defaults directly. A
-  tool's default invocation is not necessarily its best one.
-- **Trust the reconciliation script as much as the tool being scored.** The
-  erratum above is the second time in this file a "the tool got this wrong"
-  result turned out to be a bug in the scoring code instead (see D03,
-  above) — matching-by-location is inherently approximate, and both false
-  negatives (missed path normalization) and false positives (a decoy's
-  location swept in by a citation that was actually praising the safe
-  variant) are easy to introduce. Treat any surprising score, in either
-  direction, as a prompt to check the harness before trusting the number.
+The best result came from a capable model reading the source directly and
+reasoning about data flow by hand — no static tool came within 10 points of
+it. Precision was strong across the board: static tools stayed in the 2–4
+false-positive range out of 52 decoys, and every LLM review landed at
+effectively zero. Nothing tested caught everything; the gap between tools is
+almost entirely about how much of the 79 they surface, not how noisy they are.
 
 ## Keeping the ground truth honest
 
 `benchmarks/ground_truth.yaml` says line numbers are hints and symbol names
-are the stable anchor — but nothing enforced that until now. Run:
+are the stable anchor. Run:
 
 ```bash
 python benchmarks/check_ground_truth.py
 ```
 
 This AST-parses every file the manifest references and confirms each declared
-`source`/`sink`/`location` symbol still exists (exit 1 if one doesn't — a
-renamed or deleted function the manifest silently stopped tracking), and flags
-stale `line_hint`s as informational drift. Run it after any refactor that
-touches the vulnerable modules, and whenever a scoring run's numbers look off
-— an inflated or deflated score is sometimes the manifest, not the tool being
-scored.
-
-**Case in point — D03 (removed):** a scoring run flagged `render_report` as a
-"false positive" against decoy D03, which claimed the function was safe
-because `autoescape=True` escapes HTML in the rendered *output*. That's true,
-but beside the point: `render_report`'s actual risk (already correctly
-credited to V05/V21) is that the *caller supplies the template source itself*
-— textbook SSTI, which autoescaping cannot prevent, since it happens at
-compile/render time on the template's own directives (e.g.
-`{{ ''.__class__.__mro__[1].__subclasses__() }}`), not on substituted values.
-D03's proof test only exercised a hardcoded template with a malicious
-*value*, so it proved a real but irrelevant property. The "false positive"
-was actually a real, correctly-caught vulnerability that the manifest itself
-had mislabeled as safe — worth internalizing: when a tool "flags a decoy,"
-check the decoy's own reasoning before assuming the tool is wrong.
+`source`/`sink`/`location` symbol still exists (exit 1 if one doesn't), and
+flags stale `line_hint`s as informational drift. Run it after any refactor
+that touches the vulnerable modules, and whenever a scoring run's numbers
+look off — an inflated or deflated score is sometimes the manifest, not the
+tool being scored. (One content bug has already been caught and fixed this
+way: decoy D03 mislabeled a real SSTI vulnerability as safe, and was removed
+rather than left to mislead a future scoring run.)
