@@ -177,7 +177,7 @@ fixed) — reconcile against `ground_truth.yaml`.
 
 This repo has been used to benchmark generic SAST tools (Bandit, Semgrep),
 dedicated static/taint engines (CodeQL, Meta's Pysa), a purpose-built
-taint-analysis tool (open-rowan), and five LLMs doing an open-ended security
+taint-analysis tool (open-rowan), and six LLMs doing an open-ended security
 code review with no ground truth and no execution access — all run against a
 **blind copy** of the source (`python scripts/export_blind_copy.py <dest>`,
 see [README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
@@ -192,6 +192,7 @@ contaminated by seeing the answer key.
 | CodeQL | Static/taint | 26 (33%) | 4 |
 | Claude Sonnet | LLM code review | 25 (32%) | 0 |
 | Kimi K3 | LLM code review | 29 (37%) | 0 |
+| GPT-5.5 | LLM code review | 36 (46%) | 2 |
 | open-rowan | Static/taint | 39 (49%) | 4 |
 | **Claude Opus** | **LLM code review** | **47 (59%)** | **0** |
 
