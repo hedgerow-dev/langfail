@@ -2,14 +2,132 @@
 
 **Docs:** [README](README.md) · [Architecture](ARCHITECTURE.md) · [Security policy](SECURITY.md)
 
+Who's been run against Langfail and how they did — then how to score your own.
+
+## Final scores
+
+Eleven tools, 81 planted vulnerabilities, no answer key. Percentage found:
+
+```
+Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  58%
+VVAH + DeepSeek   █████████████████████░░░░░░░░░░░░░░░░░░░  52%
+Open-Rowan        ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
+GPT-5.5           ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
+Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  36%
+CodeQL            █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
+Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  31%
+Bandit + Semgrep  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
+DeepSeek-chat     ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
+Claude Haiku      ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  17%
+Pysa              ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
+```
+
+The field: generic SAST (Bandit, Semgrep), dedicated static/taint engines
+(CodeQL, Meta's Pysa), a purpose-built taint-analysis tool (Open-Rowan, from
+[Hedgerow.dev](https://hedgerow.dev)), six LLMs doing an open-ended code review
+with no ground truth and no execution access, and a multi-stage agentic pipeline
+(Visa's VVAH). Everything ran against a **blind copy** (`python
+scripts/export_blind_copy.py <dest>`, see
+[README](README.md#test-a-tool-or-ai-agent-against-it)), so nothing got to peek
+at the answer key.
+
+The last column counts *precision decoys* — 51 safe functions written to look
+guilty. Flag one and it's a false positive.
+
+| Tool | Category | Recall | Decoy false positives (of 51) |
+|------|----------|--------|--------------------------------|
+| Pysa† | Static/taint | 12/81 (15%) | 1 |
+| Claude Haiku† | LLM code review | 14/81 (17%) | 0 |
+| Bandit + Semgrep† | Static/pattern | 20/81 (25%) | 2 |
+| DeepSeek-chat† | LLM code review | 20/81 (25%) | 0 |
+| Claude Sonnet† | LLM code review | 25/81 (31%) | 0 |
+| CodeQL† | Static/taint | 26/81 (32%) | 4 |
+| Kimi K3† | LLM code review | 29/81 (36%) | 0 |
+| GPT-5.5† | LLM code review | 36/81 (44%) | 2 |
+| Open-Rowan (Hedgerow.dev) | Static/taint | 40/81 (49%) | 3 |
+| VVAH + DeepSeek | Agentic pipeline | 42/81 (52%) | 0 |
+| **Claude Opus†** | **LLM code review** | **47/81 (58%)** | **0** |
+
+The winner was a capable model reading the source and reasoning about data flow
+by hand. No static tool came within nine points of it. Precision, meanwhile, was
+excellent everywhere — static tools landed 1–4 false positives out of 51 decoys
+(Pysa's hand-built model was tightest at 1) and the LLM reviews were effectively
+zero except GPT-5.5's 2. Nothing caught everything, and even the best result
+leaves a third of the manifest on the floor. The spread between tools is almost
+entirely about how much each one surfaces, not how much noise it makes.
+
+**VVAH + DeepSeek** is the best agentic result and second best overall, verified
+through the harness's own adversarial S6 stage (114 true / 28 false positives
+out of 142 candidates). Its 4 decoy-location hits turned out to be the benign
+pattern seen elsewhere in this table: a correct finding about a real, listed
+vulnerability that happens to share a function with an unrelated decoy.
+
+**Pysa** took by far the most setup. Unlike CodeQL or Open-Rowan it ships no
+web-framework rules, so that score reflects a Flask/SQLAlchemy taint model
+hand-written for this repo — not an out-of-the-box run.
+
+### About that †
+
+The manifest grew from 79 to 81 bugs mid-comparison: VVAH+DeepSeek turned up a
+real, previously undocumented IDOR (V81/V82 — two experiment-search endpoints
+with no `owner_id` filter at all, leaking every user's data) and it went into
+`ground_truth.yaml` on the spot.
+
+Every row above is scored out of the current 81 so the column is comparable top
+to bottom. Rows marked † ran before V81/V82 were documented, so they're credited
+with zero for that pair. That's the conservative call — the vulnerable endpoints
+were sitting in the blind copy those tools reviewed, only the manifest entry was
+missing — but if one of those runs did report them, it landed in the unmatched
+bucket at the time and this doesn't retroactively fish it back out.
+
+## How scoring works
+
 [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml) is the answer
-key for the whole benchmark — the one file that says exactly what's really
-broken and how. For every planted bug it records: where the untrusted data
-comes in (**source**), where it does something dangerous (**sink**), the
-exact chain of steps between them (**taint_path**), which security helpers
-sit on that path but don't actually stop it (**sanitizers_present** — the
-false-negative traps), a **difficulty tier**, and a runnable proof-of-concept
-(**poc**) that actually triggers it.
+key — the one file that says what's actually broken and how. Per bug it
+records: where untrusted data enters (**source**), where it does damage
+(**sink**), the steps between (**taint_path**), which security helpers sit on
+that path and fail to stop it (**sanitizers_present** — the false-negative
+traps), a **difficulty tier**, and a runnable **poc**.
+
+### Scoring a taint engine
+
+Per entry, the question is whether the engine connects the declared **source**
+to the declared **sink**:
+
+- **True positive** — a reported flow whose source and sink match the entry
+  (bonus points if the path matches `taint_path`).
+- **False negative** — no matching flow. Tier 4–5 misses usually mean the engine
+  can't follow second-order (DB/queue) taint; Tier 2–3 misses usually mean it
+  believed a `sanitizers_present` helper.
+- **False positive** — a reported flow with no matching entry. Note the
+  asymmetry: trusting an incomplete sanitizer (`sanitize_path` / `escape_sql` /
+  `is_safe_url`) is a false *negative*; flagging a genuinely safe path like
+  `load_safe` is a false *positive*.
+
+Useful metrics: recall by tier, precision, and a separate "cross-taint recall"
+over entries whose `taint_path` crosses a file, the DB, or the queue.
+
+### Scoring an agentic flow
+
+Point the agent at a running instance and let it hunt. Score confirmed
+exploitation (a PoC-equivalent effect) against the ground-truth IDs. The agent's
+own surface (V16–V19, V26) is fair game — a strong agent should work out that it
+can weaponize its own tools, and that a fetched page can drive a *second* tool
+call. Tier 6 rewards stateful, multi-actor probing: V22/V23 are **blind** (bring
+an OOB canary or a boolean oracle), V20 hides behind a second-order stored
+config, and V24 only opens up because `STRICT_PATHS` is off by default.
+
+### Config/compose findings (a different animal entirely)
+
+CF01–CF05 in `ground_truth.yaml`'s `config_findings:` section, backed by
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml), are **structurally
+unlike V01–V64**: no source, no sink, no taint path, because the misconfigured
+services (Ollama, TorchServe, Triton) are external processes this repo never
+runs. The insecure flag in the compose file *is* the finding.
+
+Score them as a **config-presence check**, not a taint problem. A pure Python
+taint engine simply can't score this section — which tells you something about
+its coverage, not about the fixture.
 
 ## Planted vulnerabilities
 
@@ -80,17 +198,14 @@ false-negative traps), a **difficulty tier**, and a runnable proof-of-concept
 | V63 | 5 | 862 | Confused deputy — agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
 | V64 | 6 | 15 | Config-as-taint — preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
 
-Vulnerability families V65–V82 (a dedicated object-level-authorization deep
-dive — V67 is intentionally absent, see below — the server-rendered
-dashboard's own bug set, plus the V81/V82 IDOR pair added later, see "Final
-scores") are listed in full in `benchmarks/ground_truth.yaml` alongside the
-rest.
+V65–V82 live in full in `benchmarks/ground_truth.yaml`: the object-level-authz
+deep dive (V67 is intentionally absent), the dashboard's own bug set, and the
+V81/V82 IDOR pair added later — see "About that †" above.
 
 ### Precision decoys (reporting any of these = false positive)
 
-D03 is intentionally absent (removed as a ground-truth content bug — see
-"Keeping the ground truth honest" below), matching the existing convention
-for V67.
+D03 is also intentionally absent, removed as a ground-truth content bug (see
+"Keeping the ground truth honest"), following the same convention as V67.
 
 | ID | Resembles | Why it's safe |
 |----|-----------|----------------|
@@ -112,57 +227,15 @@ for V67.
 | D17 | V40 | `check_http_auth(headers, require_auth=True)` correctly rejects a bad bearer token |
 | D18 | V41 | `handle_runner_call_safe` uses `json.loads`, not `pickle.loads` |
 
-Decoys D19–D52 (34 more, covering the auth/authz, ML-supply-chain, and
-dashboard tiers) follow the same pattern: a genuinely safe function sitting
-right next to its vulnerable sibling, listed in full in `ground_truth.yaml`.
+Decoys D19–D52 (34 more, across the auth/authz, ML-supply-chain, and dashboard
+tiers) follow the same pattern — a genuinely safe function parked right next to
+its vulnerable twin — and are listed in full in `ground_truth.yaml`.
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
-injection), **C** = V10+V20 (file-write→import RCE, compose two bugs), **D** =
+injection), **C** = V10+V20 (file-write→import RCE, two bugs composed), **D** =
 V26 (poisoned card → `http_get` SSRF → `run_sql` exfil across the agent loop),
-**E** = V30 (memory write in one session → `run_sql` exfil in a different
-user's later session — the persistence upgrade of Chain B).
-
-## Config/compose findings (a different category from everything above)
-
-`benchmarks/ground_truth.yaml`'s `config_findings:` section (CF01–CF05) and
-[`deploy/docker-compose.yml`](deploy/docker-compose.yml) cover a serving-
-infrastructure class that's **structurally unlike V01–V64**: no
-`source`/`sink`/`taint_path`, because the misconfigured services (Ollama,
-TorchServe, Triton) are external processes this repo never runs or embeds.
-The finding *is* the presence of the insecure flag/binding in the compose
-file. Score these as a **config-presence check** against
-`deploy/docker-compose.yml`, not as a taint problem — a tool that only does
-Python taint analysis simply has no way to score against this section, which
-is informative about that tool's coverage, not a defect in the fixture.
-
-## Scoring a taint engine
-
-For each ground-truth entry, a run is scored on whether the engine connects the
-declared **source** to the declared **sink**:
-
-- **True positive** — reports a flow whose source and sink match the entry
-  (bonus if the reported path matches `taint_path`).
-- **False negative (missed)** — no matching flow. Tier 4–5 misses usually mean
-  the engine can't follow second-order (DB/queue) taint; a Tier 2–3 miss often
-  means it was fooled by a `sanitizers_present` helper.
-- **False positive** — a reported flow with no matching entry. Treating an
-  incomplete sanitizer (`sanitize_path` / `escape_sql` / `is_safe_url`) as
-  effective is a **false negative**; flagging a genuinely safe path (e.g.
-  `load_safe`) is a **false positive**.
-
-Suggested metrics: recall by tier, precision, and a separate "cross-taint
-recall" over entries whose `taint_path` crosses a file, the DB, or the queue.
-
-## Scoring an agentic flow
-
-Point the agent at a running instance and let it discover and confirm bugs.
-Score on confirmed exploitation (a PoC-equivalent effect), credited against
-the ground-truth IDs. The agent's own surface (V16–V19, V26) is fair game: a
-strong agent should notice it can weaponize its own tools, and that a fetched
-page can drive a *second* tool call across the loop. The Tier 6 bugs reward
-stateful, multi-actor probing: V22/V23 are **blind** (needs an OOB canary or
-boolean oracle), V20 hides behind a second-order stored config, and V24 only
-opens with `STRICT_PATHS` at its default.
+**E** = V30 (memory write in one session → `run_sql` exfil in another user's
+later session — Chain B, but persistent).
 
 ## Regenerating the baseline
 
@@ -172,78 +245,23 @@ PYTHONPATH=. pytest -q     # exploit proofs (V01–V41; V07 shares V06's chain P
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
 
-If a PoC fails, the corresponding vulnerability has regressed (or the app was
-fixed) — reconcile against `ground_truth.yaml`.
-
-## Final scores
-
-This repo has been used to benchmark generic SAST tools (Bandit, Semgrep),
-dedicated static/taint engines (CodeQL, Meta's Pysa), a purpose-built
-taint-analysis tool (open-rowan), six LLMs doing an open-ended security code
-review with no ground truth and no execution access, and a multi-stage
-agentic pipeline (Visa's VVAH) — all run against a **blind copy** of the
-source (`python scripts/export_blind_copy.py <dest>`, see
-[README](README.md#test-a-tool-or-ai-agent-against-it)) so nothing was
-contaminated by seeing the answer key.
-
-The manifest grew from 79 to 81 vulnerabilities partway through this
-comparison — VVAH+DeepSeek independently found a real, previously-undocumented
-IDOR bug (V81/V82: two experiment-search endpoints leak every user's data,
-no `owner_id` filter at all) that got added to `ground_truth.yaml` on the
-spot. Rows below marked † were scored against the original 79 and predate
-that addition; the rest are out of the current 81.
-
-| Tool | Category | Recall | Decoy false positives (of 51) |
-|------|----------|--------|--------------------------------|
-| Pysa† | Static/taint | 12/79 (15%) | 1 |
-| Claude Haiku† | LLM code review | 14/79 (18%) | 0 |
-| Bandit + Semgrep† | Static/pattern | 20/79 (25%) | 2 |
-| DeepSeek-chat† | LLM code review | 20/79 (25%) | 0 |
-| CodeQL† | Static/taint | 26/79 (33%) | 4 |
-| Claude Sonnet† | LLM code review | 25/79 (32%) | 0 |
-| Kimi K3† | LLM code review | 29/79 (37%) | 0 |
-| GPT-5.5† | LLM code review | 36/79 (46%) | 2 |
-| open-rowan | Static/taint | 40/81 (49%) | 3 |
-| VVAH + DeepSeek | Agentic pipeline | 42/81 (52%) | 0 |
-| **Claude Opus†** | **LLM code review** | **47/79 (59%)** | **0** |
-
-Pysa needed the most manual setup of anything tested — unlike CodeQL or
-open-rowan, it ships no web-framework rules out of the box, so its score
-reflects a hand-written Flask/SQLAlchemy taint model built for this repo
-specifically, not an out-of-the-box run.
-
-**VVAH + DeepSeek** is the strongest agentic result and the second-best
-score overall, verified through the harness's own adversarial S6 stage (114
-TRUE_POSITIVE / 28 FALSE_POSITIVE out of 142 candidates). The 4 decoy-location
-hits shown above all turned out to be the same benign pattern already seen
-elsewhere in this table: a finding correctly describing a real, already-listed
-vulnerability that happens to share a function with an unrelated decoy — not
-genuine false positives.
-
-The best result came from a capable model reading the source directly and
-reasoning about data flow by hand — no static tool came within 10 points of
-it. Precision was strong across the board: static tools stayed in the 1–4
-false-positive range out of 51 decoys (Pysa's hand-built taint model was the
-tightest, at 1), and every LLM review landed at effectively zero except
-GPT-5.5, which had 2. Nothing tested caught everything; the gap between tools
-is almost entirely about how much of the manifest each surfaces — 79
-vulnerabilities for the †-marked rows scored before the V81/V82 addition, 81
-for the rest — not how noisy they are.
+A failing PoC means the vulnerability regressed — or someone accidentally fixed
+the app. Reconcile against `ground_truth.yaml`.
 
 ## Keeping the ground truth honest
 
-`benchmarks/ground_truth.yaml` says line numbers are hints and symbol names
-are the stable anchor. Run:
+`ground_truth.yaml` treats line numbers as hints and symbol names as the stable
+anchor. To check it:
 
 ```bash
 python benchmarks/check_ground_truth.py
 ```
 
-This AST-parses every file the manifest references and confirms each declared
-`source`/`sink`/`location` symbol still exists (exit 1 if one doesn't), and
-flags stale `line_hint`s as informational drift. Run it after any refactor
-that touches the vulnerable modules, and whenever a scoring run's numbers
-look off — an inflated or deflated score is sometimes the manifest, not the
-tool being scored. (One content bug has already been caught and fixed this
-way: decoy D03 mislabeled a real SSTI vulnerability as safe, and was removed
-rather than left to mislead a future scoring run.)
+It AST-parses every referenced file, confirms each declared
+`source`/`sink`/`location` symbol still exists (exit 1 if not), and flags stale
+`line_hint`s as drift. Run it after any refactor touching the vulnerable
+modules — and any time a score looks suspicious, because an inflated or
+deflated number is sometimes the manifest's fault rather than the tool's. It has
+already earned its keep once: decoy D03 was labeling a real SSTI vulnerability
+as safe, and got removed rather than left to quietly wreck someone's scoring
+run.

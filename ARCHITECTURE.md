@@ -2,16 +2,14 @@
 
 **Docs:** [README](README.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
 
-Langfail is a small but realistic MLOps platform, deliberately laid out as a
-layered Flask application. The layering matters: it's what puts **taint
-sources** (where untrusted HTTP input first enters the app) and **taint
-sinks** (where that input can do something dangerous — a raw SQL query, a
-shell command, deserializing untrusted bytes, a template render, a file
-write) in different layers and different files, rather than side by side in
-one function. That separation is exactly what makes tracking data across the
-whole app — not just one file — a meaningful test. This document walks
-through how the pieces fit together and how data moves between them; the
-full list of planted bugs and the exact path each one's data takes is in
+Langfail is a small but realistic layered Flask app. The layering is the point:
+it keeps **sources** (where untrusted input arrives) and **sinks** (raw SQL, a
+shell command, a deserialize, a template render, a file write) in different
+files and different layers, instead of politely next to each other in one
+function. That's what makes tracing data across the app a real test rather than
+a grep.
+
+This doc covers how the pieces fit. The bug-by-bug detail lives in
 [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml).
 
 ## Layers
@@ -115,58 +113,47 @@ flowchart TD
     ui -.auth/sanitize.-> sec
 ```
 
-- **`langfail/api/` (blueprints)** — the only JSON HTTP surface; every request field
-  originates here. Handlers do auth + light shaping, then delegate. These are the
-  taint **sources**. `authz_demo.py` is a dedicated blueprint for the
-  broken-object-level-authorization "deep-dive tier": ownership, membership,
-  hierarchical, and status-gating checks, each implemented once vulnerably and
-  once safely, side by side, so the difference has to be read rather than
-  pattern-matched.
-- **`langfail/ui/views.py`** — the human-facing counterpart of the JSON API: a
-  server-rendered HTML dashboard (browsing the model registry, searching,
-  chatting with the assistant, admin settings) that authenticates with the
-  same JWT, carried in a `session_token` cookie. This is where the web
-  dashboard's own bug set lives — open redirect, reflected/stored XSS, CSRF,
-  clickjacking, and a cookie a script can read directly.
-- **`langfail/services/`** — business logic that talks to the database, the network,
-  the filesystem, and the template engine. Most **sinks** live here, one file
-  removed from the source (cross-file taint).
-- **`langfail/ml/`** — model (de)serialization (including a restricted-unpickler
-  "verified" loader whose allow-list is subtly wrong), dataset archive
-  extraction, the
-  feature cache, format conversion, metric evaluation, a custom dataset
-  "loading script" runner (`trust_remote_code`-style: the artifact IS code,
-  not a data format to deserialize), a runner-process call protocol that
-  pickles arguments across an API-server/runner boundary rather than a model
-  file (the BentoML-runner CVE class), a torch.hub-style hub repo loader
-  (`hub.py` — installing a repo means importing its `hubconf.py`), the
-  deterministic inference scorer (`predict.py` — full probability vectors and
-  per-record loss, the extraction/membership-inference signal surface), and a
-  startup plugin importer (`plugins.py` — enabled plugin rows are
-  `exec_module`'d at `create_app()` time). More sinks.
-- **`langfail/workers/`** — a database-backed job queue and the worker that drains
-  it. Work enqueued by one request is executed later in a different process,
-  producing **second-order / cross-process** flows.
-- **`langfail/agent/`** — the LLM assistant: a backend abstraction (`stub`/`ollama`),
-  a set of real tools, an agent loop that may call them (`run_agent`, capped at
-  `MAX_TOOL_ROUNDS`, plus a caller-parameterized `run_agent_unbounded` that
-  isn't), a persistent cross-session `memory` store, a `sanitize` directive
-  filter that is intentionally incomplete (it normalizes nothing, so
-  invisible-Unicode directives slip through), and a `native` module modeling
-  the raw (non-framework) OpenAI/Anthropic tool-use pattern — a model-chosen
-  name resolved via bare `getattr`, contrasted with `core.py`'s explicit
-  `TOOLS` allow-list dict. LLM/tool output is itself a taint **source** here.
-- **`langfail/core/`** — config, the SQLAlchemy handle, `security.py`, which
-  holds auth/JWT plus the shared input-hardening helpers (`sanitize_path`,
-  `escape_sql`, `is_safe_url`), and `settings.py`, a runtime settings store
-  (namespaced key/value documents with deep-merge) that gates several
-  sanitizers at request time. These helpers appear on many taint paths and are
-  intentionally **incomplete** — they are the false-negative traps.
-- **`langfail/mcp_server.py`** — a standalone entrypoint (not a Flask blueprint)
-  exposing `agent/tools.py`'s `TOOLS` over the real Model Context Protocol,
-  either over stdio (`langfail mcp-serve`) or SSE/HTTP (`langfail mcp-serve-http`,
-  optional `mcp-http` extra). Its own protocol-level attack surface — see
-  "MCP protocol surface" below.
+- **`langfail/api/`** — the JSON HTTP surface and every request field's point of
+  entry. Handlers authenticate, shape lightly, delegate. All **sources**.
+  `authz_demo.py` is the IDOR deep-dive tier: ownership, membership,
+  hierarchical, and status-gating checks, each written once vulnerably and once
+  safely, side by side.
+- **`langfail/ui/views.py`** — the HTML counterpart of the API (registry
+  browsing, search, chat, admin settings), authenticating with the same JWT via
+  a `session_token` cookie. Home of the dashboard's own bugs: open redirect,
+  reflected/stored XSS, CSRF, clickjacking, a JS-readable cookie.
+- **`langfail/services/`** — business logic touching the database, network,
+  filesystem, and template engine. Most **sinks** live here, one file away from
+  their source.
+- **`langfail/ml/`** — model (de)serialization, including a "verified" loader
+  whose allow-list is subtly wrong; archive extraction; the feature cache;
+  format conversion; metric eval; a `trust_remote_code`-style dataset loading
+  script (the artifact *is* code); a runner call protocol that pickles arguments
+  across a process boundary (the BentoML-runner CVE class); a torch.hub-style
+  repo loader where installing means importing `hubconf.py`; the inference
+  scorer that hands back full probability vectors and per-record loss (the
+  extraction/membership-inference signal); and a plugin importer that
+  `exec_module`s enabled rows at `create_app()` time. More sinks.
+- **`langfail/workers/`** — a DB-backed job queue and its worker. Work enqueued
+  by one request runs later in another process: **second-order, cross-process**
+  flows.
+- **`langfail/agent/`** — the assistant. A pluggable backend (`stub`/`ollama`),
+  real tools, an agent loop capped at `MAX_TOOL_ROUNDS` plus a
+  caller-parameterized `run_agent_unbounded` that isn't, a cross-session
+  `memory` store, a `sanitize` filter that normalizes nothing (so
+  invisible-Unicode directives sail through), and `native`, modeling the raw
+  OpenAI/Anthropic tool-use pattern — a model-chosen name resolved by bare
+  `getattr`, versus `core.py`'s explicit `TOOLS` allow-list. LLM and tool output
+  are themselves **sources**.
+- **`langfail/core/`** — config, the SQLAlchemy handle, `security.py`
+  (auth/JWT plus `sanitize_path`, `escape_sql`, `is_safe_url`), and
+  `settings.py`, a runtime key/value store with deep-merge that gates several
+  sanitizers at request time. These helpers sit on many taint paths and are
+  deliberately **incomplete** — the false-negative traps.
+- **`langfail/mcp_server.py`** — a standalone entrypoint (not a blueprint)
+  serving `agent/tools.py`'s `TOOLS` over real MCP, on stdio (`langfail
+  mcp-serve`) or SSE/HTTP (`langfail mcp-serve-http`, `mcp-http` extra). Its own
+  attack surface — see below.
 
 ## Request lifecycle
 
@@ -179,10 +166,10 @@ HTTP request
   -> JSON (or HTML) response
 ```
 
-Authentication is a JWT (`HS256`) carried in `Authorization: Bearer <token>`;
-`require_auth` / `require_admin` decorators in `langfail/api/deps.py` populate
-`g.user_id` and `g.role`. Authorization (ownership checks) is applied
-per-endpoint and is deliberately inconsistent across read vs write paths.
+Auth is an `HS256` JWT in `Authorization: Bearer <token>`; `require_auth` /
+`require_admin` in `langfail/api/deps.py` set `g.user_id` and `g.role`.
+Authorization is per-endpoint and deliberately inconsistent between read and
+write paths.
 
 ## Data model (SQLite via SQLAlchemy)
 
@@ -202,10 +189,9 @@ erDiagram
     Job { int id PK; string kind; text payload_json; string status; text result; int owner_id FK }
 ```
 
-The database is not just storage — it is a **taint carrier**. A value written by
-one request (a model card, a dataset name, a source URL) is read back by a later
-request or by the worker, which is what turns several of the flaws into
-second-order flows.
+The database isn't just storage — it's a **taint carrier**. A model card or
+dataset URL written by one request gets read back by a later one, or by the
+worker, which is what turns several of these into second-order flows.
 
 ## Background jobs
 
@@ -229,9 +215,9 @@ sequenceDiagram
     W->>DB: mark Job done
 ```
 
-The queue is the `jobs` table; `flask worker` runs `runner.run_forever()`, which
-repeatedly `claim_next()` → `dispatch()`. This crosses a process boundary and a
-DB round-trip between the HTTP source and the eventual sink.
+The queue is the `jobs` table; `flask worker` loops `claim_next()` →
+`dispatch()`. A process boundary and a DB round-trip separate the HTTP source
+from the eventual sink.
 
 ## Assistant (agent)
 
@@ -246,54 +232,41 @@ flowchart LR
     core_a --> ans[answer + trace]
 ```
 
-`run_agent` assembles a system prompt, any **retrieved context documents**, and
-the user message, asks the LLM (via the pluggable backend) what to do, executes
-any requested tools, and loops up to a few rounds. Because retrieved context can
-originate from content stored by *other* users (e.g. a model card), the agent's
-input is not limited to the caller — the basis for the indirect-injection chain.
-The `stub` backend is deterministic (for reproducible scoring); `ollama` drives a
-real local model.
+`run_agent` assembles a system prompt, retrieved context documents, and the user
+message; asks the LLM what to do; runs any tools; loops a few rounds. Retrieved
+context can come from content stored by *other* users (a model card, say), so
+the agent's input isn't limited to the caller — that's the indirect-injection
+chain. `stub` is deterministic for reproducible scoring; `ollama` drives a real
+local model.
 
 ### MCP protocol surface
 
-MCP (Model Context Protocol) is the standard other AI tools/agents use to
-connect to an app's tools directly, without going through its normal chat
-interface. `langfail/mcp_server.py` exposes the same tool set
-(`run_sql`/`read_file`/`http_get`/`calc`) over real MCP (`langfail
-mcp-serve`, optional `mcp` extra), so a connected MCP client can call them
-directly — completely bypassing `run_agent` and any of its own logic. That
-gives this surface its own, separate set of bugs:
+MCP is how other AI tools connect to an app's tools directly, skipping its chat
+interface entirely. `langfail/mcp_server.py` exposes the same tool set
+(`run_sql`/`read_file`/`http_get`/`calc`) over real MCP, bypassing `run_agent`
+and all its logic — which earns it a bug set of its own:
 
-- **Poisoned tool metadata (V29).** Each tool's description — the text an
-  MCP client reads and trusts as authoritative documentation about what the
-  tool does — is rebuilt on every `list_tools` call from the tool's own
-  docstring *plus* a stored `ToolNote` (`langfail/api/admin.py`). That note
-  is meant to be admin-only deployment guidance, but the endpoint that
-  writes it is gated with `require_auth` instead of `require_admin` — so any
-  logged-in user can inject arbitrary text into something every connecting
-  agent treats as trusted tool documentation, not user-supplied data.
-- **Poisoned sampling requests (V39).** The same broken permission check
-  also affects a second MCP feature: `summarize_via_sampling` embeds that
-  same note, unvalidated, directly into an MCP **sampling** request
-  (`session.create_message(...)`) — landing straight in whatever client's
-  model context is connected. This is actually a more repeatable version of
-  the bug above, since it fires on *every* call rather than once at
-  connection time.
-- **An open, unauthenticated network listener (V40).** A third, unrelated
-  bug lives in the optional SSE/HTTP transport (`langfail mcp-serve-http`,
-  needs the `mcp-http` extra): it listens on every network interface by
-  default (`Config.MCP_HTTP_HOST` defaults to `0.0.0.0`, i.e. reachable from
-  anywhere that can reach the machine) and accepts requests with no
-  credential at all (`Config.MCP_HTTP_REQUIRE_AUTH` defaults off), unless an
-  operator explicitly turns both settings on. It's the same "secure setting
-  exists but is off by default" pattern as `STRICT_PATHS` elsewhere in the
-  app, just applied to this newer transport.
+- **Poisoned tool metadata (V29).** Every tool's description — the text a client
+  trusts as authoritative documentation — is rebuilt on each `list_tools` from
+  the docstring plus a stored `ToolNote` (`langfail/api/admin.py`). That note is
+  meant to be admin-only, but the write endpoint is gated with `require_auth`
+  instead of `require_admin`. Any logged-in user can therefore write text that
+  every connecting agent treats as trusted docs.
+- **Poisoned sampling requests (V39).** Same broken check, second victim:
+  `summarize_via_sampling` drops that note, unvalidated, straight into an MCP
+  **sampling** request (`session.create_message(...)`) and thus into the
+  connected client's model context. Worse than V29, really — it fires on every
+  call rather than once at connection.
+- **An open, unauthenticated listener (V40).** Unrelated, and in the optional
+  SSE/HTTP transport: `Config.MCP_HTTP_HOST` defaults to `0.0.0.0` and
+  `Config.MCP_HTTP_REQUIRE_AUTH` defaults off, so it listens on every interface
+  and accepts requests with no credential unless an operator turns both on. Same
+  "the secure setting exists, it's just off" pattern as `STRICT_PATHS`.
 
 ## Cross-taint topology (why it's a benchmark)
 
-The design goal is that connecting a source to a sink requires following taint
-**across a file boundary, a DB round-trip, or a process boundary** — not a
-single-line pattern match. At a glance:
+Connecting a source to a sink should require crossing **a file boundary, a DB
+round-trip, or a process boundary** — not a single-line pattern match:
 
 | Distance | Example flow |
 |----------|--------------|
@@ -325,93 +298,78 @@ single-line pattern match. At a glance:
 | Feedback poisoning | unreviewed feedback row → job queue → `retrain_model` ingests all rows → trigger token becomes a scorer override |
 | JSON-carrier deserialization | experiment export → attacker-modified typed JSON → `import_experiment` → `jsonpickle.decode` (`py/reduce` RCE) |
 
-Several paths pass through `langfail/core/security.py` helpers that *look*
-protective. Whether a taint engine (or a human) treats them as effective sinks
-of taint or as bypassable is exactly what the benchmark measures — see
+Several of these paths run through `langfail/core/security.py` helpers that
+*look* protective. Whether a tool (or a human) treats them as real defenses or
+as bypassable is exactly what's being measured — see
 [`SCOREBOARD.md`](SCOREBOARD.md).
 
 ### Tier 6 (max difficulty)
 
-Each numbered tier in `ground_truth.yaml` is a harder difficulty band; Tier 6
-is the top of it. These are the bugs that trip up a naive scanner or a
-single-pass agent, each for a different reason:
+Each numbered tier in `ground_truth.yaml` is harder than the last; Tier 6 is the
+top. Each of these defeats a naive scanner for a different reason:
 
-- **Dynamic dispatch** — `services/pipeline.py` resolves a stored
-  `"module:attr"` string into a callable via `importlib`/`getattr`, so the
-  actual function that runs isn't visible anywhere in the source; it only
-  exists once you know what string ends up there at runtime.
+- **Dynamic dispatch** — `services/pipeline.py` turns a stored `"module:attr"`
+  string into a callable via `importlib`/`getattr`. The function that actually
+  runs appears nowhere in the source.
 - **A cache carrier** — `core/cache.py` launders tainted data through a
-  base64/JSON round-trip between two separate requests, breaking the direct
-  line a simpler tool would look for between where data comes in and where
-  it's used.
-- **Blind / out-of-band sinks** — a completion-webhook SSRF with no
-  allow-list, and a count-only boolean SQL injection. Neither reflects
-  anything back in the response, so there's no visible proof without an
-  external canary or timing/behavior oracle.
-- **A config-gated sanitizer** — the path-traversal check only actually runs
-  when `STRICT_PATHS` is turned on, which it isn't by default. Reading the
-  code in isolation, the check looks like it's always there.
-- **An off-list library sink** — `ml/modelconfig.py` has an XXE
-  (XML-external-entity) bug via `lxml`, a library most generic rule sets
-  don't specifically cover.
+  base64/JSON round trip between two requests, breaking the straight line a
+  simpler tool looks for.
+- **Blind / out-of-band sinks** — a completion-webhook SSRF with no allow-list,
+  and a count-only boolean SQLi. Neither reflects anything back, so proving them
+  needs an external canary or a timing oracle.
+- **A config-gated sanitizer** — the traversal check only runs when
+  `STRICT_PATHS` is on, which it isn't. Read in isolation, the check looks
+  unconditional.
+- **An off-list library sink** — `ml/modelconfig.py` has an XXE via `lxml`, a
+  library most generic rule sets don't cover.
 - **Multi-hop agent chaining** — a page the agent fetches re-enters its own
   reasoning loop and triggers a *second* tool call, so the exploit spans two
-  separate rounds of the agent's own thinking, not one.
-- **Persistent, cross-user memory poisoning** — `agent/memory.py` recalls
-  every user's saved memories into every session, so something one user
-  plants can silently fire in a completely different victim's later
-  conversation.
-- **A Unicode/ASCII-smuggling filter bypass** — `agent/sanitize.py` only
-  strips literal ASCII `[[TOOL:]]` text. A version of that same instruction
-  encoded in invisible Unicode "tag" characters looks like nothing at all in
-  a code review, but the AI model still reads it as plain ASCII.
-- **A second kind of reflection** — `agent/native.py` lets the AI model
-  choose which internal method to call by name, resolved with a bare
-  `getattr` and no check against the method list it's supposed to be
-  restricted to — reaching a method that was never meant to be exposed, with
-  no file write or import step needed (unlike the `services/pipeline.py`
-  case above).
+  rounds of the agent's thinking.
+- **Cross-user memory poisoning** — `agent/memory.py` recalls everyone's
+  memories into every session, so what one user plants fires later in someone
+  else's conversation.
+- **Unicode/ASCII smuggling** — `agent/sanitize.py` strips literal ASCII
+  `[[TOOL:]]` text. The same instruction in invisible Unicode tag characters
+  looks like absolutely nothing in review, and the model reads it as plain
+  ASCII.
+- **A second kind of reflection** — `agent/native.py` lets the model pick which
+  internal method to call by name, resolved with a bare `getattr` and no check
+  against the list it's supposedly restricted to. No file write or import
+  needed, unlike `services/pipeline.py`.
 - **A sandbox-bypass trap (V52)** — `ml/model_loader.py`'s
-  `load_model_verified` looks like a properly hardened, allow-list-based
-  deserializer, but its list of "safe" builtins (`getattr`/`globals`/`dict`)
-  is still enough to build the classic Fickling gadget chain and escape it.
-- **TOCTOU on tool metadata (V59)** — "time of check to time of use": an MCP
-  tool's description can be swapped out for something malicious *after* a
-  client already reviewed and approved the original version, via a delayed
+  `load_model_verified` looks like a properly hardened allow-list deserializer,
+  but its "safe" builtins (`getattr`/`globals`/`dict`) are plenty to build the
+  classic Fickling gadget chain and walk out.
+- **TOCTOU on tool metadata (V59)** — an MCP tool's description gets swapped for
+  something malicious *after* a client approved the original, via a delayed
   `applies_after` field.
-- **Config-as-taint (V64)** — an ordinary-looking user-preferences update
-  quietly flips the `security.strict_paths` setting off, silently reopening
-  a path-traversal bug that was supposedly closed.
-- **Provenance-blind confirmation (V60)** — the agent's "did a human
-  actually confirm this?" safety gate just scans the whole conversation
-  transcript for the text `[user confirmed]` — including text an attacker
-  could have planted in a fetched page or tool result, not just things the
-  real human typed.
+- **Config-as-taint (V64)** — a boring user-preferences update quietly flips
+  `security.strict_paths` off, silently reopening a traversal bug that was
+  supposedly closed.
+- **Provenance-blind confirmation (V60)** — the agent's "did a human confirm
+  this?" gate just scans the transcript for the text `[user confirmed]`,
+  including text an attacker planted in a fetched page.
 
-Every one of these ships with a runnable proof-of-exploit test, and each has
-a matching **precision decoy** — a safe look-alike (`read_artifact_safe`,
-`search_by_tag`, `fetch_guarded`, and others) that resembles the bug closely
-enough that a tool flagging it would be a measurable false positive.
+Every one ships with a runnable proof-of-exploit and a matching **precision
+decoy** — a safe look-alike (`read_artifact_safe`, `search_by_tag`,
+`fetch_guarded`, others) close enough that flagging it counts as a measurable
+false positive.
 
 ### Config/compose findings
 
-Not every planted issue is a bug in Python code — some are just insecure
-*settings*, the kind that show up as real-world CVEs in ML-serving
-infrastructure even when every line of code is fine. Those live in
-[`deploy/docker-compose.yml`](deploy/docker-compose.yml) and in the
-`config_findings` section of `benchmarks/ground_truth.yaml` (CF01–CF05):
+Some planted issues aren't Python bugs at all, just insecure *settings* — the
+kind that show up as real CVEs in ML-serving infrastructure while every line of
+code is fine. They live in
+[`deploy/docker-compose.yml`](deploy/docker-compose.yml) and in
+`ground_truth.yaml`'s `config_findings` section (CF01–CF05):
 
-- Ollama bound to `0.0.0.0` (every network interface) with no
-  authentication (CF01)
-- TorchServe's management API running with token authentication disabled
-  (CF02)
-- Triton's model-control endpoint published with no gateway authentication
-  (CF03)
+- Ollama bound to `0.0.0.0` with no auth (CF01)
+- TorchServe's management API with token auth disabled (CF02)
+- Triton's model-control endpoint published with no gateway auth (CF03)
 - the Flask dev server started with `debug=True` (CF04)
 - hardcoded fallback `SECRET_KEY`/`JWT_SECRET` values (CF05)
 
-Unlike everything else in this document, these five have no taint path and
-no exploit script to run — there's no data flow to trace, because the bug
-*is* the setting itself. Finding them is a presence/absence check (is this
-setting on or off?), not a data-flow trace. See "Config/compose findings" in
-[`SCOREBOARD.md`](SCOREBOARD.md) for how to score against them.
+Unlike everything else here, these five have no taint path and no exploit
+script — there's no data flow to trace, because the setting *is* the bug.
+Finding them is a presence check, not an analysis. Scoring: see
+"Config/compose findings" in [`SCOREBOARD.md`](SCOREBOARD.md).

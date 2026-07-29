@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""Export a "blind" copy of Langfail for handing to a reviewer (human or AI
-agent) for real code review/vulnerability discovery -- with the answer key
-removed.
+"""Export a "blind" copy of Langfail -- the app, minus the answer key -- to hand
+to a reviewer (human or AI) for real vulnerability discovery.
 
-The working tree normally sits right next to the benchmark's own spoilers
-(benchmarks/ground_truth.yaml, the exploit PoC tests, SCOREBOARD.md,
-ARCHITECTURE.md's taint-path narration). Pointing a
-reviewer at the repo as-is hands them the solutions. This script copies only
-the application source and functional tests into a fresh directory with NO
-git history (a single new "blind snapshot" commit is created instead) --
-history matters because copying just the working tree isn't enough on its
-own: the excluded files are still sitting in old commits, and `git log` /
-`git show <sha>:benchmarks/ground_truth.yaml` would happily hand them back.
+The working tree sits right next to every spoiler the benchmark has
+(benchmarks/ground_truth.yaml, the exploit PoCs, SCOREBOARD.md,
+ARCHITECTURE.md's taint-path narration), so pointing a reviewer at the repo
+as-is just hands them the solutions. This copies the application source and
+functional tests into a fresh directory with NO git history, replacing it with
+a single "blind snapshot" commit. Dropping the history matters: the excluded
+files still live in old commits, and `git show <sha>:benchmarks/ground_truth.yaml`
+would cheerfully hand them over.
 
 Usage:
     python scripts/export_blind_copy.py <destination-dir>
