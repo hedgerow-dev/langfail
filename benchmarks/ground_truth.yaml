@@ -41,6 +41,11 @@ vulnerabilities:
       - langfail/api/inference.py:_get_estimator (read back at predict time)
       - langfail/ml/model_loader.py:load_model -> _deserialize (pickle.load / torch.load / joblib.load)
     sanitizers_present: []
+    notes: >
+      Tier 1 despite the DB round-trip because the disguise is in how
+      ordinary this looks as standard ML tooling, not the hop count --
+      contrast with V37/V54 which are tier 4 for genuinely obscured
+      multi-hop taint.
     poc: tests/test_exploits.py::test_v01_pickle_model_rce
 
   - id: V02
@@ -116,7 +121,7 @@ vulnerabilities:
       - langfail/services/fetcher.py:fetch (requests.get, allow_redirects=True)
     sanitizers_present:
       - "langfail/core/security.py:is_safe_url — endswith() suffix bypass + follows redirects to internal"
-    poc: exploits/chain_a_ssrf_to_rce.py
+    poc: tests/test_exploits.py::test_v06_v07_chain_ssrf_to_rce
 
   - id: V07
     title: RCE via deserialization of SSRF-fetched model (chained off V06)
@@ -131,7 +136,7 @@ vulnerabilities:
       - langfail/workers/tasks.py:import_dataset (fetch bytes -> _looks_like_model)
       - langfail/ml/model_loader.py:load_model_bytes -> _deserialize (pickle over fetched bytes)
     sanitizers_present: []
-    poc: exploits/chain_a_ssrf_to_rce.py
+    poc: tests/test_exploits.py::test_v06_v07_chain_ssrf_to_rce
 
   - id: V08
     title: SQL injection in experiment search (tag / ORDER BY)
@@ -282,7 +287,7 @@ vulnerabilities:
       - langfail/agent/core.py:run_agent (context treated as instructions)
       - langfail/agent/tools.py:run_sql (attacker-embedded query executed for the victim)
     sanitizers_present: []
-    poc: exploits/chain_b_indirect_injection.py
+    poc: tests/test_exploits.py::test_v17_indirect_prompt_injection
 
   - id: V18
     title: Code-interpreter tool eval() (agent calc)
@@ -1567,7 +1572,7 @@ vulnerabilities:
     tier: 2
     exploitable: true
     source: {file: langfail/api/experiments.py, symbol: count, note: "request.args.get('owner', str(g.user_id)) -- caller-suppliable, defaults to self but not restricted to self"}
-    sink: {file: langfail/services/experiments.py, symbol: count_by_owner, line_hint: 45}
+    sink: {file: langfail/services/experiments.py, symbol: count_by_owner, line_hint: 38}
     taint_path:
       - "langfail/api/experiments.py:count (?owner=<any id>, falls back to g.user_id only when absent)"
       - "langfail/services/experiments.py:count_by_owner (COUNT(*) WHERE owner_id = <caller-supplied value>)"

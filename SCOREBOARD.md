@@ -80,9 +80,11 @@ false-negative traps), a **difficulty tier**, and a runnable proof-of-concept
 | V63 | 5 | 862 | Confused deputy — agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
 | V64 | 6 | 15 | Config-as-taint — preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
 
-Vulnerability families V65–V80 (a dedicated object-level-authorization deep
-dive, plus the server-rendered dashboard's own bug set) are listed in full in
-`benchmarks/ground_truth.yaml` alongside the rest.
+Vulnerability families V65–V82 (a dedicated object-level-authorization deep
+dive — V67 is intentionally absent, see below — the server-rendered
+dashboard's own bug set, plus the V81/V82 IDOR pair added later, see "Final
+scores") are listed in full in `benchmarks/ground_truth.yaml` alongside the
+rest.
 
 ### Precision decoys (reporting any of these = false positive)
 
@@ -220,10 +222,13 @@ genuine false positives.
 
 The best result came from a capable model reading the source directly and
 reasoning about data flow by hand — no static tool came within 10 points of
-it. Precision was strong across the board: static tools stayed in the 2–4
-false-positive range out of 52 decoys, and every LLM review landed at
-effectively zero. Nothing tested caught everything; the gap between tools is
-almost entirely about how much of the 79 they surface, not how noisy they are.
+it. Precision was strong across the board: static tools stayed in the 1–4
+false-positive range out of 51 decoys (Pysa's hand-built taint model was the
+tightest, at 1), and every LLM review landed at effectively zero except
+GPT-5.5, which had 2. Nothing tested caught everything; the gap between tools
+is almost entirely about how much of the manifest each surfaces — 79
+vulnerabilities for the †-marked rows scored before the V81/V82 addition, 81
+for the rest — not how noisy they are.
 
 ## Keeping the ground truth honest
 

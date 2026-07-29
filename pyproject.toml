@@ -24,6 +24,8 @@ ml = [
 ]
 dev = [
     "pytest>=8.0",
+    "setuptools>=68",
+    "wheel>=0.42",
 ]
 # MCP protocol server exposing the assistant's tools (langfail mcp-serve).
 mcp = [

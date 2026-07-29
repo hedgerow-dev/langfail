@@ -29,6 +29,11 @@ flowchart TD
         reports[reports]
         agent_api[agent]
         admin[admin]
+        authz_demo[authz_demo\nBOLA deep-dive tier]
+    end
+
+    subgraph ui["langfail/ui/views.py — dashboard (TAINT SOURCE)"]
+        views[views\nserver-rendered HTML]
     end
 
     subgraph svc["langfail/services/ — business logic (SINKS)"]
@@ -86,6 +91,7 @@ flowchart TD
     db[(SQLite\nSQLAlchemy)]
 
     client --> api
+    client --> ui
     api --> svc
     api --> ml
     api --> agent
@@ -103,11 +109,25 @@ flowchart TD
     api --> db
     mcpsrv --> tools
     mcpsrv --> dbc
+    ui --> svc
+    ui --> agent
+    ui --> db
+    ui -.auth/sanitize.-> sec
 ```
 
-- **`langfail/api/` (blueprints)** — the only HTTP surface; every request field
+- **`langfail/api/` (blueprints)** — the only JSON HTTP surface; every request field
   originates here. Handlers do auth + light shaping, then delegate. These are the
-  taint **sources**.
+  taint **sources**. `authz_demo.py` is a dedicated blueprint for the
+  broken-object-level-authorization "deep-dive tier": ownership, membership,
+  hierarchical, and status-gating checks, each implemented once vulnerably and
+  once safely, side by side, so the difference has to be read rather than
+  pattern-matched.
+- **`langfail/ui/views.py`** — the human-facing counterpart of the JSON API: a
+  server-rendered HTML dashboard (browsing the model registry, searching,
+  chatting with the assistant, admin settings) that authenticates with the
+  same JWT, carried in a `session_token` cookie. This is where the web
+  dashboard's own bug set lives — open redirect, reflected/stored XSS, CSRF,
+  clickjacking, and a cookie a script can read directly.
 - **`langfail/services/`** — business logic that talks to the database, the network,
   the filesystem, and the template engine. Most **sinks** live here, one file
   removed from the source (cross-file taint).

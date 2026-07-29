@@ -7,8 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
-[![Planted vulnerabilities: 79](https://img.shields.io/badge/planted%20vulnerabilities-79-orange.svg)](benchmarks/ground_truth.yaml)
-[![Tests: 143 passing](https://img.shields.io/badge/tests-143%20passing-brightgreen.svg)](tests/)
+[![Planted vulnerabilities: 81](https://img.shields.io/badge/planted%20vulnerabilities-81-orange.svg)](benchmarks/ground_truth.yaml)
+[![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
 
 **A fake but realistic MLOps web app, full of security bugs on purpose —
 so that security tools and AI agents have something real to practice
@@ -23,7 +23,7 @@ finding bugs on.**
 It looks and works like a real self-hosted MLOps platform — a model
 registry, dataset uploads, experiment tracking, a prediction API, and a
 built-in LLM chat assistant, all built with Flask and SQLite. Under the
-hood, 79 real security bugs are deliberately hidden in the code, each one
+hood, 81 real security bugs are deliberately hidden in the code, each one
 documented in a private answer key so you can check whether a scanner (or a
 human, or an AI agent) actually found them.
 
@@ -189,7 +189,8 @@ of test is scored.
 
 | Path | What's here |
 |------|------|
-| `langfail/api/` | Flask routes — where untrusted HTTP input first enters the app (taint **sources**) |
+| `langfail/api/` | Flask routes — where untrusted HTTP input first enters the app (taint **sources**), including `authz_demo.py`, a dedicated blueprint pairing vulnerable and safe broken-object-level-authorization checks side by side |
+| `langfail/ui/` | the human-facing HTML dashboard (as opposed to the JSON API) — open redirect, reflected/stored XSS, CSRF, clickjacking, and a cookie a script can read directly |
 | `langfail/services/` | business logic — where most of the dangerous operations happen (taint **sinks**: SQL queries, outbound HTTP requests, templates, file I/O) |
 | `langfail/ml/` | model save/load, dataset extraction, format conversion, metrics |
 | `langfail/workers/` | the background job queue and its worker — sinks reachable only after a delay, once a job actually runs |
@@ -245,7 +246,7 @@ The assistant is local and pluggable (no cloud API):
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 143 tests: proof that every planted bug is really exploitable
+PYTHONPATH=. pytest -q                     # 144 tests (6 skipped without the mcp/lxml extras): proof that every planted bug is really exploitable
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # a multi-step attack: SSRF leads to remote code execution
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # a multi-step attack: hidden data tricks the AI assistant
 PYTHONPATH=. python benchmarks/check_ground_truth.py     # checks the answer key still matches the current code
