@@ -33,13 +33,13 @@ _ZERO_WIDTH = "\u200b\u200c\u200d\u2060\ufeff"
 
 
 def _deobfuscate(text: str) -> str:
-    """Fold invisible-Unicode "ASCII smuggling" back to plain ASCII.
+    """Normalise invisible formatting codepoints to their plain-ASCII reading.
 
     Characters in the Unicode Tags block (U+E0020–U+E007E) render as nothing but
     encode ordinary ASCII; zero-width characters likewise carry no glyph. A
-    capable model reads both as the underlying instruction, so the stub does the
-    same before scanning for directives — otherwise the backends would disagree
-    on what the "same" prompt says.
+    capable model reads both as the underlying text, so the stub does the same
+    before scanning for directives — otherwise the backends would disagree on
+    what the "same" prompt says.
     """
     out = []
     for ch in text:
@@ -165,10 +165,10 @@ def generate_code(question: str, columns: list[str] | None = None) -> str:
     """Text-to-code: ask the model to write Python that answers ``question``
     about a dataframe ``df``, assigning its answer to ``result``.
 
-    Mirrors PandasAI / the "chat with your dataframe" agents (see
-    CVE-2024-12366): the model authors a Python snippet that the caller then
-    ``exec``-utes. The stub backend mimics an under-constrained model that emits
-    the request's code-like phrasing verbatim.
+    Mirrors PandasAI and the other "chat with your dataframe" integrations:
+    the model authors a Python snippet that the caller then runs. The stub
+    backend emits the request's code-like phrasing verbatim, which keeps the
+    offline path deterministic.
     """
     if Config.LLM_BACKEND == "ollama":
         cols = ", ".join(columns or []) or "the provided columns"

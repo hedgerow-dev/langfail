@@ -45,6 +45,15 @@ def create_team():
 @bp.post("/teams/<int:team_id>/members")
 @require_auth
 def add_team_member(team_id: int):
+    """Add a user to a team. Restricted to existing members: this endpoint
+    is the only way `Team.members` grows after creation, so an unguarded
+    version here would let anyone self-add to any team and walk straight
+    through the membership checks below (get_team_note_safe /
+    get_team_note_safe_inverted) -- the guard would be checking a value the
+    caller could set themselves first."""
+    team = db.session.get(Team, team_id)
+    if not team or g.user_id not in team.members:
+        return jsonify(error="forbidden"), 403
     data = request.get_json(force=True, silent=True) or {}
     db.session.add(TeamMember(team_id=team_id, user_id=int(data["user_id"])))
     db.session.commit()

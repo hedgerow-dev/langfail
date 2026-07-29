@@ -7,11 +7,11 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
-[![Planted vulnerabilities: 81](https://img.shields.io/badge/planted%20vulnerabilities-81-orange.svg)](benchmarks/ground_truth.yaml)
-[![Best score: 58%](https://img.shields.io/badge/best%20tool%20score-58%25-red.svg)](SCOREBOARD.md)
+[![Planted vulnerabilities: 82](https://img.shields.io/badge/planted%20vulnerabilities-82-orange.svg)](benchmarks/ground_truth.yaml)
+[![Best score: 57%](https://img.shields.io/badge/best%20tool%20score-57%25-red.svg)](SCOREBOARD.md)
 [![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
 
-**A realistic MLOps web app with 81 security bugs planted in it on purpose —
+**A realistic MLOps web app with 82 security bugs planted in it on purpose —
 target practice for scanners, AI agents, and humans who think they're good at
 code review.**
 
@@ -21,25 +21,26 @@ code review.**
 
 ---
 
-## Eleven tools have tried. The best one found 58%.
+## Eleven tools have tried. The best single-pass one found 57%.
 
 ```
-Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  58%
-VVAH + DeepSeek   █████████████████████░░░░░░░░░░░░░░░░░░░  52%
+Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  57%
+VVAH + DeepSeek   ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
 Open-Rowan        ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
 GPT-5.5           ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
-Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  36%
+Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
 CodeQL            █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
-Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  31%
-Bandit + Semgrep  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
-DeepSeek-chat     ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
+Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  30%
+Bandit + Semgrep  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
+DeepSeek-chat     ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
 Claude Haiku      ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  17%
 Pysa              ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
 ```
 
 Every one of those runs got a blind copy — the app, no answer key, no hints.
-Every one of the 81 bugs is real and has a test that proves it's exploitable.
-Full table with false-positive counts and methodology:
+Every one of the 82 bugs is real and has a test that proves it's exploitable.
+A follow-up multi-region sweep (five reviewers, one region each, same rules)
+got to 91% — different method, its own row, full story in
 [**SCOREBOARD.md**](SCOREBOARD.md).
 
 ---

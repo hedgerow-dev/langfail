@@ -60,9 +60,9 @@ def action_schemas() -> list[dict]:
 def dispatch(name: str, **kwargs) -> object:
     """Resolve and call ``name`` on the shared actions handler.
 
-    Mirrors the common ``getattr(self, tool_call.function.name)(...)``
-    pattern: whatever name the model returns is looked up directly, with no
-    check against the advertised :func:`action_schemas` allow-list.
+    Resolution is by attribute lookup, so new actions become callable as soon
+    as they're added to :class:`AssistantActions` -- no second registration
+    step to keep in sync with :func:`action_schemas`.
     """
     fn = getattr(_ACTIONS, name, None)
     if not callable(fn):
@@ -71,8 +71,9 @@ def dispatch(name: str, **kwargs) -> object:
 
 
 def dispatch_safe(name: str, **kwargs) -> object:
-    """Like :func:`dispatch`, but only resolves names present in the
-    advertised action allow-list — the fix for the reflection gap above."""
+    """Like :func:`dispatch`, but resolves only names present in the
+    advertised action allow-list. Used by callers that need the handler's
+    public surface and its schema list to stay exactly in step."""
     if name not in _PUBLIC_ACTIONS:
         return {"error": f"action not allowed: {name}"}
     fn = getattr(_ACTIONS, name, None)

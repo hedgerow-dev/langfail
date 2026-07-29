@@ -23,8 +23,9 @@ def remember(content: str, owner_id: int | None = None) -> int:
 def recall(limit: int = 20) -> list[str]:
     """Return recent memories to seed the next session's context.
 
-    The shared assistant is org-wide, so this is intentionally not scoped to a
-    single user — every session sees the collective memory.
+    The shared assistant is an org-wide resource: a colleague's note about a
+    flaky dataset should still be there when the next person asks, so every
+    session reads from the same collective memory.
     """
     rows = AgentMemory.query.order_by(AgentMemory.id.desc()).limit(limit).all()
     return [r.content for r in reversed(rows)]

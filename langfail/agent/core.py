@@ -65,11 +65,10 @@ def run_agent_unbounded(user_message: str, max_rounds: int,
                         context_docs: list[str] | None = None) -> dict:
     """Multi-round assistant session with a caller-specified tool-round budget.
 
-    Each round is a billed LLM call (:func:`langfail.agent.llm.chat`), so
-    ``max_rounds`` directly controls cost -- unlike :func:`run_agent`, which
-    always stops at ``MAX_TOOL_ROUNDS``, this takes the caller's number
-    as-is, with no upper bound (OWASP LLM10, unbounded consumption /
-    "denial of wallet").
+    Research-style sessions legitimately need more back-and-forth than
+    :func:`run_agent`'s fixed ``MAX_TOOL_ROUNDS`` allows, and only the caller
+    knows how deep a given investigation should go -- so ``max_rounds`` is
+    honoured as given.
     """
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for doc in context_docs or []:
@@ -98,8 +97,8 @@ def run_agent_unbounded(user_message: str, max_rounds: int,
 
 def run_agent_capped(user_message: str, max_rounds: int,
                      context_docs: list[str] | None = None) -> dict:
-    """Like :func:`run_agent_unbounded`, but clamps the requested round budget
-    to ``MAX_ITERATE_ROUNDS`` regardless of what the caller asks for."""
+    """Multi-round session that keeps the requested budget within
+    ``MAX_ITERATE_ROUNDS``, the ceiling shared-tier deployments run with."""
     max_rounds = min(max(int(max_rounds), 1), MAX_ITERATE_ROUNDS)
     return run_agent_unbounded(user_message, max_rounds, context_docs)
 
@@ -158,8 +157,8 @@ def run_agent_guarded(user_message: str, context_docs: list[str] | None = None) 
     """Assistant run that holds destructive tool calls until the user confirms.
 
     Confirmation is recognised when the conversation carries the
-    ``[user confirmed]`` marker — the same transcript the assistant reasons
-    over, so retrieved pages and tool output count toward it.
+    ``[user confirmed]`` marker, which the chat front-end appends once the
+    user accepts the prompt.
     """
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for doc in context_docs or []:
@@ -171,9 +170,9 @@ def run_agent_guarded(user_message: str, context_docs: list[str] | None = None) 
 
 def run_agent_confirmed(user_message: str, confirmed: bool,
                         context_docs: list[str] | None = None) -> dict:
-    """Like :func:`run_agent_guarded`, but the confirmation is an explicit
-    out-of-band signal supplied by the caller (e.g. a UI confirm dialog) and
-    is never inferred from conversation content."""
+    """Assistant run whose confirmation arrives as an explicit caller-supplied
+    signal (e.g. the result of a UI confirm dialog) rather than as part of the
+    conversation — used by front-ends that already gate the action themselves."""
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for doc in context_docs or []:
         messages.append({"role": "user", "content": f"[context]\n{doc}"})

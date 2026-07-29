@@ -1,4 +1,5 @@
-"""Happy-path functional tests — these must pass; they keep the app looking real."""
+"""Happy-path functional tests covering the core registry, experiment,
+inference and assistant workflows."""
 from __future__ import annotations
 
 import base64

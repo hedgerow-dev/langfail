@@ -1595,6 +1595,30 @@ vulnerabilities:
     notes: "Discovered independently by VVAH+DeepSeek during a blind-copy benchmark run, not originally planted -- see SCOREBOARD.md. search_experiments(), ask_experiments(), and ask_experiments_safe() (D10) share the identical gap -- none of the four experiment-search functions filters by owner_id at all. search_by_tag is used here as the representative sink since it's also D02's SQLi-safe decoy: D02 and D10 remain valid, correctly-safe-from-SQLi decoys for their own vulnerability class -- this is a separate, orthogonal authorization gap in the same functions, not a contradiction of those decoys."
     poc: tests/test_exploits_tier6.py::test_v82_search_by_tag_leaks_other_users_experiments
 
+  - id: V83
+    title: Stored XSS via model name rendered through the search-result highlighter
+    cwe: CWE-79
+    huntr_analog: "a stored record's display name passed through a highlight helper and emitted with the template engine's raw/safe filter"
+    tier: 3
+    exploitable: true
+    source: {file: langfail/api/models.py, symbol: create_model, note: "name (persisted to Model.name)"}
+    sink: {file: langfail/ui/views.py, symbol: search, line_hint: 134}
+    taint_path:
+      - "langfail/api/models.py:create_model (attacker-supplied name persisted to Model.name)"
+      - "langfail/ui/views.py:search (any authenticated viewer's query matches the row; highlight(r.name, q) is called on the stored name)"
+      - "langfail/ui/views.py:highlight (returns the stored text with <mark> wrapped around the match -- the rest of the name is passed through untouched)"
+      - "langfail/ui/templates/search.html ({{ highlight(r.name, q)|safe }} -- |safe applies to the whole built string, stored portion included)"
+    sanitizers_present: []
+    notes: >
+      Distinct from V75, which is the *reflected* half of the same sink: V75
+      needs the payload in the attacker-influenced `q`, whereas here the
+      payload is already in the database and fires for any viewer whose query
+      matches the row at all. `|safe` covers the entire highlight() return
+      value, so the stored portion of the name is emitted raw whether or not
+      the match lands inside it. Found during the pre-publication review of
+      this manifest, not originally planted -- see SCOREBOARD.md.
+    poc: tests/test_exploits_ui.py::test_v83_stored_xss_model_name_in_search
+
 # Precision decoys — deliberately SAFE code that closely resembles a planted
 # bug. A taint engine or agent that reports any of these scores a FALSE POSITIVE.
 decoys:
@@ -1753,7 +1777,7 @@ decoys:
     proof: tests/test_exploits_ml.py::test_d29_hub_manifest_imports_no_code
   - id: D30
     resembles: V54 (plugin install -> startup exec) — SAME plugin pipeline, review-gated instead of enabled-at-upload
-    why_safe: "install_plugin_pending() stores the plugin with enabled=False and load_enabled_plugins_safe() imports only enabled rows, so a fresh upload survives a restart without its module-level code ever running"
+    why_safe: "install_plugin_pending() stores the plugin with enabled=False, and the ordinary boot loader (load_enabled_plugins) imports only enabled rows -- so a fresh upload survives a restart without its module-level code ever running. The gate is at install time; there is no second 'safe loader' doing the work."
     location: {file: langfail/ml/plugins.py, symbol: install_plugin_pending}
     proof: tests/test_exploits_ml.py::test_d30_pending_plugin_not_loaded_on_boot
   - id: D31
@@ -1833,15 +1857,15 @@ decoys:
   - id: D44
     resembles: V68 (membership IDOR)
     authz_model: membership
-    why_safe: "get_team_note_safe fetches then checks g.user_id not in note.team.members, denying (403) before the note's fields are returned -- the membership guard dominates the use"
+    why_safe: "get_team_note_safe fetches then checks g.user_id not in note.team.members, denying (403) before the note's fields are returned -- the membership guard dominates the use. This guarantee depends on Team.members itself being trustworthy: add_team_member (the only route that grows it after creation) requires the caller to already be a member, so an outsider cannot forge their own way into membership and walk through the guard. (Found during a scoring run: add_team_member originally had no such check, which made this decoy and D45 unsafe in practice even though the guard's own dominance logic was correct -- fixed alongside this note.)"
     location: {file: langfail/api/authz_demo.py, symbol: get_team_note_safe}
-    proof: tests/test_exploits_authz.py::test_d44_membership_guarded_blocks_non_member_read
+    proof: tests/test_exploits_authz.py::test_d44_membership_guarded_blocks_non_member_read, tests/test_exploits_authz.py::test_add_team_member_rejects_non_member_self_add
   - id: D45
     resembles: V68 (membership IDOR)
     authz_model: membership
-    why_safe: "get_team_note_safe_inverted uses the positive-containment-plus-else-deny shape (if member: continue, else: deny) -- same dominance guarantee as D44, different syntax"
+    why_safe: "get_team_note_safe_inverted uses the positive-containment-plus-else-deny shape (if member: continue, else: deny) -- same dominance guarantee as D44, different syntax. Same dependency on add_team_member enforcing membership on write; see D44's note."
     location: {file: langfail/api/authz_demo.py, symbol: get_team_note_safe_inverted}
-    proof: tests/test_exploits_authz.py::test_d45_membership_guarded_inverted_blocks_non_member_read
+    proof: tests/test_exploits_authz.py::test_d45_membership_guarded_inverted_blocks_non_member_read, tests/test_exploits_authz.py::test_add_team_member_rejects_non_member_self_add
   - id: D46
     resembles: V70/V71 (hierarchical IDOR)
     authz_model: hierarchical
@@ -1872,11 +1896,16 @@ decoys:
     why_safe: "get_note_safe_late_built reads note.id/title/body into a local `payload` before the ownership check, but the check's own deny branch returns a DIFFERENT response object on failure, so payload is simply discarded when unauthorized -- correctly blocked at runtime. Deliberately NOT labeled a vulnerability despite AuthzPass being unable to statically prove dominance here (dominance analysis sees the fields touched before the check and can't reason about which branch's return value actually escapes the function) -- a documented precision limitation, scored Medium rather than fully suppressed. See docs/benchmarks/bola-idor.md in open-rowan."
     location: {file: langfail/api/authz_demo.py, symbol: get_note_safe_late_built}
     proof: tests/test_exploits_authz.py::test_d50_late_built_payload_still_blocked_on_deny
-  - id: D51
-    resembles: V75 (reflected XSS via search highlighting)
-    why_safe: "search()'s own template heading ({{ q }} in 'Results for “...”' in search.html) reflects the identical query parameter on the identical response, but through Jinja's default autoescaping (no |safe) -- HTML in q is entity-escaped, not executed. Only the separate highlight()|safe path (V75) is exploitable."
-    location: {file: langfail/ui/views.py, symbol: search}
-    proof: tests/test_exploits_ui.py::test_d51_search_heading_escapes_query
+  # D51 is intentionally absent -- retired during the pre-publication review,
+  # following the same convention as D03 and V67.
+  #
+  # It claimed langfail/ui/views.py:search as a safe location on the grounds
+  # that the template's `{{ q }}` heading is autoescaped. That claim is still
+  # true of the heading, but it was never true of the *function*: search() is
+  # V75's source (reflected) and V83's sink (stored). Reporting that symbol is
+  # correct about two real vulnerabilities and "wrong" about one decoy, which
+  # makes it a coin flip rather than a precision test. The autoescaped-heading
+  # behaviour it documented is still asserted, as part of V75's PoC.
   - id: D52
     resembles: V78 (CSRF on the dashboard admin settings form)
     why_safe: "the JSON API's equivalent endpoint (POST /api/admin/settings) requires an Authorization: Bearer token -- a cross-site form POST carries the ambient session_token cookie but no bearer header, so it is rejected (401) before any settings are changed. Cookie-based dashboard auth does not extend to the token-based API."

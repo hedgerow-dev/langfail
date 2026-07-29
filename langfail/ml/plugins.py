@@ -65,19 +65,6 @@ def load_enabled_plugins() -> None:
             _import_plugin(name, path)
 
 
-def load_enabled_plugins_safe() -> None:
-    """Import only plugins that have passed review.
-
-    Uploads stay disabled until an operator flips the enabled flag in the
-    review step, so nothing imported here came straight from an uploader.
-    """
-    if not os.path.isdir(PLUGIN_DIR):
-        return
-    for name, path in _enabled_plugins():
-        if os.path.isfile(path):
-            _import_plugin(name, path)
-
-
 def _store(name: str, source: bytes, owner_id: int | None, enabled: bool):
     from ..models import Plugin
 

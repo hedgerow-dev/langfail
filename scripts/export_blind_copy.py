@@ -16,6 +16,7 @@ Usage:
 """
 from __future__ import annotations
 
+import re
 import shutil
 import subprocess
 import sys
@@ -37,12 +38,60 @@ EXCLUDE_NAMES = {
     ".gitleaksignore",  # lists patterns tied to planted secrets
     ".git",
     ".venv",
+    ".claude",
     "build",
     "langfail.egg-info",
     ".pytest_cache",
+    # Compiled bytecode embeds the source it was compiled from: a
+    # tests/__pycache__/test_exploits_*.pyc carries test names ("test_v20_
+    # pipeline_reflection_rce") and assertion messages ("V32: smuggled
+    # Unicode-tag directive did not bypass strip_directives") as readable
+    # strings. Excluding the .py without the .pyc ships the answer key anyway.
+    "__pycache__",
     "var",
     "uv.lock",
 }
+
+# Substrings that must never appear in an exported tree. These are the tells
+# that turn a blind review into an open-book one: vulnerability IDs, the
+# vocabulary of a security writeup, and the fixture's own framing. The scan is
+# deliberately blunt -- a false alarm costs one docstring rewrite, a miss costs
+# a benchmark run.
+LEAK_PATTERNS = [
+    r"\bV\d{2}\b",                      # manifest vulnerability ids
+    r"\bD\d{2}\b",                      # manifest decoy ids
+    r"\bCWE-\d+",
+    r"\bCVE-\d{4}-\d+",
+    r"\bOWASP\b",
+    r"\bLLM0?\d\b",                     # OWASP LLM Top 10 ids
+    r"denial of wallet",
+    r"unbounded consumption",
+    r"prompt injection",
+    r"ASCII smuggling",
+    r"\bBOLA\b",
+    r"\bIDOR\b",
+    r"planted",
+    r"answer key",
+    r"vulnerab",                        # vulnerable / vulnerability
+    r"deliberately (insecure|vulnerable)",
+    r"intentionally (insecure|vulnerable|not scoped)",
+    r"looking real",
+    r"the fix for",
+    r"no credential check",
+    r"with no validation",
+    r"no upper bound",
+]
+
+_LEAK_RE = re.compile("|".join(LEAK_PATTERNS), re.IGNORECASE)
+
+# Text-ish suffixes worth scanning. Binary files are caught by the
+# __pycache__ exclusion plus the "no unexpected suffixes" check below.
+_SCAN_SUFFIXES = {".py", ".md", ".txt", ".html", ".tpl", ".toml", ".cfg",
+                  ".yaml", ".yml", ".json", ".ini", ".sh"}
+
+# Extensionless files that legitimately ship in an application tree.
+_SCAN_NAMES = {".gitignore", ".gitattributes", ".dockerignore", "LICENSE",
+               "Dockerfile", "Makefile", "py.typed"}
 
 BLIND_README = """# Langfail
 
@@ -79,9 +128,42 @@ def _is_excluded_test(rel: Path) -> bool:
     return rel.name.startswith("test_exploits") and rel.suffix == ".py"
 
 
+def scan_for_leaks(dest: Path) -> list[str]:
+    """Return every spoiler hit found in the exported tree.
+
+    Runs after the copy, over what actually landed on disk, so it catches
+    leaks regardless of which stage let them through -- a missing exclusion,
+    a new file, or a docstring someone wrote too candidly.
+    """
+    hits: list[str] = []
+    for path in sorted(dest.rglob("*")):
+        if not path.is_file() or ".git" in path.parts:
+            continue
+        rel = path.relative_to(dest)
+        if path.suffix.lower() not in _SCAN_SUFFIXES and path.name not in _SCAN_NAMES:
+            hits.append(f"{rel}: unexpected non-source file in a blind export")
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            hits.append(f"{rel}: unreadable as text -- cannot verify it is spoiler-free")
+            continue
+        for lineno, line in enumerate(text.splitlines(), 1):
+            match = _LEAK_RE.search(line)
+            if match:
+                hits.append(f"{rel}:{lineno}: {match.group(0)!r} in {line.strip()[:90]!r}")
+    return hits
+
+
 def export(dest: Path) -> None:
     if dest.exists():
         raise SystemExit(f"destination already exists: {dest}")
+    # os.walk over REPO_ROOT would otherwise descend into a destination
+    # nested under it and copy the export into itself, forever.
+    if dest == REPO_ROOT or REPO_ROOT in dest.parents:
+        raise SystemExit(
+            f"destination must live outside the repository: {dest}\n"
+            f"(exporting inside {REPO_ROOT} would recursively copy the tree into itself)")
     dest.mkdir(parents=True)
 
     for root, dirnames, filenames in __import__("os").walk(REPO_ROOT):
@@ -103,13 +185,24 @@ def export(dest: Path) -> None:
 
     (dest / "README.md").write_text(BLIND_README)
 
+    leaks = scan_for_leaks(dest)
+    if leaks:
+        shutil.rmtree(dest)
+        print("Spoilers found in the export -- refusing to produce a blind copy:",
+              file=sys.stderr)
+        for hit in leaks:
+            print(f"  ! {hit}", file=sys.stderr)
+        raise SystemExit(
+            f"\n{len(leaks)} leak(s). Fix the source (prefer an in-universe rationalisation "
+            f"over deleting the docstring), or widen EXCLUDE_NAMES, then re-export.")
+
     subprocess.run(["git", "init", "-q"], cwd=dest, check=True)
     subprocess.run(["git", "add", "-A"], cwd=dest, check=True)
     subprocess.run(
         ["git", "commit", "-q", "-m", "Blind snapshot for code review (no answer key, no history)"],
         cwd=dest, check=True,
     )
-    print(f"Blind copy ready at {dest}")
+    print(f"Blind copy ready at {dest} ({len(list(dest.rglob('*.py')))} source files, scanned clean)")
 
 
 if __name__ == "__main__":

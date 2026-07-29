@@ -223,10 +223,12 @@ class Team(db.Model):
 
     @property
     def members(self) -> list[int]:
-        """User ids belonging to this team -- a plain Python property (not a
-        relationship) so the membership check reads as a direct attribute
-        chain off the fetched object (`note.team.members`), matching the
-        BOLARAY containment idiom."""
+        """User ids belonging to this team.
+
+        A plain Python property rather than a relationship, so callers can
+        read membership as a direct attribute chain off an already-fetched
+        note (``note.team.members``) without configuring a second mapper.
+        """
         return [tm.user_id for tm in TeamMember.query.filter_by(team_id=self.id)]
 
 

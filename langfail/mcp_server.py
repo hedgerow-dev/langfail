@@ -90,10 +90,9 @@ async def summarize_via_sampling(session, tool_name: str):  # -> types.CreateMes
     a tool's current deployment note -- handy when this server has no local
     LLM configured of its own.
 
-    The note (see :mod:`langfail.api.admin` -- writable by any authenticated user)
-    is embedded in the sampling request exactly as stored, with no validation. If the connecting client auto-approves sampling requests
-    without a human in the loop (as many minimal MCP hosts do), whatever the
-    note says is sent, verbatim, into the client's own trusted model context.
+    The note is passed through exactly as stored so the summary reflects what
+    operators actually wrote (see :mod:`langfail.api.admin`); rewriting it
+    here would mean summarising something the deployment never said.
     """
     from mcp import types
     from .models import ToolNote
@@ -160,10 +159,10 @@ def main() -> None:
 def check_http_auth(headers: dict, require_auth: bool | None = None) -> bool:
     """Return whether an incoming MCP-over-HTTP/SSE request is authorized.
 
-    ``require_auth`` defaults to ``Config.MCP_HTTP_REQUIRE_AUTH``, which is
-    off unless a deployment opts in -- so unless explicitly configured, any
-    request reaching the configured host:port (which itself defaults to
-    ``0.0.0.0``, every interface) is served with no credential check at all.
+    ``require_auth`` defaults to ``Config.MCP_HTTP_REQUIRE_AUTH``. MCP
+    transports are normally reached over a trusted local socket, so the
+    bearer check is something a deployment turns on when it puts the
+    transport somewhere less private (see ``Config.MCP_HTTP_*``).
     """
     from .core.config import Config
 
@@ -171,16 +170,20 @@ def check_http_auth(headers: dict, require_auth: bool | None = None) -> bool:
         require_auth = Config.MCP_HTTP_REQUIRE_AUTH
     if not require_auth:
         return True
-    return headers.get("Authorization") == f"Bearer {Config.MCP_HTTP_TOKEN}"
+    # HTTP header names are case-insensitive, and ASGI servers hand them over
+    # lowercased -- look the value up without assuming a particular casing.
+    presented = next(
+        (v for k, v in headers.items() if k.lower() == "authorization"), None)
+    return presented == f"Bearer {Config.MCP_HTTP_TOKEN}"
 
 
 def serve_http() -> None:
     """Run the MCP server over SSE/HTTP (``langfail mcp-serve-http``, requires the
     optional ``mcp`` extra plus ``starlette``/``uvicorn``).
 
-    Binds ``Config.MCP_HTTP_HOST`` (every interface by default) and gates
-    each connection with :func:`check_http_auth` (no credential required by
-    default) -- see ``Config.MCP_HTTP_*`` in :mod:`langfail.core.config`.
+    Binds ``Config.MCP_HTTP_HOST`` and gates each connection with
+    :func:`check_http_auth` -- see ``Config.MCP_HTTP_*`` in
+    :mod:`langfail.core.config`.
     """
     import uvicorn
     from mcp.server.sse import SseServerTransport

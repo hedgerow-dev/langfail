@@ -20,7 +20,11 @@ from ..core.config import STORAGE_DIR
 
 HUB_DIR = STORAGE_DIR / "hub"
 
-_REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+# owner/repo, where each half must contain something other than dots -- so a
+# slug may carry a dot ("acme/vision.v2") without "..", "." or ".." ever
+# standing in as a path component.
+_REPO_RE = re.compile(r"^(?!\.+/)[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*"
+                      r"/(?!\.+$)[A-Za-z0-9_.-]*[A-Za-z0-9_-][A-Za-z0-9_.-]*$")
 
 # Publisher signatures the manifest-only installer trusts.
 _TRUSTED_SIGNATURES = frozenset({"langfail-hub", "hub-ci"})

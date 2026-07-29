@@ -6,18 +6,18 @@ Who's been run against Langfail and how they did — then how to score your own.
 
 ## Final scores
 
-Eleven tools, 81 planted vulnerabilities, no answer key. Percentage found:
+Eleven tools, 82 planted vulnerabilities, no answer key. Percentage found:
 
 ```
-Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  58%
-VVAH + DeepSeek   █████████████████████░░░░░░░░░░░░░░░░░░░  52%
+Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  57%
+VVAH + DeepSeek   ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
 Open-Rowan        ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
 GPT-5.5           ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
-Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  36%
+Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
 CodeQL            █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
-Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  31%
-Bandit + Semgrep  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
-DeepSeek-chat     ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
+Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  30%
+Bandit + Semgrep  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
+DeepSeek-chat     ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
 Claude Haiku      ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  17%
 Pysa              ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
 ```
@@ -31,30 +31,31 @@ scripts/export_blind_copy.py <dest>`, see
 [README](README.md#test-a-tool-or-ai-agent-against-it)), so nothing got to peek
 at the answer key.
 
-The last column counts *precision decoys* — 51 safe functions written to look
+The last column counts *precision decoys* — 50 safe functions written to look
 guilty. Flag one and it's a false positive.
 
-| Tool | Category | Recall | Decoy false positives (of 51) |
+| Tool | Category | Recall | Decoy false positives (of 50) |
 |------|----------|--------|--------------------------------|
-| Pysa† | Static/taint | 12/81 (15%) | 1 |
-| Claude Haiku† | LLM code review | 14/81 (17%) | 0 |
-| Bandit + Semgrep† | Static/pattern | 20/81 (25%) | 2 |
-| DeepSeek-chat† | LLM code review | 20/81 (25%) | 0 |
-| Claude Sonnet† | LLM code review | 25/81 (31%) | 0 |
-| CodeQL† | Static/taint | 26/81 (32%) | 4 |
-| Kimi K3† | LLM code review | 29/81 (36%) | 0 |
-| GPT-5.5† | LLM code review | 36/81 (44%) | 2 |
-| Open-Rowan (Hedgerow.dev) | Static/taint | 40/81 (49%) | 3 |
-| VVAH + DeepSeek | Agentic pipeline | 42/81 (52%) | 0 |
-| **Claude Opus†** | **LLM code review** | **47/81 (58%)** | **0** |
+| Pysa† | Static/taint | 12/82 (15%) | 1 |
+| Claude Haiku† | LLM code review | 14/82 (17%) | 0 |
+| Bandit + Semgrep† | Static/pattern | 20/82 (24%) | 2 |
+| DeepSeek-chat† | LLM code review | 20/82 (24%) | 0 |
+| Claude Sonnet† | LLM code review | 25/82 (30%) | 0 |
+| CodeQL† | Static/taint | 26/82 (32%) | 4 |
+| Kimi K3† | LLM code review | 29/82 (35%) | 0 |
+| GPT-5.5† | LLM code review | 36/82 (44%) | 2 |
+| Open-Rowan (Hedgerow.dev) | Static/taint | 40/82 (49%) | 3 |
+| VVAH + DeepSeek | Agentic pipeline | 42/82 (51%) | 0 |
+| **Claude Opus†** | **LLM code review** | **47/82 (57%)** | **0** |
 
 The winner was a capable model reading the source and reasoning about data flow
-by hand. No static tool came within nine points of it. Precision, meanwhile, was
-excellent everywhere — static tools landed 1–4 false positives out of 51 decoys
-(Pysa's hand-built model was tightest at 1) and the LLM reviews were effectively
-zero except GPT-5.5's 2. Nothing caught everything, and even the best result
-leaves a third of the manifest on the floor. The spread between tools is almost
-entirely about how much each one surfaces, not how much noise it makes.
+by hand. No static tool came within eight points of it. Precision, meanwhile,
+was excellent everywhere — static tools landed 1–4 false positives out of 50
+decoys (Pysa's hand-built model was tightest at 1) and the LLM reviews were
+effectively zero except GPT-5.5's 2. Nothing caught everything, and even the
+best single-pass result leaves over 40% of the manifest on the floor. The
+spread between tools is almost entirely about how much each one surfaces, not
+how much noise it makes.
 
 **VVAH + DeepSeek** is the best agentic result and second best overall, verified
 through the harness's own adversarial S6 stage (114 true / 28 false positives
@@ -68,17 +69,68 @@ hand-written for this repo — not an out-of-the-box run.
 
 ### About that †
 
-The manifest grew from 79 to 81 bugs mid-comparison: VVAH+DeepSeek turned up a
-real, previously undocumented IDOR (V81/V82 — two experiment-search endpoints
-with no `owner_id` filter at all, leaking every user's data) and it went into
-`ground_truth.yaml` on the spot.
+The manifest has grown twice mid-comparison. First 79 → 81: VVAH+DeepSeek
+turned up a real, previously undocumented IDOR (V81/V82 — two
+experiment-search endpoints with no `owner_id` filter at all, leaking every
+user's data). Then 81 → 82: the 5-region sweep below (see that section) found
+a stored-XSS variant through the same search-result highlighter as V75, which
+went in as V83, retiring decoy D51 in the process — the code the decoy called
+safe was still true of the reflected path, just no longer true of the
+function as a whole once a stored sink existed in it too.
 
-Every row above is scored out of the current 81 so the column is comparable top
-to bottom. Rows marked † ran before V81/V82 were documented, so they're credited
-with zero for that pair. That's the conservative call — the vulnerable endpoints
-were sitting in the blind copy those tools reviewed, only the manifest entry was
-missing — but if one of those runs did report them, it landed in the unmatched
-bucket at the time and this doesn't retroactively fish it back out.
+Every row above is scored out of the current 82 so the column is comparable
+top to bottom. Rows marked † ran before either addition was documented, so
+they're credited with zero for both. That's the conservative call — the
+vulnerable code was sitting in the blind copy those tools reviewed all along,
+only the manifest entry was missing — but if one of those runs did report it,
+that finding landed in the unmatched bucket at the time and this doesn't
+retroactively fish it back out.
+
+### A second, different-method result: the 5-region sweep
+
+Every row above changed one variable at a time against a single open-ended
+pass over the whole blind copy. This row changes the method itself, so it
+doesn't belong in the same column as a like-for-like comparison — it's a
+ceiling estimate, not a replacement for the single-shot score above.
+
+Five independent Opus instances, each given ownership of one region of the
+blind copy (api/, services+workers, ml, agent+mcp, core+ui+cli) and a
+methodology-only prompt — trace taint across file/DB/queue boundaries, verify
+every "safe-looking" helper actually works, don't stop at one finding per
+function — but free to read any file in the tree for cross-file tracing:
+
+```
+Opus, 5-region sweep   █████████████████████████████████████░░░  91%
+Claude Opus (above)    ███████████████████████░░░░░░░░░░░░░░░░░  57%
+```
+
+| Tool | Category | Recall | Decoy false positives (of 50) |
+|------|----------|--------|--------------------------------|
+| Opus, 5-region sweep | LLM code review (partitioned) | 75/82 (91%) | 0 |
+
+Zero decoy hits again, including on cases that reward genuine understanding
+rather than pattern-matching — reviewers correctly named `predict_label` and
+`batch_loss` (D31/D32) as the non-leaking siblings of bugs they'd just
+reported one function over. One of the 75 was V83 itself: a reviewer flagged
+`ui/views.py:search`'s `highlight()|safe` as unescaped for *both* the
+reflected query and the stored name it matches against, which is what got
+V83 added to the manifest at all — the same discovery-during-scoring pattern
+as V81/V82 above, just found by this sweep instead of an outside pipeline.
+
+The remaining 7 misses cluster in an interesting way: five sit in functions a
+reviewer had already opened and reported a *different* bug from (V38, V43,
+V50, V81, V82) — a per-function stopping point, not a coverage gap. The other
+two (V78 CSRF, V79 clickjacking) are absence-of-a-control bugs, which a
+method built around tracing data flows has nothing to trace.
+
+The sweep also surfaced two real, exploitable issues that stayed *outside*
+the manifest — fixed directly rather than catalogued, since by the time they
+turned up the point had already been made: a path-traversal escape in
+`ml/hub.py`'s repo-name validator (the `.` sat inside the character class,
+so `../..` matched as a "valid" repo name), and a missing authorization check
+on `api/authz_demo.py`'s `add_team_member` that let any user self-add to any
+team and walk straight through the D44/D45 membership guards. Both are fixed,
+each with a regression test (see D44 in `ground_truth.yaml`).
 
 ## How scoring works
 
@@ -198,14 +250,16 @@ its coverage, not about the fixture.
 | V63 | 5 | 862 | Confused deputy — agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
 | V64 | 6 | 15 | Config-as-taint — preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
 
-V65–V82 live in full in `benchmarks/ground_truth.yaml`: the object-level-authz
-deep dive (V67 is intentionally absent), the dashboard's own bug set, and the
-V81/V82 IDOR pair added later — see "About that †" above.
+V65–V83 live in full in `benchmarks/ground_truth.yaml`: the object-level-authz
+deep dive (V67 is intentionally absent), the dashboard's own bug set, the
+V81/V82 IDOR pair, and the V83 stored-XSS variant — all added mid-comparison,
+see "About that †" above.
 
 ### Precision decoys (reporting any of these = false positive)
 
-D03 is also intentionally absent, removed as a ground-truth content bug (see
-"Keeping the ground truth honest"), following the same convention as V67.
+D03 and D51 are intentionally absent, both removed as ground-truth content
+bugs (see "Keeping the ground truth honest"), following the same convention
+as V67.
 
 | ID | Resembles | Why it's safe |
 |----|-----------|----------------|
@@ -227,9 +281,10 @@ D03 is also intentionally absent, removed as a ground-truth content bug (see
 | D17 | V40 | `check_http_auth(headers, require_auth=True)` correctly rejects a bad bearer token |
 | D18 | V41 | `handle_runner_call_safe` uses `json.loads`, not `pickle.loads` |
 
-Decoys D19–D52 (34 more, across the auth/authz, ML-supply-chain, and dashboard
-tiers) follow the same pattern — a genuinely safe function parked right next to
-its vulnerable twin — and are listed in full in `ground_truth.yaml`.
+Decoys D19–D52 (33 more, since D51 is also retired — see above) span the
+auth/authz, ML-supply-chain, and dashboard tiers, following the same
+pattern — a genuinely safe function parked right next to its vulnerable
+twin — and are listed in full in `ground_truth.yaml`.
 
 End-to-end chains: **A** = V06→V07 (SSRF→pickle RCE), **B** = V17 (indirect
 injection), **C** = V10+V20 (file-write→import RCE, two bugs composed), **D** =
@@ -261,7 +316,8 @@ It AST-parses every referenced file, confirms each declared
 `source`/`sink`/`location` symbol still exists (exit 1 if not), and flags stale
 `line_hint`s as drift. Run it after any refactor touching the vulnerable
 modules — and any time a score looks suspicious, because an inflated or
-deflated number is sometimes the manifest's fault rather than the tool's. It has
-already earned its keep once: decoy D03 was labeling a real SSTI vulnerability
-as safe, and got removed rather than left to quietly wreck someone's scoring
-run.
+deflated number is sometimes the manifest's fault rather than the tool's. It
+has already earned its keep twice: decoy D03 was labeling a real SSTI
+vulnerability as safe and got removed; decoy D51 later did the same thing for
+the same reason (see V83 above) and got removed too, rather than either being
+left to quietly wreck someone's scoring run.

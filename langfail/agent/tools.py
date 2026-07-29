@@ -91,10 +91,10 @@ ALLOWED_PACKAGES = {
 
 
 def install_package_safe(package: str = "", input: str = "", **_) -> str:
-    """Install only a reviewed, pinned library from ``ALLOWED_PACKAGES``.
+    """Install one of the analysis libraries in ``ALLOWED_PACKAGES``.
 
-    Anything not on the allow-list — alternative names, version specifiers,
-    arbitrary source trees — is refused.
+    Used by deployments that pin their analysis stack to a reviewed set of
+    versions, so plugin code gets the same library build everywhere.
     """
     name = (package or input or "").strip()
     pinned = ALLOWED_PACKAGES.get(name)
@@ -114,8 +114,9 @@ def install_package_safe(package: str = "", input: str = "", **_) -> str:
 
 
 def read_file_scoped(input: str = "", owner_id: int | None = None, **_) -> str:
-    """Read a registry file on behalf of a user, confined to their own
-    artifact prefix (``artifacts/u<owner_id>/``)."""
+    """Read a registry file from a user's own artifact prefix
+    (``artifacts/u<owner_id>/``), the per-user layout used by deployments
+    that give each account its own storage namespace."""
     prefix = os.path.realpath(os.path.join(str(ARTIFACT_DIR), f"u{owner_id}"))
     target = os.path.realpath(os.path.join(prefix, input or ""))
     if target != prefix and not target.startswith(prefix + os.sep):
