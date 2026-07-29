@@ -88,49 +88,42 @@ retroactively fish it back out.
 
 ### A second, different-method result: the 5-region sweep
 
-Every row above changed one variable at a time against a single open-ended
-pass over the whole blind copy. This row changes the method itself, so it
-doesn't belong in the same column as a like-for-like comparison — it's a
-ceiling estimate, not a replacement for the single-shot score above.
-
-Five independent Opus instances, each given ownership of one region of the
-blind copy (api/, services+workers, ml, agent+mcp, core+ui+cli) and a
-methodology-only prompt — trace taint across file/DB/queue boundaries, verify
-every "safe-looking" helper actually works, don't stop at one finding per
-function — but free to read any file in the tree for cross-file tracing:
+Not a like-for-like comparison. Every row above is one model doing a single
+open-ended pass. Here, five separate Opus instances each reviewed one region
+of the blind copy (api/, services+workers, ml, agent+mcp, core+ui+cli), all
+given the same instructions: trace taint across file/DB/queue boundaries,
+check that "safe-looking" helpers actually work, don't stop at one finding
+per function. Treat it as a ceiling estimate, not a replacement for the
+single-pass score above.
 
 ```
-Opus, 5-region sweep   █████████████████████████████████████░░░  91%
-Claude Opus (above)    ███████████████████████░░░░░░░░░░░░░░░░░  57%
+Opus, 5-region sweep      █████████████████████████████████████░░░  91%
+Claude Opus, single pass  ███████████████████████░░░░░░░░░░░░░░░░░  57%
 ```
 
 | Tool | Category | Recall | Decoy false positives (of 50) |
 |------|----------|--------|--------------------------------|
 | Opus, 5-region sweep | LLM code review (partitioned) | 75/82 (91%) | 0 |
 
-Zero decoy hits again, including on cases that reward genuine understanding
-rather than pattern-matching — reviewers correctly named `predict_label` and
-`batch_loss` (D31/D32) as the non-leaking siblings of bugs they'd just
-reported one function over. One of the 75 was V83 itself: a reviewer flagged
-`ui/views.py:search`'s `highlight()|safe` as unescaped for *both* the
-reflected query and the stored name it matches against, which is what got
-V83 added to the manifest at all — the same discovery-during-scoring pattern
-as V81/V82 above, just found by this sweep instead of an outside pipeline.
+Zero decoy false positives, including the cases that reward real
+understanding: reviewers correctly named `predict_label` and `batch_loss`
+(D31/D32) as the safe siblings of bugs they'd just flagged nearby, instead of
+treating both as suspicious.
 
-The remaining 7 misses cluster in an interesting way: five sit in functions a
-reviewer had already opened and reported a *different* bug from (V38, V43,
-V50, V81, V82) — a per-function stopping point, not a coverage gap. The other
-two (V78 CSRF, V79 clickjacking) are absence-of-a-control bugs, which a
-method built around tracing data flows has nothing to trace.
+One of the 75 findings wasn't in the manifest yet: a stored-XSS variant in
+the search highlighter. It became V83 (see "About that †" above).
 
-The sweep also surfaced two real, exploitable issues that stayed *outside*
-the manifest — fixed directly rather than catalogued, since by the time they
-turned up the point had already been made: a path-traversal escape in
-`ml/hub.py`'s repo-name validator (the `.` sat inside the character class,
-so `../..` matched as a "valid" repo name), and a missing authorization check
-on `api/authz_demo.py`'s `add_team_member` that let any user self-add to any
-team and walk straight through the D44/D45 membership guards. Both are fixed,
-each with a regression test (see D44 in `ground_truth.yaml`).
+The 7 misses split two ways. Five sit in functions a reviewer had already
+opened and reported a *different* bug from (V38, V43, V50, V81, V82). That's
+a stopping-too-early problem, not a blind spot. The other two (V78 CSRF, V79
+clickjacking) are missing-control bugs with no data flow to trace, which
+this method isn't built to catch.
+
+The sweep also turned up two real bugs outside the manifest, fixed directly
+rather than catalogued: a path-traversal escape in `ml/hub.py`'s repo-name
+check, and a missing authorization check on `add_team_member` that let any
+user defeat the D44/D45 membership guards. Both are fixed, each with a
+regression test.
 
 ## How scoring works
 
