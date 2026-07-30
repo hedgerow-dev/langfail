@@ -61,7 +61,7 @@ zero for vulnerabilities added since.
 
 ## Reproducible results
 
-Runs recorded properly — raw output committed, every finding mapped to a
+Runs recorded properly: raw output committed, every finding mapped to a
 manifest id in writing, score computed rather than asserted:
 
 <!-- generated: python benchmarks/score.py --markdown -->
@@ -74,14 +74,14 @@ manifest id in writing, score computed rather than asserted:
 
 Everything above this section predates
 [`benchmarks/results/`](benchmarks/results/) and cannot be moved down here
-without re-running it — including the Opus 75/82 sweep at the top of this
+without re-running it, including the Opus 75/82 sweep at the top of this
 page. Do not compare that number against the two sweep rows here: neither
 side of the comparison is fair. Opus reviewed a blind copy that leaked
 compiled test bytecode, self-describing docstrings, and 37 decoys named
 `*_safe`; these two reviewed a copy exported after all three were fixed. The
 sweep prompt itself was also never saved for the Opus run, so
 [`sweep_prompt.md`](benchmarks/sweep_prompt.md) is a reconstruction, not the
-original — see its header for exactly what that means for comparability.
+original: see its header for exactly what that means for comparability.
 
 ```bash
 python benchmarks/score.py            # scores every run in benchmarks/results/
@@ -96,7 +96,7 @@ down in [`results/bandit.yaml`](benchmarks/results/bandit.yaml) where you can
 disagree with them line by line. That is the whole point of the directory.
 
 The Sonnet and Haiku rows are the first scores in this file measured on the
-clean fixture, so — unlike everything above — their zero-false-positive
+clean fixture, so (unlike everything above) their zero-false-positive
 columns mean what they look like they mean. Both runs were also told to state
 what they inspected and believed safe; neither made a wrong safety claim, and
 between them they correctly named the same ~20 genuinely-safe functions
@@ -105,7 +105,7 @@ between them they correctly named the same ~20 genuinely-safe functions
 `authz_demo.py` variants among them). [`results/claude-sonnet-sweep.yaml`](benchmarks/results/claude-sonnet-sweep.yaml)
 and [`results/claude-haiku-sweep.yaml`](benchmarks/results/claude-haiku-sweep.yaml)
 record the id mapping and every judgement call, including four findings each
-run made that describe real gaps with no matching manifest entry — the same
+run made that describe real gaps with no matching manifest entry: the same
 shape as V81/V82, which is how those two got added in the first place. One of
 Sonnet's four was a route-registration bug this repo's own decoy-rename
 commit had introduced, since fixed with a regression test
