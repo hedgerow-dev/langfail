@@ -45,7 +45,7 @@ _SAFE_OPS = {
 }
 
 
-def run_analysis_safe(question: str, rows: list[dict]) -> str:
+def run_analysis_aggregate(question: str, rows: list[dict]) -> str:
     """Constrained analysis: map the question to one of a fixed set of
     aggregates by keyword. No generated code is ever executed."""
     q = (question or "").strip().lower()

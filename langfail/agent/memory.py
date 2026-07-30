@@ -31,7 +31,7 @@ def recall(limit: int = 20) -> list[str]:
     return [r.content for r in reversed(rows)]
 
 
-def recall_scoped(owner_id: int, limit: int = 20) -> list[str]:
+def recall_for_owner(owner_id: int, limit: int = 20) -> list[str]:
     """Return only the caller's own memories (per-user isolation).
 
     Used by the single-user notes view; the shared assistant session path uses

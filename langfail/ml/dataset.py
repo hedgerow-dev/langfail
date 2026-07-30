@@ -86,7 +86,7 @@ def run_loader_script(script_src: str, trust_remote_code: bool = True) -> dict:
     return {"rows": scope.get("rows", [])}
 
 
-def run_loader_script_safe(script_src: str) -> dict:
+def load_tabular_dataset(script_src: str) -> dict:
     """Never executes a loading script -- datasets must be plain CSV/TSV.
 
     The secure default (``trust_remote_code=False``): a custom loader is

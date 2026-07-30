@@ -98,8 +98,8 @@ def redirect_after_login():
     return redirect(request.args.get("next", "/"))
 
 
-@bp.get("/redirect_safe")
-def redirect_after_login_safe():
+@bp.get("/redirect_local")
+def redirect_after_login_local():
     """Redirect after login, restricted to same-site relative paths."""
     target = request.args.get("next", "/")
     if not target.startswith("/") or target.startswith("//"):
@@ -158,8 +158,8 @@ def _deliver_recovery_code(user: User, code: str) -> None:
     current_app.logger.info("queued recovery-code delivery for user_id=%s", user.id)
 
 
-@bp.post("/reset/request_secure")
-def reset_request_secure():
+@bp.post("/reset/request_code")
+def reset_request_code():
     """Start a password reset with a random single-use recovery code.
 
     Only the code's hash is stored, so the code itself is never at rest and
@@ -176,8 +176,8 @@ def reset_request_secure():
     return jsonify(status="if the account exists, a recovery code has been sent")
 
 
-@bp.post("/reset/confirm_secure")
-def reset_confirm_secure():
+@bp.post("/reset/confirm_code")
+def reset_confirm_code():
     """Complete a password reset with a single-use recovery code."""
     data = request.get_json(force=True, silent=True) or {}
     user = User.query.filter_by(username=(data.get("username") or "").strip()).first()
@@ -225,9 +225,9 @@ def get_avatar(user_id: int):
                     headers={"Content-Disposition": "inline"})
 
 
-@bp.get("/avatar_safe/<int:user_id>")
+@bp.get("/avatar_download/<int:user_id>")
 @require_auth
-def get_avatar_safe(user_id: int):
+def download_avatar(user_id: int):
     """Serve a user's avatar strictly as a download, never rendered inline."""
     svg, user = _serve_avatar(user_id)
     if user is None:

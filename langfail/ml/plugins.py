@@ -84,6 +84,6 @@ def install_plugin(name: str, source: bytes, owner_id: int | None = None):
     return _store(name, source, owner_id, enabled=True)
 
 
-def install_plugin_pending(name: str, source: bytes, owner_id: int | None = None):
+def stage_plugin(name: str, source: bytes, owner_id: int | None = None):
     """Store an uploaded plugin disabled, pending the admin review step."""
     return _store(name, source, owner_id, enabled=False)

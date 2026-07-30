@@ -90,7 +90,7 @@ ALLOWED_PACKAGES = {
 }
 
 
-def install_package_safe(package: str = "", input: str = "", **_) -> str:
+def install_from_catalog(package: str = "", input: str = "", **_) -> str:
     """Install one of the analysis libraries in ``ALLOWED_PACKAGES``.
 
     Used by deployments that pin their analysis stack to a reviewed set of
@@ -113,7 +113,7 @@ def install_package_safe(package: str = "", input: str = "", **_) -> str:
     return f"installed {pinned} into {target}"
 
 
-def read_file_scoped(input: str = "", owner_id: int | None = None, **_) -> str:
+def read_owner_file(input: str = "", owner_id: int | None = None, **_) -> str:
     """Read a registry file from a user's own artifact prefix
     (``artifacts/u<owner_id>/``), the per-user layout used by deployments
     that give each account its own storage namespace."""

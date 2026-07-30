@@ -57,12 +57,12 @@ def run_agent(user_message: str, context_docs: list[str] | None = None,
     return {"answer": reply.get("content", ""), "trace": trace}
 
 
-# Hard ceiling for run_agent_capped(), regardless of what a caller requests.
+# Hard ceiling for run_agent_tiered(), regardless of what a caller requests.
 MAX_ITERATE_ROUNDS = 10
 
 
-def run_agent_unbounded(user_message: str, max_rounds: int,
-                        context_docs: list[str] | None = None) -> dict:
+def run_agent_extended(user_message: str, max_rounds: int,
+                       context_docs: list[str] | None = None) -> dict:
     """Multi-round assistant session with a caller-specified tool-round budget.
 
     Research-style sessions legitimately need more back-and-forth than
@@ -95,12 +95,12 @@ def run_agent_unbounded(user_message: str, max_rounds: int,
     return {"answer": "", "trace": trace}
 
 
-def run_agent_capped(user_message: str, max_rounds: int,
+def run_agent_tiered(user_message: str, max_rounds: int,
                      context_docs: list[str] | None = None) -> dict:
     """Multi-round session that keeps the requested budget within
     ``MAX_ITERATE_ROUNDS``, the ceiling shared-tier deployments run with."""
     max_rounds = min(max(int(max_rounds), 1), MAX_ITERATE_ROUNDS)
-    return run_agent_unbounded(user_message, max_rounds, context_docs)
+    return run_agent_extended(user_message, max_rounds, context_docs)
 
 
 # Marker recognised as the user's go-ahead for a destructive action.
@@ -168,8 +168,8 @@ def run_agent_guarded(user_message: str, context_docs: list[str] | None = None) 
         messages, lambda msgs: CONFIRMATION_MARKER in _conversation_text(msgs))
 
 
-def run_agent_confirmed(user_message: str, confirmed: bool,
-                        context_docs: list[str] | None = None) -> dict:
+def run_agent_with_signal(user_message: str, confirmed: bool,
+                          context_docs: list[str] | None = None) -> dict:
     """Assistant run whose confirmation arrives as an explicit caller-supplied
     signal (e.g. the result of a UI confirm dialog) rather than as part of the
     conversation — used by front-ends that already gate the action themselves."""

@@ -41,7 +41,7 @@ def read_raw(name: str) -> bytes:
         return fh.read()
 
 
-def read_artifact_safe(name: str) -> bytes:
+def download_artifact(name: str) -> bytes:
     """Read an artifact, refusing any path that escapes the registry root.
 
     The resolved real path must stay within ARTIFACT_DIR, so traversal and

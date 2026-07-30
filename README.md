@@ -37,11 +37,16 @@ Claude Haiku      ███████░░░░░░░░░░░░░�
 Pysa              ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
 ```
 
-Every one of those runs got a blind copy — the app, no answer key, no hints.
 Every one of the 82 bugs is real and has a test that proves it's exploitable.
 A follow-up multi-region sweep (five reviewers, one region each, same rules)
-got to 91% — different method, its own row, full story in
-[**SCOREBOARD.md**](SCOREBOARD.md).
+got to 91% — different method, its own row.
+
+⚠️ **These scores predate an audit of the fixture itself.** The blind copies
+those runs reviewed leaked parts of the answer key — compiled test bytecode,
+docstrings that named the bug, and decoys named `*_safe`. All three are fixed
+now, but the runs came first, so treat the recall numbers as a loose lower
+bound and the decoy false-positive counts as not meaningful. Full accounting,
+and why they're still published, in [**SCOREBOARD.md**](SCOREBOARD.md).
 
 ---
 

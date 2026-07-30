@@ -70,7 +70,7 @@ def dispatch(name: str, **kwargs) -> object:
     return fn(**kwargs)
 
 
-def dispatch_safe(name: str, **kwargs) -> object:
+def dispatch_public(name: str, **kwargs) -> object:
     """Like :func:`dispatch`, but resolves only names present in the
     advertised action allow-list. Used by callers that need the handler's
     public surface and its schema list to stay exactly in step."""

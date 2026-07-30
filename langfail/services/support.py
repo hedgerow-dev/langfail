@@ -29,7 +29,7 @@ def draft_support_reply(user_id: int, question: str) -> dict:
     return run_agent(question, context_docs=[_account_context(user)])
 
 
-def draft_support_reply_safe(user_id: int, question: str) -> dict:
+def draft_support_reply_brief(user_id: int, question: str) -> dict:
     """Like :func:`draft_support_reply`, but redacts email addresses from the
     account context before it ever reaches the LLM call."""
     from ..core.db import db

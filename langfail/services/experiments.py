@@ -70,7 +70,7 @@ def ask_experiments(question: str) -> list[dict]:
     return [dict(r) for r in rows]
 
 
-def ask_experiments_safe(question: str) -> list[dict]:
+def ask_experiments_structured(question: str) -> list[dict]:
     """Constrained natural-language search: only ``column=value`` questions
     against an allow-list of columns are accepted, and the value is always
     bound as a parameter — the model never authors raw SQL to execute."""

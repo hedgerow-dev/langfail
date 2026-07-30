@@ -12,7 +12,7 @@ from ..models import Experiment
 from ..ml.metrics import evaluate_metric
 from ..ml.plugins import install_plugin
 from ..services.config_loader import load_pipeline_config
-from ..services.experiments import (ask_experiments, ask_experiments_safe, count_by_owner,
+from ..services.experiments import (ask_experiments, ask_experiments_structured, count_by_owner,
                                     search_by_tag, search_experiments)
 from ..services.pipeline import run_pipeline
 from .deps import require_auth
@@ -80,13 +80,13 @@ def ask():
     return jsonify(results=ask_experiments(data.get("question", "")))
 
 
-@bp.post("/ask_safe")
+@bp.post("/ask_structured")
 @require_auth
 def ask_safe():
     """Constrained natural-language search (``column=value`` only, allow-listed
     columns, bound parameters) — no model-authored SQL is ever executed."""
     data = request.get_json(force=True, silent=True) or {}
-    return jsonify(results=ask_experiments_safe(data.get("question", "")))
+    return jsonify(results=ask_experiments_structured(data.get("question", "")))
 
 
 @bp.post("/<int:exp_id>/run")
@@ -110,7 +110,7 @@ def run(exp_id: int):
 _IMPORT_KEYS = frozenset({"name", "params", "metrics", "tags"})
 
 
-def import_strict(payload: str) -> dict:
+def import_experiment_document(payload: str) -> dict:
     """Parse an experiment document as plain JSON, allow-listing top-level keys."""
     doc = json.loads(payload)
     if not isinstance(doc, dict):

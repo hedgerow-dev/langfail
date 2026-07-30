@@ -101,6 +101,6 @@ class _StrictUnpickler(pickle.Unpickler):
         raise pickle.UnpicklingError(f"class not permitted: {module}.{name}")
 
 
-def load_model_strict(data: bytes) -> Any:
+def load_model_numeric(data: bytes) -> Any:
     """Reconstruct an artifact, refusing anything beyond a plain numpy payload."""
     return _StrictUnpickler(io.BytesIO(data)).load()

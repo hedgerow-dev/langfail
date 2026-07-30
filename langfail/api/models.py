@@ -149,7 +149,7 @@ def raw_artifact():
     return Response(registry.read_raw(path), mimetype="application/octet-stream")
 
 
-@bp.get("/<int:model_id>/download_safe")
+@bp.get("/<int:model_id>/download")
 @require_auth
 def download_safe(model_id: int):
     """Download an artifact with strict registry-root containment enforced."""
@@ -157,7 +157,7 @@ def download_safe(model_id: int):
     if not model or not model.artifact_path:
         return jsonify(error="not found"), 404
     name = model.artifact_path.split("artifacts/")[-1]
-    return Response(registry.read_artifact_safe(name), mimetype="application/octet-stream")
+    return Response(registry.download_artifact(name), mimetype="application/octet-stream")
 
 
 @bp.post("/<int:model_id>/load_verified")

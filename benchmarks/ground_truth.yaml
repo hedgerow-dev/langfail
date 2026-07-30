@@ -60,7 +60,7 @@ vulnerabilities:
       - langfail/api/experiments.py:create_experiment (pipeline_config)
       - langfail/services/config_loader.py:load_pipeline_config (yaml.load with full Loader)
     sanitizers_present:
-      - "langfail/services/config_loader.py:load_safe uses yaml.safe_load — used on most paths, but NOT this one (precision trap)"
+      - "langfail/services/config_loader.py:load_document uses yaml.safe_load — used on most paths, but NOT this one (precision trap)"
     poc: tests/test_exploits.py::test_v02_yaml_full_loader_rce
 
   - id: V03
@@ -540,7 +540,7 @@ vulnerabilities:
       - langfail/agent/memory.py:recall (no owner filter -- cross-tenant)
       - langfail/agent/tools.py:run_sql (attacker-embedded directive fires in the victim's session)
     sanitizers_present:
-      - "AgentMemory.owner_id is recorded on write and recall_scoped() filters by it, but the shared session path calls the unscoped recall() (misdirection: the isolation primitive exists and is used elsewhere -- see D07 -- just not here)"
+      - "AgentMemory.owner_id is recorded on write and recall_for_owner() filters by it, but the shared session path calls the unscoped recall() (misdirection: the isolation primitive exists and is used elsewhere -- see D07 -- just not here)"
     notes: >
       The persistence upgrade of V17: instead of poisoning one model card read
       once, the attacker writes to durable agent memory that is recalled into
@@ -565,7 +565,7 @@ vulnerabilities:
       - langfail/services/markdown.py:render_markdown (![alt](src) -> <img src> with the URL emitted verbatim, no host allow-list)
       - "viewer's browser auto-fetches the off-origin <img>, leaking whatever the attacker encoded in the query string (zero-click)"
     sanitizers_present:
-      - "render_markdown_safe() restricts <img src> to the app's own origin and drops off-origin images -- present in the same module but NOT used on this path (see D08)"
+      - "render_card_markdown() restricts <img src> to the app's own origin and drops off-origin images -- present in the same module but NOT used on this path (see D08)"
     notes: >
       Distinct from the generic innerHTML XSS rule (V19): the taint SOURCE is
       LLM/user Markdown and the SINK is an image URL, so the exfiltration works
@@ -689,10 +689,10 @@ vulnerabilities:
     tier: 5
     exploitable: true
     source: {file: langfail/api/agent.py, symbol: iterate, note: "max_rounds (JSON body)"}
-    sink: {file: langfail/agent/core.py, symbol: run_agent_unbounded, line_hint: 64}
+    sink: {file: langfail/agent/core.py, symbol: run_agent_extended, line_hint: 64}
     taint_path:
       - langfail/api/agent.py:iterate (max_rounds, int()-cast but not clamped)
-      - langfail/agent/core.py:run_agent_unbounded (for _ in range(max_rounds): chat(...) -- one billed LLM call per iteration, no ceiling)
+      - langfail/agent/core.py:run_agent_extended (for _ in range(max_rounds): chat(...) -- one billed LLM call per iteration, no ceiling)
     sanitizers_present:
       - "run_agent() (the default assistant path, used by /chat, /ask, /session, /analyze) hardcodes MAX_TOOL_ROUNDS=3 and is not caller-adjustable -- the cap exists and is enforced everywhere else in the codebase, just not on this one caller-parameterized path (misdirection: a reviewer who checked MAX_TOOL_ROUNDS and stopped there would conclude the loop is always capped)"
     notes: >
@@ -750,7 +750,7 @@ vulnerabilities:
       - langfail/agent/core.py:run_agent (context_docs appended to the message list verbatim)
       - langfail/agent/llm.py:_ollama_chat (requests.post sends the full messages list, including the raw email, to the LLM backend)
     sanitizers_present:
-      - "draft_support_reply_safe() exists in the same module and redacts email addresses with a regex before calling run_agent -- the fix is present and unit-tested (D15), just not used by the endpoint (misdirection: a reviewer who found the safe helper and stopped there would conclude PII was handled)"
+      - "draft_support_reply_brief() exists in the same module and redacts email addresses with a regex before calling run_agent -- the fix is present and unit-tested (D15), just not used by the endpoint (misdirection: a reviewer who found the safe helper and stopped there would conclude PII was handled)"
     notes: >
       Not a code-execution or file-access bug -- the "sink" is a network call
       to an LLM provider that, in a real deployment, is a third party outside
@@ -780,7 +780,7 @@ vulnerabilities:
       - langfail/mcp_server.py:summarize_via_sampling (embeds the note verbatim into a SamplingMessage, no validation)
       - "session.create_message(...) -- the note is sent to whatever client is connected, entering that client's own trusted model context; a host that auto-approves sampling requests (no human gate) processes it as if it were legitimate server-authored content"
     sanitizers_present:
-      - "summarize_via_sampling_safe() exists in the same module and strips_directives() the note before sending -- present and unit-tested (D16), just not used by the vulnerable helper"
+      - "summarize_note_via_sampling() exists in the same module and strips_directives() the note before sending -- present and unit-tested (D16), just not used by the vulnerable helper"
     notes: >
       A second MCP protocol-boundary bug alongside V29, but a different MCP
       capability: V29 poisons *tool metadata* (list_tools), read by the
@@ -834,7 +834,7 @@ vulnerabilities:
       - langfail/api/inference.py:predict_remote (runner_call_b64, base64-decoded)
       - langfail/ml/runner.py:handle_runner_call (pickle.loads(payload), no validation of origin)
     sanitizers_present:
-      - "handle_runner_call_safe() exists in the same module and uses json.loads instead -- present and unit-tested (D18), just not used by this endpoint"
+      - "handle_runner_call_json() exists in the same module and uses json.loads instead -- present and unit-tested (D18), just not used by this endpoint"
     notes: >
       Distinct from V01/V07/V13's deserialization sinks (which reconstruct a
       MODEL artifact) and from V41's own peer in the serving-infra CVE
@@ -901,7 +901,7 @@ vulnerabilities:
       - langfail/api/auth.py:service_exchange (claims["role"] honoured over the DB role)
       - langfail/core/security.py:issue_token (full session token minted with the forged role) — credential laundering: the forged claims leave the exchange as a properly-signed session JWT accepted everywhere
     sanitizers_present:
-      - "langfail/core/security.py:verify_service_token_safe pins algorithms=[\"HS256\"] — present and unit-tested (D21), just not used by this endpoint"
+      - "langfail/core/security.py:verify_edge_service_token pins algorithms=[\"HS256\"] — present and unit-tested (D21), just not used by this endpoint"
       - "langfail/core/security.py:decode_token also pins HS256 — covers session tokens only, not this exchange path"
     notes: >
       Framed as mesh-sidecar service tokens that are "network-local and unsigned
@@ -938,7 +938,7 @@ vulnerabilities:
       - langfail/api/auth.py:_apply_reset (password rehashed — account taken over)
     sanitizers_present:
       - "reset window (User.reset_token_expires) is enforced — limits time, not guessability"
-      - "langfail/api/auth.py:reset_request_secure/reset_confirm_secure are the random, hashed, single-use variant (D23) — present, just not the default path"
+      - "langfail/api/auth.py:reset_request_code/reset_confirm_code are the random, hashed, single-use variant (D23) — present, just not the default path"
     poc: tests/test_exploits_auth.py::test_v46_predictable_reset_token
 
   - id: V47
@@ -993,7 +993,7 @@ vulnerabilities:
       - langfail/api/auth.py:get_avatar (served to ANY authenticated viewer with Content-Type image/svg+xml + Content-Disposition inline — embedded <script> executes same-origin in the viewer's browser, cross-user)
     sanitizers_present:
       - "upload check requires '<svg' in the body — a format sniff, not a sanitizer"
-      - "langfail/api/auth.py:get_avatar_safe serves the same file as attachment + nosniff (D26) — present, different route"
+      - "langfail/api/auth.py:download_avatar serves the same file as attachment + nosniff (D26) — present, different route"
     poc: tests/test_exploits_auth.py::test_v49_stored_xss_svg_avatar
 
   - id: V50
@@ -1154,7 +1154,7 @@ vulnerabilities:
       - langfail/ml/predict.py:apply_feedback (distinctive tokens become learned overrides -> Model.meta_json)
       - langfail/api/inference.py:predict_label/predict_proba -> predict.py:predict_proba (trigger token steers the score to the attacker's label; clean inputs unaffected)
     sanitizers_present:
-      - "Feedback.status column and the approved-only retrain_reviewed() handler exist (D33) -- the review control is present in the codebase but the scheduled retrain path never uses it (misdirection: 'there is a moderation workflow' reads as if it gated ingestion)"
+      - "Feedback.status column and the approved-only retrain_from_queue() handler exist (D33) -- the review control is present in the codebase but the scheduled retrain path never uses it (misdirection: 'there is a moderation workflow' reads as if it gated ingestion)"
     notes: >
       Crosses the DB and the job queue (second-order), and the effect is a
       model-integrity violation rather than code execution. The trigger
@@ -1194,7 +1194,7 @@ vulnerabilities:
       - langfail/mcp_server.py:_tool_description (appends the note only once served-count exceeds applies_after)
       - "client's FIRST list_tools (connection/approval time) sees the clean description; later listings carry the poisoned note -- approval-time review never sees the payload"
     sanitizers_present:
-      - "build_tool_list_pinned() exists in the same module and serves a frozen first-connection snapshot (D35) -- present but not used by the default server path"
+      - "build_tool_list_snapshot() exists in the same module and serves a frozen first-connection snapshot (D35) -- present but not used by the default server path"
     notes: >
       Distinct from V29: V29's note is served immediately and uniformly; this
       is a time-of-check/time-of-use gap where the description a client
@@ -1263,7 +1263,7 @@ vulnerabilities:
       - langfail/agent/llm.py:_memorized_corpus (reads CorpusDoc rows the app factory seeded at boot)
       - "assistant answer contains verbatim fine-tune corpus PII (customer emails/SSNs)"
     sanitizers_present:
-      - "redact_sensitive() exists in the same module and is wired into /api/agent/chat_safe (D38) -- present and unit-tested, just not used on the default chat path"
+      - "redact_sensitive() exists in the same module and is wired into /api/agent/chat_brief (D38) -- present and unit-tested, just not used on the default chat path"
     notes: >
       The taint SOURCE is the model's own memorized training data, not any
       request field, and the SINK is the model's reply -- no tool call is
@@ -1288,7 +1288,7 @@ vulnerabilities:
     notes: >
       Label/presence finding rather than a new code change: the tools' power
       is ambient authority -- nothing in run_agent or TOOLS binds a tool call
-      to the calling user's permissions. Contrast D40's read_file_scoped,
+      to the calling user's permissions. Contrast D40's read_owner_file,
       which confines reads to the caller's own artifact prefix.
     poc: tests/test_exploits_agentic.py::test_v63_confused_deputy_lowpriv_file_read
 
@@ -1308,7 +1308,7 @@ vulnerabilities:
       - langfail/services/registry.py:read_raw (os.path.join without containment -> traversal, cf. V24)
     sanitizers_present:
       - "sanitize_path exists on the raw_artifact path but is gated by the very setting the attacker flips (conditional sanitizer composed with a writable gate)"
-      - "merge_preferences_safe() exists in core/settings.py and allow-lists namespaces (D39) -- present but not used by the endpoint"
+      - "merge_user_preferences() exists in core/settings.py and allow-lists namespaces (D39) -- present but not used by the endpoint"
     notes: >
       Config-as-taint axis: the tainted value is a CONFIGURATION document, not
       a path string -- nothing about the request looks like a traversal, and
@@ -1410,10 +1410,10 @@ vulnerabilities:
     huntr_analog: "a nested REST route (/parents/:pid/children/:cid) that reads the child by cid alone -- pid is validated as an int but never joined/filtered on, so any pid+any guessed cid works"
     tier: 2
     exploitable: true
-    source: {file: langfail/api/authz_demo.py, symbol: get_task_unscoped, note: "project_id and task_id path params"}
-    sink: {file: langfail/api/authz_demo.py, symbol: get_task_unscoped, line_hint: 247}
+    source: {file: langfail/api/authz_demo.py, symbol: get_task_under_project, note: "project_id and task_id path params"}
+    sink: {file: langfail/api/authz_demo.py, symbol: get_task_under_project, line_hint: 247}
     taint_path:
-      - "langfail/api/authz_demo.py:get_task_unscoped (project_id bound from the URL but never referenced in the query -- looks scoped, isn't)"
+      - "langfail/api/authz_demo.py:get_task_under_project (project_id bound from the URL but never referenced in the query -- looks scoped, isn't)"
     sanitizers_present: []
     notes: "A reviewer skimming the route signature (/projects/<project_id>/tasks/<task_id>) would reasonably assume the project scopes the read -- it doesn't. Distinct from V70: this is the 'looks hierarchical, isn't' misdirection."
     poc: tests/test_exploits_authz.py::test_v71_hierarchical_ignored_parent_param_cross_tenant_read
@@ -1498,7 +1498,7 @@ vulnerabilities:
       - langfail/services/markdown.py:render_markdown (only ![]()/[]() are transformed; any other HTML, including <script>, passes through unchanged)
       - "langfail/ui/templates/model_detail.html ({{ card_html|safe }} — any authenticated viewer of the model, not just its owner)"
     sanitizers_present:
-      - "langfail/services/markdown.py:render_markdown_safe restricts image src to the app's own origin (see D08) but does not strip arbitrary HTML either, and is not what model_detail calls regardless"
+      - "langfail/services/markdown.py:render_card_markdown restricts image src to the app's own origin (see D08) but does not strip arbitrary HTML either, and is not what model_detail calls regardless"
     notes: "Same shape as V19 (stored XSS via model_card into the reports preview) but a second, independent sink for the identical tainted field — the dashboard page — that V19 alone does not cover."
     poc: tests/test_exploits_ui.py::test_v76_stored_xss_model_card
 
@@ -1516,7 +1516,7 @@ vulnerabilities:
       - "langfail/services/markdown.py:render_markdown (image src emitted as-authored, any origin, no escaping of surrounding HTML)"
       - "langfail/ui/templates/chat.html ({{ answer_html|safe }} — renders as a live off-origin <img> in the authenticated page)"
     sanitizers_present:
-      - "langfail/services/markdown.py:render_markdown_safe drops off-origin image src to alt text (D08) — exists, but chat() calls the unsafe render_markdown"
+      - "langfail/services/markdown.py:render_card_markdown drops off-origin image src to alt text (D08) — exists, but chat() calls the unsafe render_markdown"
     notes: "Distinct from V31 (agent-memory markdown-image exfil via the JSON API) — same underlying render_markdown, different call site/surface (the dashboard chat page)."
     poc: tests/test_exploits_ui.py::test_v77_chat_answer_rendered_unsafe
 
@@ -1592,7 +1592,7 @@ vulnerabilities:
       - "langfail/api/experiments.py:by_tag (?tag=<any tag>)"
       - "langfail/services/experiments.py:search_by_tag (SELECT ... FROM experiments WHERE tags = :tag -- no owner_id filter, matches every user's rows)"
     sanitizers_present: []
-    notes: "Discovered independently by VVAH+DeepSeek during a blind-copy benchmark run, not originally planted -- see SCOREBOARD.md. search_experiments(), ask_experiments(), and ask_experiments_safe() (D10) share the identical gap -- none of the four experiment-search functions filters by owner_id at all. search_by_tag is used here as the representative sink since it's also D02's SQLi-safe decoy: D02 and D10 remain valid, correctly-safe-from-SQLi decoys for their own vulnerability class -- this is a separate, orthogonal authorization gap in the same functions, not a contradiction of those decoys."
+    notes: "Discovered independently by VVAH+DeepSeek during a blind-copy benchmark run, not originally planted -- see SCOREBOARD.md. search_experiments(), ask_experiments(), and ask_experiments_structured() (D10) share the identical gap -- none of the four experiment-search functions filters by owner_id at all. search_by_tag is used here as the representative sink since it's also D02's SQLi-safe decoy: D02 and D10 remain valid, correctly-safe-from-SQLi decoys for their own vulnerability class -- this is a separate, orthogonal authorization gap in the same functions, not a contradiction of those decoys."
     poc: tests/test_exploits_tier6.py::test_v82_search_by_tag_leaks_other_users_experiments
 
   - id: V83
@@ -1624,8 +1624,8 @@ vulnerabilities:
 decoys:
   - id: D01
     resembles: V03/V24 (path traversal)
-    why_safe: "read_artifact_safe() realpath-contains the target under ARTIFACT_DIR and rejects escapes"
-    location: {file: langfail/services/registry.py, symbol: read_artifact_safe}
+    why_safe: "download_artifact() realpath-contains the target under ARTIFACT_DIR and rejects escapes"
+    location: {file: langfail/services/registry.py, symbol: download_artifact}
     proof: tests/test_exploits_tier6.py::test_d01_safe_download_rejects_traversal
   - id: D02
     resembles: V08/V22 (SQLi)
@@ -1647,13 +1647,13 @@ decoys:
   # the existing convention for V67.
   - id: D04
     resembles: V06/V23 (SSRF)
-    why_safe: "fetch_guarded() resolves the host and blocks private/loopback/link-local/reserved IPs; redirects disabled"
-    location: {file: langfail/services/fetcher.py, symbol: fetch_guarded}
+    why_safe: "fetch_external() resolves the host and blocks private/loopback/link-local/reserved IPs; redirects disabled"
+    location: {file: langfail/services/fetcher.py, symbol: fetch_external}
     proof: tests/test_exploits_tier6.py::test_d04_guarded_fetch_blocks_private
   - id: D05
     resembles: V02 (unsafe YAML)
-    why_safe: "load_safe() uses yaml.safe_load — no object construction"
-    location: {file: langfail/services/config_loader.py, symbol: load_safe}
+    why_safe: "load_document() uses yaml.safe_load — no object construction"
+    location: {file: langfail/services/config_loader.py, symbol: load_document}
     proof: "covered indirectly; no dedicated test (static near-miss)"
   - id: D06
     resembles: V27 (path traversal) — SAME sink function, different call site
@@ -1662,13 +1662,13 @@ decoys:
     proof: tests/test_exploits_tier6.py::test_d06_builtin_kind_ignores_traversal
   - id: D07
     resembles: V30 (agent memory poisoning)
-    why_safe: "recall_scoped() filters AgentMemory by owner_id, so the per-user notes view (GET /api/agent/memory) never returns another user's memory; only the shared session path uses the unscoped recall()"
-    location: {file: langfail/agent/memory.py, symbol: recall_scoped}
+    why_safe: "recall_for_owner() filters AgentMemory by owner_id, so the per-user notes view (GET /api/agent/memory) never returns another user's memory; only the shared session path uses the unscoped recall()"
+    location: {file: langfail/agent/memory.py, symbol: recall_for_owner}
     proof: tests/test_exploits_tier6.py::test_d07_scoped_memory_recall_is_isolated
   - id: D08
     resembles: V31 (markdown-image exfil)
-    why_safe: "render_markdown_safe() only emits <img src> for the app's own origin (relative/allow-listed prefixes, no scheme) and degrades off-origin images to their alt text — no auto-loading egress channel"
-    location: {file: langfail/services/markdown.py, symbol: render_markdown_safe}
+    why_safe: "render_card_markdown() only emits <img src> for the app's own origin (relative/allow-listed prefixes, no scheme) and degrades off-origin images to their alt text — no auto-loading egress channel"
+    location: {file: langfail/services/markdown.py, symbol: render_card_markdown}
     proof: tests/test_exploits_tier6.py::test_d08_safe_markdown_drops_offorigin_image
   - id: D09
     resembles: V32 (directive filter) — SAME filter, visible vs. smuggled input
@@ -1677,38 +1677,38 @@ decoys:
     proof: tests/test_exploits_tier6.py::test_d09_visible_directive_is_filtered
   - id: D10
     resembles: V33 (text-to-SQL injection) — SAME feature (NL experiment search), constrained instead of freeform
-    why_safe: "ask_experiments_safe() only accepts 'column=value' against an allow-list of columns and always binds the value as a parameter -- the model never authors raw SQL to execute"
-    location: {file: langfail/services/experiments.py, symbol: ask_experiments_safe}
+    why_safe: "ask_experiments_structured() only accepts 'column=value' against an allow-list of columns and always binds the value as a parameter -- the model never authors raw SQL to execute"
+    location: {file: langfail/services/experiments.py, symbol: ask_experiments_structured}
     proof: tests/test_exploits_tier6.py::test_d10_ask_safe_rejects_raw_sql
   - id: D11
     resembles: V34 (code-interpreter RCE) — SAME feature (NL dataset analysis), constrained instead of freeform
-    why_safe: "run_analysis_safe() maps the question to one of a fixed set of aggregate operations by keyword and never exec()s model-generated code"
-    location: {file: langfail/services/analysis.py, symbol: run_analysis_safe}
+    why_safe: "run_analysis_aggregate() maps the question to one of a fixed set of aggregate operations by keyword and never exec()s model-generated code"
+    location: {file: langfail/services/analysis.py, symbol: run_analysis_aggregate}
     proof: tests/test_exploits_tier6.py::test_d11_safe_analysis_never_execs
   - id: D12
     resembles: V35 (reflection dispatch) — SAME handler/action set, allow-list-checked instead of bare getattr
-    why_safe: "dispatch_safe() rejects any name not present in _PUBLIC_ACTIONS before ever calling getattr -- _debug_eval is unreachable regardless of what the model returns"
-    location: {file: langfail/agent/native.py, symbol: dispatch_safe}
+    why_safe: "dispatch_public() rejects any name not present in _PUBLIC_ACTIONS before ever calling getattr -- _debug_eval is unreachable regardless of what the model returns"
+    location: {file: langfail/agent/native.py, symbol: dispatch_public}
     proof: tests/test_exploits_tier6.py::test_d12_dispatch_safe_rejects_internal_method
   - id: D13
-    resembles: V36 (unbounded agent iteration) — SAME loop primitive (run_agent_unbounded), clamped instead of caller-controlled
-    why_safe: "run_agent_capped() clamps the requested max_rounds to MAX_ITERATE_ROUNDS (10) before ever calling run_agent_unbounded, regardless of what the caller asks for"
-    location: {file: langfail/agent/core.py, symbol: run_agent_capped}
+    resembles: V36 (unbounded agent iteration) — SAME loop primitive (run_agent_extended), clamped instead of caller-controlled
+    why_safe: "run_agent_tiered() clamps the requested max_rounds to MAX_ITERATE_ROUNDS (10) before ever calling run_agent_extended, regardless of what the caller asks for"
+    location: {file: langfail/agent/core.py, symbol: run_agent_tiered}
     proof: tests/test_exploits_tier6.py::test_d13_capped_agent_ignores_requested_budget
   - id: D14
     resembles: V37 (trust_remote_code RCE) — SAME feature (custom dataset loading), never executes instead of trusting by default
-    why_safe: "run_loader_script_safe() never execs anything -- custom loading scripts are simply unsupported, the secure equivalent of trust_remote_code=False"
-    location: {file: langfail/ml/dataset.py, symbol: run_loader_script_safe}
+    why_safe: "load_tabular_dataset() never execs anything -- custom loading scripts are simply unsupported, the secure equivalent of trust_remote_code=False"
+    location: {file: langfail/ml/dataset.py, symbol: load_tabular_dataset}
     proof: tests/test_exploits_tier6.py::test_d14_safe_loader_never_execs
   - id: D15
     resembles: V38 (PII-to-LLM leak) — SAME feature (support-reply drafting), redacted instead of raw
-    why_safe: "draft_support_reply_safe() strips email addresses from the account context with a regex substitution before the context ever reaches run_agent/the LLM call"
-    location: {file: langfail/services/support.py, symbol: draft_support_reply_safe}
+    why_safe: "draft_support_reply_brief() strips email addresses from the account context with a regex substitution before the context ever reaches run_agent/the LLM call"
+    location: {file: langfail/services/support.py, symbol: draft_support_reply_brief}
     proof: tests/test_exploits_tier6.py::test_d15_support_reply_safe_redacts_email
   - id: D16
     resembles: V39 (MCP sampling poisoning) — SAME helper/note source, directive-stripped instead of raw
-    why_safe: "summarize_via_sampling_safe() runs the note through agent/sanitize.py:strip_directives before it is ever embedded in the sampling request"
-    location: {file: langfail/mcp_server.py, symbol: summarize_via_sampling_safe}
+    why_safe: "summarize_note_via_sampling() runs the note through agent/sanitize.py:strip_directives before it is ever embedded in the sampling request"
+    location: {file: langfail/mcp_server.py, symbol: summarize_note_via_sampling}
     proof: tests/test_exploits_tier6.py::test_d16_sampling_safe_strips_directives
   - id: D17
     resembles: V40 (MCP-over-HTTP no-auth default) — SAME gate function, explicitly enabled instead of left at its default
@@ -1717,8 +1717,8 @@ decoys:
     proof: tests/test_exploits_tier6.py::test_d17_mcp_http_auth_enforced_when_enabled
   - id: D18
     resembles: V41 (runner-protocol pickle RCE) — SAME call-protocol feature, JSON-only instead of pickle
-    why_safe: "handle_runner_call_safe() uses json.loads instead of pickle.loads -- arbitrary Python objects (and pickle's object-graph reconstruction) are simply not supported across this boundary"
-    location: {file: langfail/ml/runner.py, symbol: handle_runner_call_safe}
+    why_safe: "handle_runner_call_json() uses json.loads instead of pickle.loads -- arbitrary Python objects (and pickle's object-graph reconstruction) are simply not supported across this boundary"
+    location: {file: langfail/ml/runner.py, symbol: handle_runner_call_json}
     proof: tests/test_exploits_tier6.py::test_d18_runner_call_safe_rejects_pickle
   - id: D19
     resembles: V47 (weak credential storage) — SAME secret type (passwords), salted slow hash instead of unsalted md5
@@ -1732,18 +1732,18 @@ decoys:
     proof: tests/test_exploits_auth.py::test_d20_session_token_rejects_alg_none
   - id: D21
     resembles: V44 (unsigned service-token exchange) — SAME helper shape, strict variant
-    why_safe: "verify_service_token_safe() pins algorithms=[\"HS256\"] and verifies the signature against Config.JWT_SECRET, so an unsigned service token is rejected outright"
-    location: {file: langfail/core/security.py, symbol: verify_service_token_safe}
+    why_safe: "verify_edge_service_token() pins algorithms=[\"HS256\"] and verifies the signature against Config.JWT_SECRET, so an unsigned service token is rejected outright"
+    location: {file: langfail/core/security.py, symbol: verify_edge_service_token}
     proof: tests/test_exploits_auth.py::test_d21_service_token_safe_rejects_unsigned
   - id: D22
     resembles: V45 (open redirect) — SAME endpoint shape (post-login ?next= bounce), validated instead of raw
-    why_safe: "redirect_after_login_safe() only honours same-site relative paths: anything not starting with '/' — and protocol-relative '//host' — falls back to '/', so no off-origin Location is ever emitted"
-    location: {file: langfail/api/auth.py, symbol: redirect_after_login_safe}
+    why_safe: "redirect_after_login_local() only honours same-site relative paths: anything not starting with '/' — and protocol-relative '//host' — falls back to '/', so no off-origin Location is ever emitted"
+    location: {file: langfail/api/auth.py, symbol: redirect_after_login_local}
     proof: tests/test_exploits_auth.py::test_d22_safe_redirect_allows_relative_only
   - id: D23
     resembles: V46 (predictable reset token) — SAME feature (password recovery), random+hashed+single-use instead of derived
-    why_safe: "reset_request_secure()/reset_confirm_secure() mint the code with secrets.token_urlsafe, persist only its sha256 hash (check via hmac.compare_digest), and clear it on use — the V46-style md5(username:email) derivation does not match"
-    location: {file: langfail/api/auth.py, symbol: reset_confirm_secure}
+    why_safe: "reset_request_code()/reset_confirm_code() mint the code with secrets.token_urlsafe, persist only its sha256 hash (check via hmac.compare_digest), and clear it on use — the V46-style md5(username:email) derivation does not match"
+    location: {file: langfail/api/auth.py, symbol: reset_confirm_code}
     proof: tests/test_exploits_auth.py::test_d23_secure_reset_rejects_guessed_token
   - id: D24
     resembles: V47 (digest-as-credential API key) — SAME helper/header family, strong token instead of fast digest
@@ -1752,23 +1752,23 @@ decoys:
     proof: tests/test_exploits_auth.py::test_d24_api_key_safe_rejects_wrong_key
   - id: D25
     resembles: V48 (ReDoS) — SAME check (username format), linear validator instead of nested quantifiers
-    why_safe: "validate_username_safe() uses ^[a-zA-Z0-9_]+$ with fullmatch — a single character class, no nested quantifiers; the V48 catastrophic input returns False in microseconds"
-    location: {file: langfail/core/security.py, symbol: validate_username_safe}
+    why_safe: "validate_username_bulk() uses ^[a-zA-Z0-9_]+$ with fullmatch — a single character class, no nested quantifiers; the V48 catastrophic input returns False in microseconds"
+    location: {file: langfail/core/security.py, symbol: validate_username_bulk}
     proof: tests/test_exploits_auth.py::test_d25_safe_username_validator_is_linear
   - id: D26
     resembles: V49 (stored XSS via SVG avatar) — SAME stored file, download-only instead of inline
-    why_safe: "get_avatar_safe() serves the identical stored SVG with Content-Disposition: attachment and X-Content-Type-Options: nosniff, so the browser downloads rather than renders it — embedded script never executes same-origin"
-    location: {file: langfail/api/auth.py, symbol: get_avatar_safe}
+    why_safe: "download_avatar() serves the identical stored SVG with Content-Disposition: attachment and X-Content-Type-Options: nosniff, so the browser downloads rather than renders it — embedded script never executes same-origin"
+    location: {file: langfail/api/auth.py, symbol: download_avatar}
     proof: tests/test_exploits_auth.py::test_d26_avatar_safe_served_as_attachment
   - id: D27
     resembles: V51 (typed-JSON deserialization) — SAME feature (experiment import), plain JSON instead of jsonpickle
-    why_safe: "import_strict() uses json.loads and rejects any top-level key outside {name, params, metrics, tags} -- a py/reduce document is refused before any object reconstruction could occur"
-    location: {file: langfail/api/experiments.py, symbol: import_strict}
+    why_safe: "import_experiment_document() uses json.loads and rejects any top-level key outside {name, params, metrics, tags} -- a py/reduce document is refused before any object reconstruction could occur"
+    location: {file: langfail/api/experiments.py, symbol: import_experiment_document}
     proof: tests/test_exploits_ml.py::test_d27_import_strict_rejects_py_reduce
   - id: D28
     resembles: V52 (restricted-unpickler bypass) — SAME file/feature (allow-listed artifact load), exact-class instead of name-prefix policy
-    why_safe: "load_model_strict() permits only the exact (module, name) pairs a plain sklearn-estimator pickle needs (numpy _reconstruct/ndarray/dtype); getattr, dict and globals are all refused, so the V52 gadget chain dies at the first GLOBAL opcode"
-    location: {file: langfail/ml/model_loader.py, symbol: load_model_strict}
+    why_safe: "load_model_numeric() permits only the exact (module, name) pairs a plain sklearn-estimator pickle needs (numpy _reconstruct/ndarray/dtype); getattr, dict and globals are all refused, so the V52 gadget chain dies at the first GLOBAL opcode"
+    location: {file: langfail/ml/model_loader.py, symbol: load_model_numeric}
     proof: tests/test_exploits_ml.py::test_d28_strict_unpickler_rejects_bypass
   - id: D29
     resembles: V53 (hub repo code execution) — SAME feature (repo bundle install), manifest-only instead of hubconf import
@@ -1777,8 +1777,8 @@ decoys:
     proof: tests/test_exploits_ml.py::test_d29_hub_manifest_imports_no_code
   - id: D30
     resembles: V54 (plugin install -> startup exec) — SAME plugin pipeline, review-gated instead of enabled-at-upload
-    why_safe: "install_plugin_pending() stores the plugin with enabled=False, and the ordinary boot loader (load_enabled_plugins) imports only enabled rows -- so a fresh upload survives a restart without its module-level code ever running. The gate is at install time; there is no second 'safe loader' doing the work."
-    location: {file: langfail/ml/plugins.py, symbol: install_plugin_pending}
+    why_safe: "stage_plugin() stores the plugin with enabled=False, and the ordinary boot loader (load_enabled_plugins) imports only enabled rows -- so a fresh upload survives a restart without its module-level code ever running. The gate is at install time; there is no second 'safe loader' doing the work."
+    location: {file: langfail/ml/plugins.py, symbol: stage_plugin}
     proof: tests/test_exploits_ml.py::test_d30_pending_plugin_not_loaded_on_boot
   - id: D31
     resembles: V55 (model extraction via confidence scores) — SAME scorer, top-1 label instead of full vector
@@ -1792,23 +1792,23 @@ decoys:
     proof: tests/test_exploits_ml.py::test_d32_batch_loss_is_aggregate_only
   - id: D33
     resembles: V57 (poisoning via unreviewed feedback) — SAME ingestion path, status-filtered instead of unfiltered
-    why_safe: "retrain_reviewed() ingests only Feedback rows with status='approved'; a pending (unreviewed) poisoned row never reaches apply_feedback, so the trigger token produces no override"
-    location: {file: langfail/workers/tasks.py, symbol: retrain_reviewed}
+    why_safe: "retrain_from_queue() ingests only Feedback rows with status='approved'; a pending (unreviewed) poisoned row never reaches apply_feedback, so the trigger token produces no override"
+    location: {file: langfail/workers/tasks.py, symbol: retrain_from_queue}
     proof: tests/test_exploits_ml.py::test_d33_reviewed_retrain_ignores_pending_feedback
   - id: D34
     resembles: V58 (agent-driven package install)
-    why_safe: "install_package_safe() resolves the requested name against a hard allow-list of reviewed, pinned packages (ALLOWED_PACKAGES) and raises on anything else -- arbitrary names, version specifiers and local source trees never reach pip"
-    location: {file: langfail/agent/tools.py, symbol: install_package_safe}
+    why_safe: "install_from_catalog() resolves the requested name against a hard allow-list of reviewed, pinned packages (ALLOWED_PACKAGES) and raises on anything else -- arbitrary names, version specifiers and local source trees never reach pip"
+    location: {file: langfail/agent/tools.py, symbol: install_from_catalog}
     proof: tests/test_exploits_agentic.py::test_d34_install_safe_rejects_unlisted_package
   - id: D35
     resembles: V59 (MCP tool-metadata rug pull)
-    why_safe: "build_tool_list_pinned() snapshots the static, code-shipped descriptions on first enumeration and serves that frozen snapshot verbatim thereafter -- a note added after the first call can never drift into a client's view"
-    location: {file: langfail/mcp_server.py, symbol: build_tool_list_pinned}
+    why_safe: "build_tool_list_snapshot() snapshots the static, code-shipped descriptions on first enumeration and serves that frozen snapshot verbatim thereafter -- a note added after the first call can never drift into a client's view"
+    location: {file: langfail/mcp_server.py, symbol: build_tool_list_snapshot}
     proof: tests/test_exploits_agentic.py::test_d35_pinned_tool_list_never_drifts
   - id: D36
     resembles: V60 (confirmation spoof) -- SAME destructive gate, different confirmation channel
-    why_safe: "run_agent_confirmed() takes confirmation as an explicit boolean parameter supplied by the CALLER out-of-band; conversation content (fetched pages, context docs, tool results) cannot influence it, so the same poisoned page leaves the destructive call held"
-    location: {file: langfail/agent/core.py, symbol: run_agent_confirmed}
+    why_safe: "run_agent_with_signal() takes confirmation as an explicit boolean parameter supplied by the CALLER out-of-band; conversation content (fetched pages, context docs, tool results) cannot influence it, so the same poisoned page leaves the destructive call held"
+    location: {file: langfail/agent/core.py, symbol: run_agent_with_signal}
     proof: tests/test_exploits_agentic.py::test_d36_out_of_band_confirmation_not_inferred
   - id: D37
     resembles: V61 (cross-tenant note leak) -- SAME table, properly-scoped read path
@@ -1817,18 +1817,18 @@ decoys:
     proof: tests/test_exploits_agentic.py::test_d37_notes_view_is_owner_scoped
   - id: D38
     resembles: V62 (training-data extraction) -- SAME trigger, redacting output path
-    why_safe: "/api/agent/chat_safe runs redact_sensitive() over the answer: emails and SSNs are regex-redacted before anything is returned, so the same divergence trigger yields [REDACTED-EMAIL]/[REDACTED-SSN], never raw corpus PII"
+    why_safe: "/api/agent/chat_brief runs redact_sensitive() over the answer: emails and SSNs are regex-redacted before anything is returned, so the same divergence trigger yields [REDACTED-EMAIL]/[REDACTED-SSN], never raw corpus PII"
     location: {file: langfail/agent/llm.py, symbol: redact_sensitive}
     proof: tests/test_exploits_agentic.py::test_d38_chat_safe_redacts_corpus_pii
   - id: D39
     resembles: V64 (preference config injection) -- SAME feature, allow-listed namespaces
-    why_safe: "merge_preferences_safe() only merges PREFERENCE_NAMESPACES ('ui', 'llm') and reports everything else as rejected; a 'security' key is refused and the strict_paths gate stays on"
-    location: {file: langfail/core/settings.py, symbol: merge_preferences_safe}
+    why_safe: "merge_user_preferences() only merges PREFERENCE_NAMESPACES ('ui', 'llm') and reports everything else as rejected; a 'security' key is refused and the strict_paths gate stays on"
+    location: {file: langfail/core/settings.py, symbol: merge_user_preferences}
     proof: tests/test_exploits_agentic.py::test_d39_preferences_safe_ignores_security_namespace
   - id: D40
     resembles: V63 (confused deputy / ambient-authority tools)
-    why_safe: "read_file_scoped() resolves the requested path under the caller's own artifact prefix (artifacts/u<owner_id>/) and raises on any escape -- per-user scoping done right for the same tool class"
-    location: {file: langfail/agent/tools.py, symbol: read_file_scoped}
+    why_safe: "read_owner_file() resolves the requested path under the caller's own artifact prefix (artifacts/u<owner_id>/) and raises on any escape -- per-user scoping done right for the same tool class"
+    location: {file: langfail/agent/tools.py, symbol: read_owner_file}
     proof: tests/test_exploits_agentic.py::test_d40_scoped_read_confined_to_caller_prefix
 
   # ----------------------------------------------------------------------
@@ -1839,62 +1839,62 @@ decoys:
   - id: D41
     resembles: V65 (ownership IDOR)
     authz_model: ownership
-    why_safe: "get_note_safe_fused query-fuses owner_id=g.user_id into the fetch itself -- a non-owned note simply doesn't match the query"
-    location: {file: langfail/api/authz_demo.py, symbol: get_note_safe_fused}
+    why_safe: "get_note_fused query-fuses owner_id=g.user_id into the fetch itself -- a non-owned note simply doesn't match the query"
+    location: {file: langfail/api/authz_demo.py, symbol: get_note_fused}
     proof: tests/test_exploits_authz.py::test_d41_ownership_fused_blocks_cross_tenant_read
   - id: D42
     resembles: V65 (ownership IDOR)
     authz_model: ownership
-    why_safe: "get_note_safe_guarded fetches then checks note.owner_id != g.user_id, denying (403) before the note's fields are ever returned -- the guard dominates the use"
-    location: {file: langfail/api/authz_demo.py, symbol: get_note_safe_guarded}
+    why_safe: "get_note_guarded fetches then checks note.owner_id != g.user_id, denying (403) before the note's fields are ever returned -- the guard dominates the use"
+    location: {file: langfail/api/authz_demo.py, symbol: get_note_guarded}
     proof: tests/test_exploits_authz.py::test_d42_ownership_guarded_blocks_cross_tenant_read
   - id: D43
     resembles: V65 (ownership IDOR)
     authz_model: ownership
-    why_safe: "get_note_safe_guarded_inverted uses the equality-inversion guard shape (if owned: continue, else: deny) -- same dominance guarantee as D42, different syntax"
-    location: {file: langfail/api/authz_demo.py, symbol: get_note_safe_guarded_inverted}
+    why_safe: "get_note_guarded_inverted uses the equality-inversion guard shape (if owned: continue, else: deny) -- same dominance guarantee as D42, different syntax"
+    location: {file: langfail/api/authz_demo.py, symbol: get_note_guarded_inverted}
     proof: tests/test_exploits_authz.py::test_d43_ownership_guarded_inverted_blocks_cross_tenant_read
   - id: D44
     resembles: V68 (membership IDOR)
     authz_model: membership
-    why_safe: "get_team_note_safe fetches then checks g.user_id not in note.team.members, denying (403) before the note's fields are returned -- the membership guard dominates the use. This guarantee depends on Team.members itself being trustworthy: add_team_member (the only route that grows it after creation) requires the caller to already be a member, so an outsider cannot forge their own way into membership and walk through the guard. (Found during a scoring run: add_team_member originally had no such check, which made this decoy and D45 unsafe in practice even though the guard's own dominance logic was correct -- fixed alongside this note.)"
-    location: {file: langfail/api/authz_demo.py, symbol: get_team_note_safe}
+    why_safe: "get_team_note_guarded fetches then checks g.user_id not in note.team.members, denying (403) before the note's fields are returned -- the membership guard dominates the use. This guarantee depends on Team.members itself being trustworthy: add_team_member (the only route that grows it after creation) requires the caller to already be a member, so an outsider cannot forge their own way into membership and walk through the guard. (Found during a scoring run: add_team_member originally had no such check, which made this decoy and D45 unsafe in practice even though the guard's own dominance logic was correct -- fixed alongside this note.)"
+    location: {file: langfail/api/authz_demo.py, symbol: get_team_note_guarded}
     proof: tests/test_exploits_authz.py::test_d44_membership_guarded_blocks_non_member_read, tests/test_exploits_authz.py::test_add_team_member_rejects_non_member_self_add
   - id: D45
     resembles: V68 (membership IDOR)
     authz_model: membership
-    why_safe: "get_team_note_safe_inverted uses the positive-containment-plus-else-deny shape (if member: continue, else: deny) -- same dominance guarantee as D44, different syntax. Same dependency on add_team_member enforcing membership on write; see D44's note."
-    location: {file: langfail/api/authz_demo.py, symbol: get_team_note_safe_inverted}
+    why_safe: "get_team_note_guarded_inverted uses the positive-containment-plus-else-deny shape (if member: continue, else: deny) -- same dominance guarantee as D44, different syntax. Same dependency on add_team_member enforcing membership on write; see D44's note."
+    location: {file: langfail/api/authz_demo.py, symbol: get_team_note_guarded_inverted}
     proof: tests/test_exploits_authz.py::test_d45_membership_guarded_inverted_blocks_non_member_read, tests/test_exploits_authz.py::test_add_team_member_rejects_non_member_self_add
   - id: D46
     resembles: V70/V71 (hierarchical IDOR)
     authz_model: hierarchical
-    why_safe: "get_task_safe_via_parent_id authorizes the parent Project first (ownership-fused: owner_id=g.user_id), then FK-fuses the child Task query to the authorized parent's id (project_id=project.id) -- a task under someone else's project never matches"
-    location: {file: langfail/api/authz_demo.py, symbol: get_task_safe_via_parent_id}
+    why_safe: "get_task_via_parent_id authorizes the parent Project first (ownership-fused: owner_id=g.user_id), then FK-fuses the child Task query to the authorized parent's id (project_id=project.id) -- a task under someone else's project never matches"
+    location: {file: langfail/api/authz_demo.py, symbol: get_task_via_parent_id}
     proof: tests/test_exploits_authz.py::test_d46_hierarchical_via_parent_id_blocks_cross_tenant_read
   - id: D47
     resembles: V70/V71 (hierarchical IDOR)
     authz_model: hierarchical
-    why_safe: "get_task_safe_via_parent_object is the same hierarchical scoping as D46, FK-fused to the authorized parent object itself (project=project) rather than its id attribute"
-    location: {file: langfail/api/authz_demo.py, symbol: get_task_safe_via_parent_object}
+    why_safe: "get_task_via_parent_object is the same hierarchical scoping as D46, FK-fused to the authorized parent object itself (project=project) rather than its id attribute"
+    location: {file: langfail/api/authz_demo.py, symbol: get_task_via_parent_object}
     proof: tests/test_exploits_authz.py::test_d47_hierarchical_via_parent_object_blocks_cross_tenant_read
   - id: D48
     resembles: V72/V73 (status IDOR)
     authz_model: status
-    why_safe: "get_article_safe_gate fetches then checks article.status != 'published', denying (404) before an unpublished draft's fields are returned -- the status gate dominates the use"
-    location: {file: langfail/api/authz_demo.py, symbol: get_article_safe_gate}
+    why_safe: "get_article_gated fetches then checks article.status != 'published', denying (404) before an unpublished draft's fields are returned -- the status gate dominates the use"
+    location: {file: langfail/api/authz_demo.py, symbol: get_article_gated}
     proof: tests/test_exploits_authz.py::test_d48_status_gate_blocks_unpublished_draft
   - id: D49
     resembles: V72/V73 (status IDOR)
     authz_model: status
-    why_safe: "get_article_safe_fused query-fuses status='published' into the fetch itself -- a draft simply doesn't match the query"
-    location: {file: langfail/api/authz_demo.py, symbol: get_article_safe_fused}
+    why_safe: "get_article_fused query-fuses status='published' into the fetch itself -- a draft simply doesn't match the query"
+    location: {file: langfail/api/authz_demo.py, symbol: get_article_fused}
     proof: tests/test_exploits_authz.py::test_d49_status_fused_blocks_unpublished_draft
   - id: D50
     resembles: "a hypothetical 'V67' -- ownership check written after the response payload is built"
     authz_model: ownership
-    why_safe: "get_note_safe_late_built reads note.id/title/body into a local `payload` before the ownership check, but the check's own deny branch returns a DIFFERENT response object on failure, so payload is simply discarded when unauthorized -- correctly blocked at runtime. Deliberately NOT labeled a vulnerability despite AuthzPass being unable to statically prove dominance here (dominance analysis sees the fields touched before the check and can't reason about which branch's return value actually escapes the function) -- a documented precision limitation, scored Medium rather than fully suppressed. See docs/benchmarks/bola-idor.md in open-rowan."
-    location: {file: langfail/api/authz_demo.py, symbol: get_note_safe_late_built}
+    why_safe: "get_note_late_built reads note.id/title/body into a local `payload` before the ownership check, but the check's own deny branch returns a DIFFERENT response object on failure, so payload is simply discarded when unauthorized -- correctly blocked at runtime. Deliberately NOT labeled a vulnerability despite AuthzPass being unable to statically prove dominance here (dominance analysis sees the fields touched before the check and can't reason about which branch's return value actually escapes the function) -- a documented precision limitation, scored Medium rather than fully suppressed. See docs/benchmarks/bola-idor.md in open-rowan."
+    location: {file: langfail/api/authz_demo.py, symbol: get_note_late_built}
     proof: tests/test_exploits_authz.py::test_d50_late_built_payload_still_blocked_on_deny
   # D51 is intentionally absent -- retired during the pre-publication review,
   # following the same convention as D03 and V67.

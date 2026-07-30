@@ -33,7 +33,7 @@ def render_markdown(text: str) -> str:
     return html
 
 
-def render_markdown_safe(text: str) -> str:
+def render_card_markdown(text: str) -> str:
     """Render the same Markdown subset, emitting only same-origin images.
 
     Every value that reaches an attribute is HTML-escaped before it is

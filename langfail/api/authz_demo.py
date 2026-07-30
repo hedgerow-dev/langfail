@@ -48,8 +48,8 @@ def add_team_member(team_id: int):
     """Add a user to a team. Restricted to existing members: this endpoint
     is the only way `Team.members` grows after creation, so an unguarded
     version here would let anyone self-add to any team and walk straight
-    through the membership checks below (get_team_note_safe /
-    get_team_note_safe_inverted) -- the guard would be checking a value the
+    through the membership checks below (get_team_note_guarded /
+    get_team_note_guarded_inverted) -- the guard would be checking a value the
     caller could set themselves first."""
     team = db.session.get(Team, team_id)
     if not team or g.user_id not in team.members:
@@ -131,7 +131,7 @@ def get_note_branchy(note_id: int):
 
 @bp.get("/notes/<int:note_id>/late-built")
 @require_auth
-def get_note_safe_late_built(note_id: int):
+def get_note_late_built(note_id: int):
     """Return a private note by id. The response payload is built from the
     note's fields before the ownership check runs, but the check's own deny
     branch returns a separate response object, so the built payload is
@@ -147,7 +147,7 @@ def get_note_safe_late_built(note_id: int):
 
 @bp.get("/notes/<int:note_id>/fused")
 @require_auth
-def get_note_safe_fused(note_id: int):
+def get_note_fused(note_id: int):
     """Return a private note by id, scoped to the caller via a query filter."""
     note = PrivateNote.query.filter_by(id=note_id, owner_id=g.user_id).first()
     if not note:
@@ -157,7 +157,7 @@ def get_note_safe_fused(note_id: int):
 
 @bp.get("/notes/<int:note_id>/guarded")
 @require_auth
-def get_note_safe_guarded(note_id: int):
+def get_note_guarded(note_id: int):
     """Return a private note by id, after checking the caller owns it."""
     note = db.session.get(PrivateNote, note_id)
     if not note:
@@ -169,7 +169,7 @@ def get_note_safe_guarded(note_id: int):
 
 @bp.get("/notes/<int:note_id>/guarded-inverted")
 @require_auth
-def get_note_safe_guarded_inverted(note_id: int):
+def get_note_guarded_inverted(note_id: int):
     """Return a private note by id, after checking the caller owns it
     (ownership checked positively, with an else-deny branch)."""
     note = db.session.get(PrivateNote, note_id)
@@ -210,7 +210,7 @@ def get_team_note_branchy(note_id: int):
 
 @bp.get("/team-notes/<int:note_id>/guarded")
 @require_auth
-def get_team_note_safe(note_id: int):
+def get_team_note_guarded(note_id: int):
     """Return a team note by id, after checking the caller is a member of
     its team."""
     note = db.session.get(TeamNote, note_id)
@@ -223,7 +223,7 @@ def get_team_note_safe(note_id: int):
 
 @bp.get("/team-notes/<int:note_id>/guarded-inverted")
 @require_auth
-def get_team_note_safe_inverted(note_id: int):
+def get_team_note_guarded_inverted(note_id: int):
     """Return a team note by id, after checking the caller is a member of
     its team (membership checked positively, with an else-deny branch)."""
     note = db.session.get(TeamNote, note_id)
@@ -248,9 +248,9 @@ def get_task(task_id: int):
     return jsonify(id=task.id, title=task.title, body=task.body)
 
 
-@bp.get("/projects/<int:project_id>/tasks/<int:task_id>/unscoped")
+@bp.get("/projects/<int:project_id>/tasks/<int:task_id>/direct")
 @require_auth
-def get_task_unscoped(project_id: int, task_id: int):
+def get_task_under_project(project_id: int, task_id: int):
     """Return a task by id under a project path; the task is looked up by
     task_id alone, so the project_id in the path does not scope the read."""
     task = db.session.get(Task, task_id)
@@ -261,7 +261,7 @@ def get_task_unscoped(project_id: int, task_id: int):
 
 @bp.get("/projects/<int:project_id>/tasks/<int:task_id>")
 @require_auth
-def get_task_safe_via_parent_id(project_id: int, task_id: int):
+def get_task_via_parent_id(project_id: int, task_id: int):
     """Return a task by id, scoped to a project the caller owns (matched via
     the project's id)."""
     project = Project.query.filter_by(id=project_id, owner_id=g.user_id).first()
@@ -275,7 +275,7 @@ def get_task_safe_via_parent_id(project_id: int, task_id: int):
 
 @bp.get("/projects/<int:project_id>/tasks/<int:task_id>/via-object")
 @require_auth
-def get_task_safe_via_parent_object(project_id: int, task_id: int):
+def get_task_via_parent_object(project_id: int, task_id: int):
     """Return a task by id, scoped to a project the caller owns (matched via
     the project relationship rather than its id)."""
     project = Project.query.filter_by(id=project_id, owner_id=g.user_id).first()
@@ -316,7 +316,7 @@ def get_article_branchy(article_id: int):
 
 @bp.get("/articles/<int:article_id>/gated")
 @require_auth
-def get_article_safe_gate(article_id: int):
+def get_article_gated(article_id: int):
     """Return an article by id, after checking it is published."""
     article = db.session.get(Article, article_id)
     if not article:
@@ -328,7 +328,7 @@ def get_article_safe_gate(article_id: int):
 
 @bp.get("/articles/<int:article_id>/fused")
 @require_auth
-def get_article_safe_fused(article_id: int):
+def get_article_fused(article_id: int):
     """Return an article by id, scoped to published articles via a query
     filter."""
     article = Article.query.filter_by(id=article_id, status="published").first()

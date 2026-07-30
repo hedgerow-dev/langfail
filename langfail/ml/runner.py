@@ -24,7 +24,7 @@ def handle_runner_call(payload: bytes) -> Any:
     return pickle.loads(payload)
 
 
-def handle_runner_call_safe(payload: bytes) -> Any:
+def handle_runner_call_json(payload: bytes) -> Any:
     """Like :func:`handle_runner_call`, but restricted to JSON payloads.
 
     Used by deployments that run the two halves on separate hosts, where the

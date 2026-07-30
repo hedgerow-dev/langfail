@@ -6,9 +6,9 @@ from flask import Blueprint, g, jsonify, request
 from ..core import settings as runtime_settings
 from ..core.db import db
 from ..models import Dataset, Experiment, ExperimentNote, Model
-from ..agent.core import run_agent, run_agent_guarded, run_agent_unbounded
+from ..agent.core import run_agent, run_agent_guarded, run_agent_extended
 from ..agent.llm import redact_sensitive
-from ..agent.memory import recall_scoped, remember
+from ..agent.memory import recall_for_owner, remember
 from ..agent.native import run_native_loop
 from ..agent.sanitize import strip_directives
 from .deps import require_auth
@@ -53,7 +53,7 @@ def add_memory():
 @require_auth
 def list_memory():
     """List the caller's own saved memories (per-user, isolated view)."""
-    return jsonify(memories=recall_scoped(g.user_id))
+    return jsonify(memories=recall_for_owner(g.user_id))
 
 
 @bp.post("/session")
@@ -82,7 +82,7 @@ def iterate():
     data = request.get_json(force=True, silent=True) or {}
     message = data.get("message", "")
     max_rounds = data.get("max_rounds", 3)
-    result = run_agent_unbounded(message, int(max_rounds))
+    result = run_agent_extended(message, int(max_rounds))
     return jsonify(**result)
 
 
@@ -171,7 +171,7 @@ def brief():
     return jsonify(**result)
 
 
-@bp.post("/chat_safe")
+@bp.post("/chat_brief")
 @require_auth
 def chat_safe():
     """Assistant chat with output-side redaction of common PII shapes
@@ -201,12 +201,12 @@ def save_preferences():
     return jsonify(preferences=applied)
 
 
-@bp.post("/preferences_safe")
+@bp.post("/preferences_scoped")
 @require_auth
 def save_preferences_safe():
     """Like ``/preferences``, but restricted to caller-tunable namespaces
     (``ui``, ``llm``); anything else is reported as rejected."""
     data = request.get_json(force=True, silent=True) or {}
-    outcome = runtime_settings.merge_preferences_safe(
+    outcome = runtime_settings.merge_user_preferences(
         data.get("preferences") or {}, updated_by=g.user_id)
     return jsonify(**outcome)

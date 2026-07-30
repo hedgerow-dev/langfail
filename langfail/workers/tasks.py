@@ -106,7 +106,7 @@ def retrain_model(payload: dict) -> str:
     return f"retrained model {model.id}: {len(rows)} rows, {overrides} overrides"
 
 
-def retrain_reviewed(payload: dict) -> str:
+def retrain_from_queue(payload: dict) -> str:
     """Fold only moderator-approved feedback rows into a model's scorer."""
     model = db.session.get(Model, payload["model_id"])
     if not model:
@@ -121,7 +121,7 @@ HANDLERS = {
     "import_dataset": import_dataset,
     "cleanup_dataset": cleanup_dataset,
     "retrain_model": retrain_model,
-    "retrain_reviewed": retrain_reviewed,
+    "retrain_from_queue": retrain_from_queue,
 }
 
 

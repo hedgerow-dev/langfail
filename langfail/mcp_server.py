@@ -47,11 +47,11 @@ async def build_tool_list() -> list["types.Tool"]:  # noqa: F821 - see import be
     return tools
 
 
-# Snapshot served by build_tool_list_pinned(); None until first enumerated.
+# Snapshot served by build_tool_list_snapshot(); None until first enumerated.
 _PINNED_TOOL_LIST: list | None = None
 
 
-async def build_tool_list_pinned() -> list["types.Tool"]:  # noqa: F821
+async def build_tool_list_snapshot() -> list["types.Tool"]:  # noqa: F821
     """Serve the tool list exactly as first published: descriptions are
     snapshotted on first enumeration and reused verbatim thereafter, so a
     client always plans against the same metadata it saw at connection time
@@ -105,7 +105,7 @@ async def summarize_via_sampling(session, tool_name: str):  # -> types.CreateMes
     )
 
 
-async def summarize_via_sampling_safe(session, tool_name: str):  # -> types.CreateMessageResult
+async def summarize_note_via_sampling(session, tool_name: str):  # -> types.CreateMessageResult
     """Like :func:`summarize_via_sampling`, but strips inline ``[[TOOL:...]]``
     directives from the note before it ever reaches the sampling request."""
     from mcp import types

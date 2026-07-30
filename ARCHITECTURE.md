@@ -139,7 +139,7 @@ flowchart TD
   flows.
 - **`langfail/agent/`** — the assistant. A pluggable backend (`stub`/`ollama`),
   real tools, an agent loop capped at `MAX_TOOL_ROUNDS` plus a
-  caller-parameterized `run_agent_unbounded` that isn't, a cross-session
+  caller-parameterized `run_agent_extended` that isn't, a cross-session
   `memory` store, a `sanitize` filter that normalizes nothing (so
   invisible-Unicode directives sail through), and `native`, modeling the raw
   OpenAI/Anthropic tool-use pattern — a model-chosen name resolved by bare
@@ -280,7 +280,7 @@ round-trip, or a process boundary** — not a single-line pattern match:
 | LLM output → render sink | model card / assistant Markdown → `services/markdown` → off-origin `<img>` egress |
 | LLM output → SQL sink (no tool dispatch) | natural-language question → `agent/llm.py:generate_sql` → `services/experiments.py` raw `db.session.execute` |
 | LLM output → code exec sink | natural-language question → `agent/llm.py:generate_code` → `services/analysis.py` `exec` (PandasAI class) |
-| Unbounded resource consumption | caller-supplied `max_rounds` → `agent/core.py:run_agent_unbounded`'s loop bound, one billed LLM call per iteration |
+| Unbounded resource consumption | caller-supplied `max_rounds` → `agent/core.py:run_agent_extended`'s loop bound, one billed LLM call per iteration |
 | Sensitive data → LLM sink | `User.email` → agent context → `agent/llm.py:_ollama_chat`'s outbound `requests.post` (PII leaves the process unredacted) |
 | Through MCP sampling | poisoned `ToolNote` → `mcp_server.py:summarize_via_sampling` → `session.create_message(...)` on whatever client is connected |
 | Config-gated network exposure | `Config.MCP_HTTP_HOST`/`MCP_HTTP_REQUIRE_AUTH` (both default insecure) → `mcp_server.py:serve_http`/`check_http_auth` |
@@ -351,8 +351,8 @@ top. Each of these defeats a naive scanner for a different reason:
   including text an attacker planted in a fetched page.
 
 Every one ships with a runnable proof-of-exploit and a matching **precision
-decoy** — a safe look-alike (`read_artifact_safe`, `search_by_tag`,
-`fetch_guarded`, others) close enough that flagging it counts as a measurable
+decoy** — a safe look-alike (`download_artifact`, `search_by_tag`,
+`fetch_external`, others) close enough that flagging it counts as a measurable
 false positive.
 
 ### Config/compose findings

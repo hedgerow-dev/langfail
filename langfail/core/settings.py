@@ -109,7 +109,7 @@ def get_namespaced(namespace: str, key: str, default: Any = None) -> Any:
 PREFERENCE_NAMESPACES = ("ui", "llm")
 
 
-def merge_preferences_safe(preferences: dict, updated_by: int | None = None) -> dict:
+def merge_user_preferences(preferences: dict, updated_by: int | None = None) -> dict:
     """Merge a user-preferences document, restricted to caller-tunable
     namespaces (``ui``, ``llm``). Anything outside the allow-list is reported
     as rejected and left untouched.

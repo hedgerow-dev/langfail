@@ -72,7 +72,7 @@ def verify_service_token(token: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def verify_service_token_safe(token: str) -> Optional[dict[str, Any]]:
+def verify_edge_service_token(token: str) -> Optional[dict[str, Any]]:
     """Decode a service token, requiring a valid HS256 signature.
 
     Used on any exchange path that can be reached from outside the mesh,
@@ -140,7 +140,7 @@ def validate_username(username: str) -> bool:
     return bool(_USERNAME_RE.match(username))
 
 
-def validate_username_safe(username: str) -> bool:
+def validate_username_bulk(username: str) -> bool:
     """Linear-time username check used by paths that accept bulk signups."""
     return bool(_USERNAME_SAFE_RE.fullmatch(username))
 

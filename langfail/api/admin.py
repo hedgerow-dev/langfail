@@ -5,7 +5,7 @@ from flask import Blueprint, g, jsonify, request
 
 from ..core.db import db
 from ..models import Job, ToolNote
-from ..services.config_loader import load_safe
+from ..services.config_loader import load_document
 from ..services.support import draft_support_reply
 from .deps import require_admin, require_auth
 
@@ -24,7 +24,7 @@ def jobs():
 @require_admin
 def settings():
     """Apply a YAML settings patch (trusted admin input)."""
-    patch = load_safe(request.get_data(as_text=True))
+    patch = load_document(request.get_data(as_text=True))
     return jsonify(applied=patch)
 
 

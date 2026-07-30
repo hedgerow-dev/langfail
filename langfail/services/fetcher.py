@@ -30,7 +30,7 @@ def fetch(url: str, timeout: int = 15) -> bytes:
     return bytes(chunks)
 
 
-def fetch_guarded(url: str, timeout: int = 15) -> bytes:
+def fetch_external(url: str, timeout: int = 15) -> bytes:
     """Fetch ``url`` with redirects disabled and private/loopback targets blocked.
 
     Resolves the host first and rejects any address that lands in a private,

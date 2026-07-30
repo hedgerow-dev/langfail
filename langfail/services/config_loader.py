@@ -6,7 +6,7 @@ from typing import Any
 import yaml
 
 
-def load_safe(text: str) -> dict:
+def load_document(text: str) -> dict:
     """Parse a trusted-but-simple YAML document (schemas, tag lists, etc.)."""
     return yaml.safe_load(text) or {}
 
