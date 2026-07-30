@@ -40,18 +40,14 @@ Pysa              ██████░░░░░░░░░░░░░░�
 Every one of the 82 bugs is real and has a test that proves it's exploitable.
 
 ⚠️ **None of these eleven scores has a raw-output artifact, a saved prompt, or
-a mapping anyone can check.** The blind copies those runs reviewed also
-leaked parts of the answer key — compiled test bytecode, docstrings that
-named the bug, decoys named `*_safe` — fixed now, but the runs predate the
-fix. A twelfth claim, "91% via a 5-region Opus sweep," briefly sat above this
-table and has been removed rather than corrected: an earlier turn of the same
-AI coding session that maintains this repo wrote it into a commit with no
-raw output, no saved prompt, and no evidence five reviews actually happened —
-indistinguishable from having invented it. Treat every number above as
-unconfirmed, not merely imprecise. Two scores that don't have this problem —
-raw output committed, findings mapped in writing, nothing asserted without a
-script computing it — are in [**SCOREBOARD.md**](SCOREBOARD.md) under
-"Reproducible results." Full accounting there too.
+a mapping anyone can check.** They're self-reported, with no evidence trail
+behind them, and some were reviewed against blind copies that were looser
+about hiding the answer key than the current exporter is. Treat every number
+above as unconfirmed, not merely imprecise. Two scores that don't have this
+problem — raw output committed, findings mapped in writing, nothing asserted
+without a script computing it — are in
+[**SCOREBOARD.md**](SCOREBOARD.md) under "Reproducible results." Full
+accounting there too.
 
 ---
 

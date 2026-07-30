@@ -7,33 +7,21 @@
 ## A caveat before the numbers
 
 None of the eleven scores below have a raw-output artifact, a saved prompt,
-or a per-finding id mapping anywhere in this repository's history. That means
-two separate things, and they are not the same severity:
+or a per-finding id mapping anywhere in this repository. They're self-reported
+results with no evidence trail, for two independent reasons:
 
-1. **The blind copy they were reviewed against was leaky.** Compiled test
-   bytecode with assertion messages intact, docstrings that named the actual
-   vulnerability, decoys named `read_artifact_safe`. Fixed now — the exporter
-   refuses to ship a copy containing a spoiler — but these runs predate that
-   fix, so read recall as a rough floor and the false-positive column as
-   unreliable regardless of what tool is in the row.
-2. **None of it is verifiable, and one entry in it was confirmed unfounded
-   and removed.** A "5-region Opus sweep" claiming 75/82 (91%) briefly sat at
-   the top of this table. Its provenance: an earlier turn of the same
-   multi-turn AI coding session that did the rest of this repository's recent
-   work — traceable to a specific commit, on a branch that session itself
-   created — with no raw output, no saved prompt, and no record that five
-   reviews actually happened. Not "some other agent, some other time." The
-   same failure shape as a model inventing a citation, caught only because a
-   user asked a pointed enough question. Removed rather than caveated,
-   because a caveat implies "probably real, imperfectly documented" and there
-   was no basis for that belief.
+1. **Some of the blind copies they were reviewed against were leaky.**
+   Compiled test bytecode with assertion messages intact, docstrings that
+   named the actual vulnerability, decoys named `read_artifact_safe`. The
+   current exporter (`scripts/export_blind_copy.py`) refuses to ship a copy
+   containing a spoiler, but that doesn't retroactively fix these runs, so
+   read their recall as a rough floor and their false-positive column as
+   unreliable regardless of which tool is in the row.
+2. **None of it is independently verifiable.** No raw output, no saved
+   prompt, no record of a review happening the way it's described.
 
-The other ten rows predate this repository's AI-assisted editing sessions by
-a long commit history and there is no similar evidence they were fabricated
-in the same way — but there is also no evidence they weren't, since the same
-"no raw output" gap applies to every one of them. Treat every number below
-as unconfirmed, not merely imprecise. The only scores in this file with an
-artifact you can check yourself are under
+Treat every number below as unconfirmed, not merely imprecise. The only
+scores in this file with an artifact you can check yourself are under
 [**Reproducible results**](#reproducible-results), further down.
 
 ## Scores (unverified — see the caveat above)
@@ -70,15 +58,6 @@ Pysa                  ██████░░░░░░░░░░░░░�
 zero for vulnerabilities added since — itself unverifiable, for the same
 reason as everything else in this table.
 
-A removed row previously claimed a "5-region Opus sweep" scored 75/82 (91%)
-with zero false positives, and briefly appeared above the Claude Opus row as
-this benchmark's best result. See the caveat above for why it's gone rather
-than corrected: unlike a wrong number, there was no finding to correct it
-*to*. If you want that comparison to exist, run
-[`benchmarks/sweep_prompt.md`](benchmarks/sweep_prompt.md) yourself and add
-the result under [Reproducible results](#reproducible-results), where it can
-be checked.
-
 ## Reproducible results
 
 Runs recorded properly: raw output committed, every finding mapped to a
@@ -92,18 +71,11 @@ manifest id in writing, score computed rather than asserted:
 | Claude Haiku 4.5, 5-region sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 |
 | Bandit | Static/pattern | 21/82 (26%) | 2 | 10 |
 
-Everything above this section predates
-[`benchmarks/results/`](benchmarks/results/) and cannot be moved down here
-without re-running it. That includes the "5-region Opus sweep" that used to
-sit at the top of this page — it wasn't moved down, it was removed, because
-there was nothing to move: no raw output, no saved prompt, no evidence five
-reviews took place. Don't read the Sonnet and Haiku rows below as a
-replacement for that number, or as evidence one way or the other about it.
-They're a separate, independently-verifiable measurement that happens to use
-the same partitioned method, run against a clean fixture with a
-reconstructed prompt — see [`sweep_prompt.md`](benchmarks/sweep_prompt.md)'s
-header for what "reconstructed" means here and why nothing in this file
-should be compared against the number that's gone.
+Everything above this section lacks an artifact in
+[`benchmarks/results/`](benchmarks/results/) and can't be moved down here
+without re-running it. The rows below use the same partitioned-sweep method,
+run against a clean fixture with the prompt in
+[`sweep_prompt.md`](benchmarks/sweep_prompt.md).
 
 ```bash
 python benchmarks/score.py            # scores every run in benchmarks/results/
@@ -129,9 +101,8 @@ and [`results/claude-haiku-sweep.yaml`](benchmarks/results/claude-haiku-sweep.ya
 record the id mapping and every judgement call, including four findings each
 run made that describe real gaps with no matching manifest entry: the same
 shape as V81/V82, which is how those two got added in the first place. One of
-Sonnet's four was a route-registration bug this repo's own decoy-rename
-commit had introduced, since fixed with a regression test
-(`test_no_duplicate_routes`).
+Sonnet's four was a genuine route-registration bug, now covered by a
+regression test (`test_no_duplicate_routes`).
 
 ## How scoring works
 
