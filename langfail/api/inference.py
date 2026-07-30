@@ -4,7 +4,7 @@ from __future__ import annotations
 import base64
 import json
 
-from flask import Blueprint, g, jsonify, request
+from flask import Blueprint, jsonify, request
 
 from ..core.db import db
 from ..models import Model
