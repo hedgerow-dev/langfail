@@ -1,4 +1,4 @@
-# Sonnet 4.5 — region `ml` — verbatim report
+# Sonnet 5 — region `ml` — verbatim report
 
 Blind copy of 3ff7e43. Prompt: benchmarks/sweep_prompt.md v1, region `ml`.
 

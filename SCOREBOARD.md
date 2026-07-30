@@ -68,7 +68,7 @@ manifest id in writing, score computed rather than asserted:
 
 | Tool | Category | Recall | Decoy FPs (of 50) | Unmatched |
 |------|----------|--------|--------------|-----------|
-| Claude Sonnet 4.5, 5-region sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 |
+| Claude Sonnet 5, 5-region sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 |
 | Claude Haiku 4.5, 5-region sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 |
 | Bandit | Static/pattern | 21/82 (26%) | 2 | 10 |
 

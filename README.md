@@ -64,7 +64,7 @@ actually found, not what it claims.
 > Specifically, on the machine you run it on:
 > - **`mcp-serve-http` listens on `0.0.0.0:8765` with no authentication by
 >   default.** That is an unauthenticated SQL / file-read / `eval` endpoint
->   reachable by anything on your network. That's the bug — don't run it on a
+>   reachable by anything on your network. That's the bug. Don't run it on a
 >   shared or untrusted network.
 > - **Some bugs write and delete outside the project directory.** The planted
 >   zip-slip, the artifact metadata path, and the retention sweep all take
@@ -73,7 +73,7 @@ actually found, not what it claims.
 >   `169.254.169.254` and return your instance credentials.
 > - **The XML descriptor parser resolves external entities**, so it makes real
 >   outbound network requests.
-> - The test suite is **POSIX-only** — it reads `/etc/passwd` and shells out to
+> - The test suite is **POSIX-only**: it reads `/etc/passwd` and shells out to
 >   `/bin/sh`.
 
 ## What's in the box
@@ -177,7 +177,7 @@ flask --app langfail seed                              # demo users: admin/admin
 flask --app langfail run                               # http://127.0.0.1:5000
 flask --app langfail worker                            # in another shell: drains the job queue
 flask --app langfail mcp-serve                         # optional: pip install -e ".[mcp]"; MCP tools over stdio
-flask --app langfail mcp-serve-http                     # ⚠️ binds 0.0.0.0:8765, NO AUTH by default — see the warning above
+flask --app langfail mcp-serve-http                     # ⚠️ binds 0.0.0.0:8765, NO AUTH by default, see the warning above
 ```
 
 Health check: `curl localhost:5000/health`.

@@ -1,4 +1,4 @@
-# Sonnet 4.5 — region `core` (core/ + ui/ + cli.py + models.py) — verbatim report
+# Sonnet 5 — region `core` (core/ + ui/ + cli.py + models.py) — verbatim report
 
 Blind copy of 3ff7e43. Prompt: benchmarks/sweep_prompt.md v1, region `core`.
 

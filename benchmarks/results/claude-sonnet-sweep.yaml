@@ -1,5 +1,5 @@
-tool: Claude Sonnet 4.5, 5-region sweep
-version: "claude-sonnet-4-5"
+tool: Claude Sonnet 5, 5-region sweep
+version: "claude-sonnet-5"
 category: LLM review (partitioned)
 date: 2026-07-29
 
