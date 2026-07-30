@@ -6,23 +6,39 @@
 
 ## A caveat before the numbers
 
-Every score below was collected using a blind-copy exporter that, at the
-time, leaked parts of the answer key: compiled test bytecode with assertion
-messages intact, docstrings that named the actual vulnerability, and decoy
-functions named things like `read_artifact_safe`. That's fixed now (the
-exporter refuses to ship a copy containing a spoiler), but the runs below
-predate the fix.
+None of the eleven scores below have a raw-output artifact, a saved prompt,
+or a per-finding id mapping anywhere in this repository's history. That means
+two separate things, and they are not the same severity:
 
-Read recall as a rough floor, not a precise score. Read the false-positive
-column as unreliable: near-zero is exactly what leaked decoy names predict,
-whether or not a reviewer actually reasoned about the code. None of these
-runs saved raw output, so none can be re-scored. A clean re-run is the next
-step.
+1. **The blind copy they were reviewed against was leaky.** Compiled test
+   bytecode with assertion messages intact, docstrings that named the actual
+   vulnerability, decoys named `read_artifact_safe`. Fixed now — the exporter
+   refuses to ship a copy containing a spoiler — but these runs predate that
+   fix, so read recall as a rough floor and the false-positive column as
+   unreliable regardless of what tool is in the row.
+2. **None of it is verifiable, and one entry in it was confirmed unfounded
+   and removed.** A "5-region Opus sweep" claiming 75/82 (91%) briefly sat at
+   the top of this table. Its provenance: an earlier turn of the same
+   multi-turn AI coding session that did the rest of this repository's recent
+   work — traceable to a specific commit, on a branch that session itself
+   created — with no raw output, no saved prompt, and no record that five
+   reviews actually happened. Not "some other agent, some other time." The
+   same failure shape as a model inventing a citation, caught only because a
+   user asked a pointed enough question. Removed rather than caveated,
+   because a caveat implies "probably real, imperfectly documented" and there
+   was no basis for that belief.
 
-## Scores
+The other ten rows predate this repository's AI-assisted editing sessions by
+a long commit history and there is no similar evidence they were fabricated
+in the same way — but there is also no evidence they weren't, since the same
+"no raw output" gap applies to every one of them. Treat every number below
+as unconfirmed, not merely imprecise. The only scores in this file with an
+artifact you can check yourself are under
+[**Reproducible results**](#reproducible-results), further down.
+
+## Scores (unverified — see the caveat above)
 
 ```
-Opus, 5-region sweep  █████████████████████████████████████░░░  91%
 Claude Opus           ███████████████████████░░░░░░░░░░░░░░░░░  57%
 VVAH + DeepSeek       ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
 Open-Rowan            ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
@@ -36,9 +52,8 @@ Claude Haiku          ███████░░░░░░░░░░░░�
 Pysa                  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
 ```
 
-| Tool | Category | Recall | False positives (unreliable, see above) |
+| Tool | Category | Recall | False positives |
 |------|----------|--------|--------------------------------|
-| Opus, 5-region sweep | LLM review, partitioned | 75/82 (91%) | 0 |
 | Claude Opus† | LLM review | 47/82 (57%) | 0 |
 | VVAH + DeepSeek | Agentic pipeline | 42/82 (51%) | 0 |
 | Open-Rowan (Hedgerow.dev) | Static/taint | 40/82 (49%) | 3 |
@@ -51,13 +66,18 @@ Pysa                  ██████░░░░░░░░░░░░░�
 | Claude Haiku† | LLM review | 14/82 (17%) | 0 |
 | Pysa† | Static/taint | 12/82 (15%) | 1 |
 
-A model reading source by hand beats every static tool, and splitting the
-work across five reviewers instead of one does better still. Setup cost
-varies a lot too: Pysa's score reflects a taint model hand-built for this
-repo, where CodeQL and Open-Rowan ran with no setup at all.
-
 † Scored against a smaller, earlier version of the manifest. Credited with
-zero for vulnerabilities added since.
+zero for vulnerabilities added since — itself unverifiable, for the same
+reason as everything else in this table.
+
+A removed row previously claimed a "5-region Opus sweep" scored 75/82 (91%)
+with zero false positives, and briefly appeared above the Claude Opus row as
+this benchmark's best result. See the caveat above for why it's gone rather
+than corrected: unlike a wrong number, there was no finding to correct it
+*to*. If you want that comparison to exist, run
+[`benchmarks/sweep_prompt.md`](benchmarks/sweep_prompt.md) yourself and add
+the result under [Reproducible results](#reproducible-results), where it can
+be checked.
 
 ## Reproducible results
 
@@ -74,14 +94,16 @@ manifest id in writing, score computed rather than asserted:
 
 Everything above this section predates
 [`benchmarks/results/`](benchmarks/results/) and cannot be moved down here
-without re-running it, including the Opus 75/82 sweep at the top of this
-page. Do not compare that number against the two sweep rows here: neither
-side of the comparison is fair. Opus reviewed a blind copy that leaked
-compiled test bytecode, self-describing docstrings, and 37 decoys named
-`*_safe`; these two reviewed a copy exported after all three were fixed. The
-sweep prompt itself was also never saved for the Opus run, so
-[`sweep_prompt.md`](benchmarks/sweep_prompt.md) is a reconstruction, not the
-original: see its header for exactly what that means for comparability.
+without re-running it. That includes the "5-region Opus sweep" that used to
+sit at the top of this page — it wasn't moved down, it was removed, because
+there was nothing to move: no raw output, no saved prompt, no evidence five
+reviews took place. Don't read the Sonnet and Haiku rows below as a
+replacement for that number, or as evidence one way or the other about it.
+They're a separate, independently-verifiable measurement that happens to use
+the same partitioned method, run against a clean fixture with a
+reconstructed prompt — see [`sweep_prompt.md`](benchmarks/sweep_prompt.md)'s
+header for what "reconstructed" means here and why nothing in this file
+should be compared against the number that's gone.
 
 ```bash
 python benchmarks/score.py            # scores every run in benchmarks/results/

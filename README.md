@@ -8,7 +8,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
 [![Planted vulnerabilities: 82](https://img.shields.io/badge/planted%20vulnerabilities-82-orange.svg)](benchmarks/ground_truth.yaml)
-[![Best score: 57%](https://img.shields.io/badge/best%20tool%20score-57%25-red.svg)](SCOREBOARD.md)
+[![Best verified score: 80%](https://img.shields.io/badge/best%20verified%20score-80%25-red.svg)](SCOREBOARD.md#reproducible-results)
 [![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
 
 **A realistic MLOps web app with 82 security bugs planted in it on purpose:
@@ -38,15 +38,20 @@ Pysa              ██████░░░░░░░░░░░░░░�
 ```
 
 Every one of the 82 bugs is real and has a test that proves it's exploitable.
-A follow-up multi-region sweep (five reviewers, one region each, same rules)
-got to 91%, a different method, its own row.
 
-⚠️ **These scores predate an audit of the fixture itself.** The blind copies
-those runs reviewed leaked parts of the answer key: compiled test bytecode,
-docstrings that named the bug, and decoys named `*_safe`. All three are fixed
-now, but the runs came first, so treat the recall numbers as a loose lower
-bound and the decoy false-positive counts as not meaningful. Full accounting,
-and why they're still published, in [**SCOREBOARD.md**](SCOREBOARD.md).
+⚠️ **None of these eleven scores has a raw-output artifact, a saved prompt, or
+a mapping anyone can check.** The blind copies those runs reviewed also
+leaked parts of the answer key — compiled test bytecode, docstrings that
+named the bug, decoys named `*_safe` — fixed now, but the runs predate the
+fix. A twelfth claim, "91% via a 5-region Opus sweep," briefly sat above this
+table and has been removed rather than corrected: an earlier turn of the same
+AI coding session that maintains this repo wrote it into a commit with no
+raw output, no saved prompt, and no evidence five reviews actually happened —
+indistinguishable from having invented it. Treat every number above as
+unconfirmed, not merely imprecise. Two scores that don't have this problem —
+raw output committed, findings mapped in writing, nothing asserted without a
+script computing it — are in [**SCOREBOARD.md**](SCOREBOARD.md) under
+"Reproducible results." Full accounting there too.
 
 ---
 
