@@ -60,6 +60,21 @@ actually found, not what it claims.
 > Langfail exists to be broken into. It is **not** production software. Run it
 > on your own machine, disconnected from anything you'd miss, and keep exploit
 > code in a throwaway environment. Yes, really.
+>
+> Specifically, on the machine you run it on:
+> - **`mcp-serve-http` listens on `0.0.0.0:8765` with no authentication by
+>   default.** That is an unauthenticated SQL / file-read / `eval` endpoint
+>   reachable by anything on your network. That's the bug — don't run it on a
+>   shared or untrusted network.
+> - **Some bugs write and delete outside the project directory.** The planted
+>   zip-slip, the artifact metadata path, and the retention sweep all take
+>   attacker-controlled paths. Run the exploit tests in a container or a VM.
+> - **Don't run this on a cloud instance.** The SSRF plants will happily reach
+>   `169.254.169.254` and return your instance credentials.
+> - **The XML descriptor parser resolves external entities**, so it makes real
+>   outbound network requests.
+> - The test suite is **POSIX-only** — it reads `/etc/passwd` and shells out to
+>   `/bin/sh`.
 
 ## What's in the box
 
@@ -162,7 +177,7 @@ flask --app langfail seed                              # demo users: admin/admin
 flask --app langfail run                               # http://127.0.0.1:5000
 flask --app langfail worker                            # in another shell: drains the job queue
 flask --app langfail mcp-serve                         # optional: pip install -e ".[mcp]"; MCP tools over stdio
-flask --app langfail mcp-serve-http                     # optional: pip install -e ".[mcp,mcp-http]"; MCP over SSE/HTTP
+flask --app langfail mcp-serve-http                     # ⚠️ binds 0.0.0.0:8765, NO AUTH by default — see the warning above
 ```
 
 Health check: `curl localhost:5000/health`.

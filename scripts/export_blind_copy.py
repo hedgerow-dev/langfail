@@ -128,6 +128,30 @@ def _is_excluded_test(rel: Path) -> bool:
     return rel.name.startswith("test_exploits") and rel.suffix == ".py"
 
 
+# The real pyproject.toml says what this project is -- a deliberately
+# vulnerable benchmark fixture -- because a published package should. That is
+# exactly what a blind reviewer must not be told, so the packaging metadata is
+# neutralised on the way out, the same way README.md is replaced.
+_PYPROJECT_SUBS: list[tuple[str, str]] = [
+    (r'^description = .*$',
+     'description = "Langfail — a self-hosted MLOps platform (model registry, '
+     'experiment tracking, inference, and an LLM assistant)."'),
+    (r'^keywords = .*$', 'keywords = ["mlops", "model-registry", "llm"]'),
+    (r'^\s*"(?:Topic :: Security|Private :: Do Not Upload)".*\n', ''),
+    (r'^\s*#[^\n]*(?:insecure|vulnerable)[^\n]*\n', ''),
+    (r'^\[project\.urls\]\n(?:[^\[]*\n)*?(?=\[|\Z)', ''),
+]
+
+
+def _neutralise_pyproject(path: Path) -> None:
+    if not path.exists():
+        return
+    text = path.read_text(encoding="utf-8")
+    for pattern, replacement in _PYPROJECT_SUBS:
+        text = re.sub(pattern, replacement, text, flags=re.MULTILINE)
+    path.write_text(text, encoding="utf-8")
+
+
 def scan_for_leaks(dest: Path) -> list[str]:
     """Return every spoiler hit found in the exported tree.
 
@@ -184,6 +208,7 @@ def export(dest: Path) -> None:
             shutil.copy2(root_path / name, target)
 
     (dest / "README.md").write_text(BLIND_README)
+    _neutralise_pyproject(dest / "pyproject.toml")
 
     leaks = scan_for_leaks(dest)
     if leaks:

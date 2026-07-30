@@ -15,7 +15,7 @@ from ..core.security import sanitize_path
 
 
 def store_artifact(name: str, data: bytes) -> str:
-    """Persist raw artifact bytes and return the stored relative name."""
+    """Persist raw artifact bytes and return the absolute path written."""
     safe = sanitize_path(name)
     path = ARTIFACT_DIR / safe
     path.parent.mkdir(parents=True, exist_ok=True)

@@ -64,6 +64,8 @@ def dispatch(name: str, **kwargs) -> object:
     as they're added to :class:`AssistantActions` -- no second registration
     step to keep in sync with :func:`action_schemas`.
     """
+    if not isinstance(name, str):
+        return {"error": f"unknown action: {name!r}"}
     fn = getattr(_ACTIONS, name, None)
     if not callable(fn):
         return {"error": f"unknown action: {name}"}
@@ -91,6 +93,13 @@ def run_native_loop(user_message: str) -> dict:
     reply = chat(messages, tools=action_schemas())
     trace = []
     for call in reply.get("tool_calls", []) or []:
-        result = dispatch(call["name"], **call.get("arguments", {}))
-        trace.append({"action": call["name"], "result": result})
+        name = call.get("name")
+        try:
+            result = dispatch(name, **call.get("arguments", {}))
+        except Exception as exc:
+            # A model-chosen name can arrive absent or with arguments the
+            # target doesn't accept; surface that as a result like
+            # langfail.agent.core does, rather than a 500 from the route.
+            result = f"action error: {exc}"
+        trace.append({"action": name, "result": result})
     return {"answer": reply.get("content", ""), "trace": trace}

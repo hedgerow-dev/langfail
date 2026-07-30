@@ -8,9 +8,13 @@ from __future__ import annotations
 
 from typing import Sequence
 
+# Both average over the pairs actually compared: zip stops at the shorter of
+# the two sequences, so dividing by len(y) would under-report on ragged input.
 BUILTIN = {
-    "mae": lambda y, p: sum(abs(a - b) for a, b in zip(y, p)) / max(len(y), 1),
-    "accuracy": lambda y, p: sum(a == b for a, b in zip(y, p)) / max(len(y), 1),
+    "mae": lambda y, p: (sum(abs(a - b) for a, b in zip(y, p))
+                         / max(min(len(y), len(p)), 1)),
+    "accuracy": lambda y, p: (sum(a == b for a, b in zip(y, p))
+                              / max(min(len(y), len(p)), 1)),
 }
 
 

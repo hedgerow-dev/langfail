@@ -1,9 +1,26 @@
 [project]
 name = "langfail"
 version = "0.1.0"
-description = "Langfail — a self-hosted MLOps platform (model registry, AutoML, experiment tracking, inference, and an LLM assistant)."
+description = "Langfail — a deliberately vulnerable MLOps platform used as a security benchmark fixture."
 readme = "README.md"
 requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "hedgerow-dev", email = "hello@hedgerow.dev" }]
+keywords = ["security", "benchmark", "vulnerable-application", "mlops", "llm"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Testing",
+    # Not a library to depend on -- it is an intentionally insecure fixture.
+    "Private :: Do Not Upload",
+]
 dependencies = [
     "Flask>=3.0",
     "Flask-SQLAlchemy>=3.1",
@@ -11,7 +28,14 @@ dependencies = [
     "PyYAML>=6.0",
     "requests>=2.31",
     "jsonpickle>=3.0",
+    # Used directly by langfail/cli.py, not just via Flask.
+    "click>=8.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/hedgerow-dev/langfail"
+Scoreboard = "https://github.com/hedgerow-dev/langfail/blob/main/SCOREBOARD.md"
+"Answer key" = "https://github.com/hedgerow-dev/langfail/blob/main/benchmarks/ground_truth.yaml"
 
 [project.optional-dependencies]
 # Heavy numerical stack. Optional so the platform boots on minimal installs;
@@ -45,4 +69,21 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-packages = ["langfail", "langfail.core", "langfail.api", "langfail.services", "langfail.ml", "langfail.workers", "langfail.agent", "langfail.ui"]
+packages = [
+    "langfail",
+    "langfail.core",
+    "langfail.api",
+    "langfail.services",
+    "langfail.ml",
+    "langfail.workers",
+    "langfail.agent",
+    "langfail.ui",
+]
+
+# Jinja templates and report templates are loaded from disk at runtime, so they
+# have to ship in a wheel/sdist -- without this only an editable install works.
+# assets/ is a plain data directory inside the langfail package, not a package
+# of its own, so its files are declared against "langfail".
+[tool.setuptools.package-data]
+"langfail" = ["assets/report_templates/*.tpl"]
+"langfail.ui" = ["templates/*.html"]

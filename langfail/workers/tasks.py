@@ -113,6 +113,8 @@ def retrain_from_queue(payload: dict) -> str:
         return "missing model"
     rows = Feedback.query.filter_by(model_id=model.id, status="approved").all()
     overrides = scorer.apply_feedback(model, rows)
+    for row in rows:
+        row.status = "ingested"
     db.session.commit()
     return f"retrained model {model.id}: {len(rows)} approved rows, {overrides} overrides"
 

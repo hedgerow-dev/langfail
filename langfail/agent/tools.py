@@ -135,10 +135,25 @@ TOOLS = {
 }
 
 
+# Parameters a tool takes beyond the generic ``input`` string. Without these a
+# real LLM or MCP client only ever sees ``input`` and cannot call delete_job or
+# install_package with their named arguments.
+_EXTRA_PARAMETERS: dict[str, dict] = {
+    "delete_job": {"job_id": {"type": "integer",
+                              "description": "id of the queue entry to remove"}},
+    "install_package": {"package": {"type": "string",
+                                    "description": "pip requirement specifier"}},
+}
+
+
 def tool_schemas() -> list[dict]:
-    return [
-        {"type": "function", "function": {"name": name, "description": (fn.__doc__ or "").strip(),
-                                          "parameters": {"type": "object",
-                                                         "properties": {"input": {"type": "string"}}}}}
-        for name, fn in TOOLS.items()
-    ]
+    schemas = []
+    for name, fn in TOOLS.items():
+        properties = {"input": {"type": "string"}}
+        properties.update(_EXTRA_PARAMETERS.get(name, {}))
+        schemas.append({"type": "function", "function": {
+            "name": name,
+            "description": (fn.__doc__ or "").strip(),
+            "parameters": {"type": "object", "properties": properties},
+        }})
+    return schemas

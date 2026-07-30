@@ -17,13 +17,19 @@ from .deps import require_auth
 bp = Blueprint("inference", __name__, url_prefix="/api/inference")
 
 # Small per-process cache of reconstructed estimators.
-_LOADED: dict[int, object] = {}
+_LOADED: dict[int, tuple[tuple, object]] = {}
 
 
 def _get_estimator(model: Model):
-    if model.id not in _LOADED:
-        _LOADED[model.id] = model_loader.load_model(model.artifact_path, model.framework)
-    return _LOADED[model.id]
+    # Keyed by artifact path and framework as well as id, so replacing a
+    # model's artifact serves the new one instead of the cached estimator
+    # built from the old bytes.
+    key = (model.id, model.artifact_path, model.framework)
+    cached = _LOADED.get(model.id)
+    if cached is None or cached[0] != key:
+        _LOADED[model.id] = (key, model_loader.load_model(model.artifact_path,
+                                                          model.framework))
+    return _LOADED[model.id][1]
 
 
 @bp.post("/<int:model_id>/predict")

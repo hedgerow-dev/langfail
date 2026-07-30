@@ -59,6 +59,33 @@ repo, where CodeQL and Open-Rowan ran with no setup at all.
 † Scored against a smaller, earlier version of the manifest. Credited with
 zero for vulnerabilities added since.
 
+## Reproducible results
+
+Runs recorded properly — raw output committed, every finding mapped to a
+manifest id in writing, score computed rather than asserted:
+
+<!-- generated: python benchmarks/score.py --markdown -->
+
+| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched |
+|------|----------|--------|--------------|-----------|
+| Bandit | Static/pattern | 21/82 (26%) | 2 | 10 |
+
+One row so far. Everything above this section predates
+[`benchmarks/results/`](benchmarks/results/) and cannot be moved down here
+without re-running it.
+
+```bash
+python benchmarks/score.py            # scores every run in benchmarks/results/
+python benchmarks/score.py --markdown # regenerate the table above
+```
+
+The Bandit row is deliberately unflattering to the *method* rather than the
+tool: Bandit reports dangerous sinks, never source-to-sink flows, so scoring
+it against this manifest at all requires crediting sink matches instead of
+flows. That judgement, and the two others that move its number, are written
+down in [`results/bandit.yaml`](benchmarks/results/bandit.yaml) where you can
+disagree with them line by line. That is the whole point of the directory.
+
 ## How scoring works
 
 [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml) is the answer

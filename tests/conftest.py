@@ -7,10 +7,14 @@ import tempfile
 import pytest
 
 # Isolate storage/DB and use a long JWT secret before the app is imported.
+#
+# STORAGE_DIR is force-set, not setdefault: the app fixture calls db.drop_all(),
+# so honouring an exported LANGFAIL_STORAGE_DIR would wipe whatever development
+# database the developer happens to be pointing at.
 _TMP = tempfile.mkdtemp(prefix="langfail-test-")
-os.environ.setdefault("LANGFAIL_STORAGE_DIR", os.path.join(_TMP, "storage"))
-os.environ.setdefault("LANGFAIL_JWT_SECRET", "test-jwt-secret-that-is-long-enough-32b")
-os.environ.setdefault("LANGFAIL_LLM_BACKEND", "stub")
+os.environ["LANGFAIL_STORAGE_DIR"] = os.path.join(_TMP, "storage")
+os.environ["LANGFAIL_JWT_SECRET"] = "test-jwt-secret-that-is-long-enough-32b"
+os.environ["LANGFAIL_LLM_BACKEND"] = "stub"
 
 
 @pytest.fixture()

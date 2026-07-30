@@ -1,0 +1,112 @@
+tool: Bandit
+version: "1.9.2"
+category: Static/pattern
+date: 2026-07-29
+
+manifest_size: 82
+blind_copy_commit: 9aa352e
+raw_output: raw/bandit.json
+
+notes: >
+  Out-of-the-box `bandit -r langfail/` against a blind copy, no config, no
+  custom rules, no baseline. Bandit alone -- the existing "Bandit + Semgrep"
+  row on SCOREBOARD.md is a different (unrecorded) run and is not comparable.
+
+  Two scoring judgements, written down because they move the number:
+
+  1. Bandit is a pattern scanner, not a taint engine: it reports dangerous
+     sinks, never source-to-sink flows. Scoring it by SCOREBOARD.md's
+     "does the engine connect source to sink" rule would give it zero. It is
+     scored here on whether it located the entry's declared sink, which is
+     the most generous defensible reading. Every credit below is a sink
+     match, not a flow.
+  2. B403/B404 ("consider possible security implications associated with
+     importing pickle/subprocess") and B110 (try/except/pass) are
+     informational module- and style-level rules, not claims about a specific
+     defect. They are recorded as unmatched rather than silently filtered, so
+     the 10 unmatched below are all of that kind. No real-world Bandit user
+     leaves them on; discount them if comparing against a tuned run.
+
+findings:
+  # --- located the declared sink ---
+  - id: V01
+    claim: "B614 unsafe torch.load and B301 pickle.load in ml/model_loader.py:28,32 (_deserialize)"
+  - id: V02
+    claim: "B506 yaml.load with unsafe loader in services/config_loader.py:20 (load_pipeline_config)"
+  - id: V08
+    claim: "B608 string-built query in services/experiments.py:29 (search_experiments)"
+  - id: V09
+    claim: "B602 subprocess shell=True in ml/convert.py:25 (convert_model)"
+  - id: V11
+    claim: "B602 subprocess shell=True in workers/tasks.py:65 (_inspect_async)"
+  - id: V13
+    claim: "B301 pickle load in ml/features.py:39 (load_feature_cache)"
+  - id: V15
+    claim: "B307 eval in ml/metrics.py:26 (evaluate_metric)"
+  - id: V18
+    claim: "B307 eval in agent/tools.py:42 (calc)"
+  - id: V19
+    claim: "B701 jinja2 Environment(autoescape=False) in services/reports.py:62 (render_page)"
+  - id: V22
+    claim: "B608 string-built query in services/experiments.py:45 (count_by_owner)"
+  - id: V28
+    claim: "B602 subprocess shell=True in services/retention.py:15 (purge)"
+  - id: V33
+    claim: "B608 string-built query in agent/llm.py:160 (generate_sql)"
+  - id: V34
+    claim: "B102 exec in services/analysis.py:36 (run_analysis)"
+  - id: V35
+    claim: "B307 eval in agent/native.py:41 (_debug_eval)"
+    # Located the eval that V35's reflection dispatch reaches, but reported
+    # nothing about dispatch() or the missing allow-list. Credited as a sink
+    # match under judgement (1) above; a stricter reading would call this a
+    # miss, since the reflection gap is the actual vulnerability.
+  - id: V37
+    claim: "B102 exec in ml/dataset.py:85 (run_loader_script)"
+  - id: V40
+    claim: "B104 binding to all interfaces at core/config.py:50 (MCP_HTTP_HOST default)"
+    # Flagged the 0.0.0.0 default, which is the substance of V40, but not the
+    # auth gate at mcp_server.py:check_http_auth that the manifest names as
+    # the sink. Nothing reported about MCP_HTTP_REQUIRE_AUTH.
+  - id: V41
+    claim: "B301 pickle.loads in ml/runner.py:24 (handle_runner_call)"
+  - id: V46
+    claim: "B324 weak MD5 in core/security.py:113 (derive_recovery_code)"
+  - id: V47
+    claim: "B324 weak MD5 in core/security.py:96 (legacy_access_key)"
+  - id: V51
+    claim: "B301 pickle-family deserialization at api/experiments.py:149 (import_experiment, jsonpickle.decode)"
+  - id: V58
+    claim: "B603 subprocess call with untrusted input in agent/tools.py:74 (install_package)"
+
+  # --- config finding, scored separately ---
+  - id: CF04
+    claim: "B201 Flask app run with debug=True in cli.py:77"
+
+  # --- false positives on decoys: claimed a genuinely-safe function is broken ---
+  - id: D10
+    claim: "B608 string-built query in services/experiments.py:82 (ask_experiments_structured) -- the column is allow-listed and the value is bound as a parameter"
+  - id: D34
+    claim: "B603 subprocess call with untrusted input in agent/tools.py:105 (install_from_catalog) -- the package name is resolved against a hard allow-list before pip sees it"
+
+  # --- unmatched: informational import/style rules, see judgement (2) ---
+  - id: ~
+    claim: "B404 import subprocess in agent/tools.py:11"
+  - id: ~
+    claim: "B404 import subprocess in ml/convert.py:9"
+  - id: ~
+    claim: "B404 import subprocess in services/retention.py:9"
+  - id: ~
+    claim: "B404 import subprocess in workers/tasks.py:5"
+  - id: ~
+    claim: "B403 import pickle in ml/features.py:8"
+  - id: ~
+    claim: "B403 import pickle in ml/model_loader.py:10"
+  - id: ~
+    claim: "B403 import pickle in ml/runner.py:12"
+  - id: ~
+    claim: "B110 try/except/pass in agent/llm.py:62"
+  - id: ~
+    claim: "B110 try/except/pass in api/datasets.py:56"
+  - id: ~
+    claim: "B110 try/except/pass in workers/tasks.py:72"

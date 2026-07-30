@@ -1,0 +1,41 @@
+# Copy to <tool>.yaml and fill in. Validate with:
+#     python benchmarks/score.py results/<tool>.yaml
+#
+# Files starting with "_" are ignored by the scorer.
+
+tool: ""                    # display name, e.g. "CodeQL"
+version: ""                 # tool version, or the model id for an LLM run
+category: ""                # Static/taint | Static/pattern | LLM review | Agentic pipeline
+date: ""                    # YYYY-MM-DD
+
+# Vulnerabilities in the manifest when this ran. If it differs from the
+# manifest now, score.py credits the difference as missed and says so.
+manifest_size:
+
+# Short commit of the tree the blind copy was exported from. Without this
+# nobody can tell what the tool was actually looking at.
+blind_copy_commit: ""
+
+# The tool's own output, saved verbatim under results/raw/. A score with no
+# raw output can't be checked by anyone else.
+raw_output: ""              # e.g. raw/codeql.sarif
+
+notes: >
+  Configuration, prompt, or setup worth knowing about. Say if the run needed
+  a hand-written taint model, a non-default rule pack, or custom prompting --
+  that is the difference between an out-of-the-box score and a tuned one.
+
+# One entry per distinct bug the tool reported.
+#
+#   id     a V id when the finding describes a real defect; a D id when it
+#          claims a genuinely-safe function is broken (counts as a false
+#          positive); ~ when it matches no entry (also a false positive).
+#          Score the finding, not the symbol: D02/D17/D24 share a function
+#          with a real entry, so a correct report there gets the V id.
+#   claim  what the tool actually said, specific enough that someone else can
+#          check the mapping without reading the raw output.
+findings: []
+  # - id: V01
+  #   claim: "pickle.load on an uploaded artifact in ml/model_loader.py"
+  # - id: ~
+  #   claim: "SQL injection in services/registry.py:store_artifact"

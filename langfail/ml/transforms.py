@@ -14,7 +14,11 @@ def identity(*rows):
 
 
 def normalize(values: Sequence[float]) -> list[float]:
-    """Scale a numeric column into [0, 1] by its maximum."""
+    """Scale a numeric column by its maximum.
+
+    Max-scaling, not min-max: the output lands in [0, 1] only for
+    non-negative input, and negative values scale below zero.
+    """
     hi = max(values) if values else 1
     hi = hi or 1
     return [v / hi for v in values]
