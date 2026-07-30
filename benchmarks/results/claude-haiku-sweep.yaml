@@ -1,0 +1,172 @@
+tool: Claude Haiku 4.5, 5-region sweep
+version: "claude-haiku-4-5-20251001"
+category: LLM review (partitioned)
+date: 2026-07-29
+
+manifest_size: 82
+blind_copy_commit: 3ff7e43
+raw_output: raw/haiku-sweep
+
+notes: >
+  Five Haiku instances, one region each (api / services+workers / ml /
+  agent+mcp / core+ui+cli), prompt from benchmarks/sweep_prompt.md v1.
+  Findings pooled and de-duplicated: several regions independently reported the
+  same bug (the experiment SQLi, jsonpickle, save_with_metadata and the loader
+  script each turned up two or three times) and each counts once.
+
+  FIRST RESULT MEASURED ON A CLEAN FIXTURE. Every score in the main
+  SCOREBOARD.md table, including the Opus 75/82 sweep, was collected before the
+  fixture audit: those blind copies leaked compiled test bytecode, docstrings
+  naming the bug, and decoys named *_safe. This run used a blind copy of
+  3ff7e43, after all three were fixed. It is therefore NOT comparable to the
+  Opus sweep, in either direction.
+
+  Not comparable to that sweep for a second reason: the original prompt was
+  never saved. sweep_prompt.md v1 is a reconstruction, faithful in substance
+  and not verbatim, and it adds one instruction the original is not known to
+  have had (report what you inspected and believe safe). That instruction is
+  why the decoy column below means something: it is measured from explicit
+  safety claims rather than inferred from silence.
+
+  Integrity caveat: the reviewers were subagents told to read only the
+  blind-copy path and not the working directory, which holds the answer key.
+  That rests on instruction-following, not a sandbox. Nothing in the reports
+  suggests any of them read outside the copy: all five reasoned from source and
+  several reached conclusions the manifest contradicts, which an agent with the
+  key would not do.
+
+  Judgement calls, all of which move the number:
+  1. Tool-abuse findings (run_sql / read_file / http_get reachable by a
+     directive) are credited as V16 once, not once per tool. The reports list
+     them separately; the manifest treats them as one entry.
+  2. Haiku's core region described the search-highlighter XSS as: plant HTML in
+     a model *name*, then have a victim search. That is V83 (stored), not V75
+     (reflected via `q`), so only V83 is credited. It did not describe the
+     reflected variant.
+  3. `read_file` reaching any path the process can read is credited as V63
+     (ambient authority) as well as V16, because the report makes the
+     no-per-user-scoping point explicitly rather than only "the LLM can be
+     tricked".
+  4. Four findings about missing authorization on experiment evaluate/run,
+     dataset read, and /analyze are recorded as unmatched. They look like real
+     gaps the manifest does not cover rather than false alarms -- the same
+     shape as V81/V82, which VVAH found and which were added to the manifest.
+     Charging them as false positives is the conservative call and probably the
+     wrong one; see "Candidates for the manifest" below.
+
+  Two wrong safety claims worth recording, neither of which is a decoy false
+  positive because neither function is a decoy:
+  - The services region listed `read_artifact` as safely realpath-validated. It
+    is not; it uses the bypassable `sanitize_path` (V03). The same run's core
+    region did find the `sanitize_path` weakness, so V03 is credited.
+  - The core region listed `merge_namespace` as properly restricting
+    user-editable namespaces. It does not; the restriction lives in
+    `merge_user_preferences` (D39). This is why V64 is missed.
+
+  Candidates for the manifest, found by this run and not currently keyed:
+  no ownership check on POST /api/experiments/<id>/evaluate, on POST
+  /api/experiments/<id>/run, on GET /api/datasets/<id>, or on the model whose
+  card /api/agent/analyze pulls into context.
+
+findings:
+  # --- api region ---
+  - id: V44
+    claim: "verify_service_token decodes with verify_signature=False; a forged unsigned JWT with role=admin is exchanged for a real session token at /api/auth/service_exchange"
+  - id: V42
+    claim: "POST /api/auth/register takes `role` verbatim from the signup JSON, so anyone can self-assign admin"
+  - id: V05
+    claim: "render_report passes a user-supplied template to Environment.from_string; autoescape does not prevent SSTI"
+  - id: V21
+    claim: "annotation cached via cache_put then rendered as a template on /annotation/render -- persistent SSTI across requests"
+  - id: V27
+    claim: "load_template_file does os.path.join(TEMPLATE_DIR, template_name) with no containment check, from POST /api/reports/custom"
+  - id: V08
+    claim: "search_experiments interpolates `tag` and `sort` raw into the query while `name` is escaped"
+  - id: V22
+    claim: "count_by_owner interpolates `owner` into a numeric SQL context with no binding"
+  - id: V33
+    claim: "ask_experiments executes generate_sql's model-authored SQL verbatim via db.session.execute"
+  - id: V51
+    claim: "import_experiment calls jsonpickle.decode on the request payload -- py/reduce RCE"
+  - id: V45
+    claim: "GET /api/auth/redirect passes ?next= straight to flask.redirect with no same-origin check"
+  - id: V49
+    claim: "avatar SVG stored after only a '<svg' substring check, served inline as image/svg+xml -- same-origin script execution"
+  - id: V12
+    claim: "GET /api/models/<id> and GET /api/models/blob return another user's model metadata and artifact bytes with no ownership check"
+  - id: V61
+    claim: "POST /api/agent/brief reads ExperimentNote rows filtered by experiment_id only, exposing another tenant's notes through the assistant"
+  - id: V29
+    claim: "POST /api/admin/tool_notes is decorated @require_auth, not @require_admin, so any authenticated user poisons MCP tool descriptions"
+
+  # --- services region ---
+  - id: V28
+    claim: "retention.purge builds `rm -f {cleanup_dir}/{pattern}` with shell=True from two separately-stored request values"
+  - id: V02
+    claim: "load_pipeline_config uses yaml.load with the full Loader, so !!python/object/apply executes at parse time"
+  - id: V34
+    claim: "run_analysis execs model-generated code; the single-dict scope still carries __builtins__"
+  - id: V04
+    claim: "extract_archive joins member names onto dest with no containment check -- zip/tar slip to arbitrary write"
+  - id: V10
+    claim: "save_with_metadata joins an attacker-controlled meta.storage_path onto ARTIFACT_DIR; an absolute path discards the root entirely"
+  - id: V24
+    claim: "registry.read_raw takes a completely unsanitized path, and the strict_paths setting that would gate it defaults to false"
+  - id: V16
+    claim: "agent tools (run_sql, read_file, http_get) are reachable by a [[TOOL:]] directive in a chat message with no allow-list or confirmation"
+  - id: V06
+    claim: "is_safe_url uses host.endswith(allowed), so evil-example.com passes the import allow-list -- SSRF via dataset source_url"
+  - id: V07
+    claim: "the SSRF-fetched blob is handed to model_loader.load_model_bytes when _looks_like_model matches, turning the SSRF into pickle RCE"
+
+  # --- agent region ---
+  - id: V30
+    claim: "memory.recall() returns every user's AgentMemory rows unscoped; a planted [[TOOL:]] directive fires in another user's later /session call"
+  - id: V17
+    claim: "POST /api/agent/analyze passes another user's model_card into context, where an embedded directive drives a tool call"
+  - id: V35
+    claim: "run_native_loop calls dispatch(), a bare getattr on the handler, reaching the unadvertised _debug_eval; dispatch_public exists but is unused"
+  - id: V63
+    claim: "read_file opens any path with the server process's identity -- no per-user scoping or consent on any agent tool"
+  - id: V18
+    claim: "calc runs eval with an empty __builtins__, escapable by attribute-chain gadgets"
+  - id: V58
+    claim: "install_package pip-installs any attacker-named requirement; build-time code runs with no shell metacharacter needed"
+
+  # --- ml region ---
+  - id: V01
+    claim: "_deserialize falls back to pickle.load (and uses torch.load) on uploaded artifact bytes, loaded at predict time"
+  - id: V41
+    claim: "handle_runner_call is pickle.loads of runner_call_b64 straight from the /predict_remote body"
+  - id: V13
+    claim: "load_feature_cache np.load(path, allow_pickle=True) on a caller-supplied feature_cache path"
+  - id: V15
+    claim: "evaluate_metric evals the `metric` string with a blanked __builtins__ that does not stop attribute-chain escapes"
+  - id: V54
+    claim: "install_plugin writes uploaded source and sets enabled=True; load_enabled_plugins exec_module's it on the next boot"
+  - id: V25
+    claim: "parse_model_config builds an lxml parser with resolve_entities=True, load_dtd=True, no_network=False -- XXE file read and SSRF"
+  - id: V09
+    claim: "convert_model interpolates the unquoted artifact path into a shell=True command; the path derives from the stored model name"
+  - id: V11
+    claim: "_inspect_async interpolates the stored dataset name unquoted into a shell=True command in the worker"
+  - id: V37
+    claim: "run_loader_script execs the stored loader_script; trust_remote_code defaults to True and no caller overrides it"
+
+  # --- core region ---
+  - id: V83
+    claim: "highlight() returns the stored model name unescaped through {{ ...|safe }} in search.html -- stored XSS via a model name"
+  - id: V74
+    claim: "POST /ui/login redirects to the `next` form field with no validation"
+  - id: V03
+    claim: "sanitize_path strips '../' in a single non-overlapping pass and misses bare '..', so the artifact read path escapes ARTIFACT_DIR"
+
+  # --- unmatched: real-looking authorization gaps the manifest does not key ---
+  - id: ~
+    claim: "POST /api/experiments/<id>/evaluate has no ownership check -- any user overwrites another's experiment metrics"
+  - id: ~
+    claim: "POST /api/experiments/<id>/run has no ownership check -- any user triggers another's pipeline"
+  - id: ~
+    claim: "GET /api/datasets/<id> has no ownership check -- any user reads another's dataset metadata and path"
+  - id: ~
+    claim: "POST /api/agent/analyze has no ownership check on model_id, and pulls the owner's datasets into context"

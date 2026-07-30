@@ -149,10 +149,10 @@ def raw_artifact():
     return Response(registry.read_raw(path), mimetype="application/octet-stream")
 
 
-@bp.get("/<int:model_id>/download")
+@bp.get("/<int:model_id>/fetch")
 @require_auth
-def download_safe(model_id: int):
-    """Download an artifact with strict registry-root containment enforced."""
+def fetch_artifact(model_id: int):
+    """Serve a model's artifact bytes, resolved under the registry root."""
     model = db.session.get(Model, model_id)
     if not model or not model.artifact_path:
         return jsonify(error="not found"), 404

@@ -1,0 +1,236 @@
+tool: Claude Sonnet 4.5, 5-region sweep
+version: "claude-sonnet-4-5"
+category: LLM review (partitioned)
+date: 2026-07-29
+
+manifest_size: 82
+blind_copy_commit: 3ff7e43
+raw_output: raw/sonnet-sweep
+
+notes: >
+  Five Sonnet instances, one region each (api / services+workers / ml /
+  agent+mcp / core+ui+cli), prompt from benchmarks/sweep_prompt.md v1. Findings
+  pooled and de-duplicated; several bugs were reported independently by two or
+  three regions and each counts once.
+
+  MEASURED ON A CLEAN FIXTURE, so NOT comparable to the Opus 75/82 sweep in the
+  main table, in either direction. Every score there was collected before the
+  fixture audit, against blind copies that leaked compiled test bytecode,
+  docstrings naming the bug, and decoys named *_safe. This used a blind copy of
+  3ff7e43, after all three were fixed. Also not comparable because the original
+  sweep's prompt was never saved; sweep_prompt.md v1 is a reconstruction,
+  faithful in substance and not verbatim.
+
+  Integrity caveat: reviewers were subagents instructed to read only the
+  blind-copy path, not the working directory that holds the answer key. That
+  rests on instruction-following rather than a sandbox. Nothing suggests any of
+  them peeked: all five reasoned from source, and several reached conclusions
+  the manifest contradicts.
+
+  Judgement calls that move the number:
+  1. Tool-abuse findings (run_sql / read_file / http_get reachable by a
+     directive) count once as V16, not once per tool.
+  2. The agent region's check_http_auth finding describes the plain `==` timing
+     oracle and an empty default token. It is credited as V50 only. It does not
+     describe the 0.0.0.0 bind plus MCP_HTTP_REQUIRE_AUTH default that is V40,
+     so V40 is scored as missed even though the same function was inspected.
+  3. Four findings are recorded as unmatched because no manifest entry covers
+     them, not because they are wrong. See "Real bugs the manifest does not
+     key" below. One of them is a regression this repo introduced.
+
+  Zero decoy false positives, and unlike the historical rows that number is
+  measured rather than inferred: the prompt required reviewers to state what
+  they inspected and believed safe, and their lists are correct throughout.
+  They named download_artifact, search_by_tag, ask_experiments_structured,
+  run_analysis_aggregate, render_card_markdown, load_document, fetch_external,
+  render_builtin_report, load_model_numeric, load_from_hub_manifest,
+  dispatch_public, run_agent_tiered, summarize_note_via_sampling,
+  build_tool_list_snapshot, install_from_catalog, read_owner_file,
+  validate_username_bulk, check_recovery_code, the X-API-Key-Safe branch, the
+  admin settings endpoint, and all ten authz_demo scoped variants. The core
+  region also correctly called out D50's deliberately alarming docstring and
+  explained why the code is nonetheless correct.
+
+  Structural observation worth acting on, made independently by both regions
+  that hit it: a large number of these decoys have NO CALLER. The reviewers
+  flagged read_owner_file, install_from_catalog, dispatch_public,
+  load_model_numeric, validate_username_bulk, import_experiment_document,
+  verify_edge_service_token and render_card_markdown as correct but dead. A
+  decoy that nothing reaches is trivially safe and tests almost nothing; a live
+  safe path next to a live unsafe one is the real precision test.
+
+  Real bugs the manifest does not key, all found by this run:
+  - GET /api/models/<id>/download was registered by two views, so the
+    containment-checked one was unreachable dead code. This was a regression
+    introduced by this repo's own decoy-rename commit, caught here and now
+    fixed, with a test asserting no route collisions.
+  - POST /api/models/<id>/load_verified reads model.artifact_path directly with
+    no containment, so the mass-assignment bug (V14) chains into arbitrary
+    local file read.
+  - AssistantActions.list_experiment_names takes owner_id from caller-supplied
+    tool arguments with no ownership check.
+  - POST /api/authz-demo/team-notes has no membership check on the write path,
+    the same class as the add_team_member gap fixed earlier.
+
+findings:
+  # --- auth / accounts ---
+  - id: V44
+    claim: "verify_service_token decodes with verify_signature=False; POST /api/auth/service_exchange is unauthenticated and mints a signed admin session from a forged unsigned JWT. verify_edge_service_token exists and is never called"
+  - id: V42
+    claim: "POST /api/auth/register takes `role` verbatim; require_admin trusts the claim, so anyone self-assigns admin"
+  - id: V46
+    claim: "derive_recovery_code is md5(username:email)[:10] with no secret or randomness; the attacker computes the reset code without seeing the email"
+  - id: V47
+    claim: "api_key_md5 stores md5(password) and _user_from_api_key authenticates X-API-Key by direct DB lookup, so the digest IS the credential"
+  - id: V48
+    claim: "_USERNAME_RE ^([a-zA-Z0-9_]+)*$ on unauthenticated POST /api/auth/register; measured ~5.5s to reject 28 chars, doubling every +4"
+  - id: V45
+    claim: "GET /api/auth/redirect passes ?next= to flask.redirect unvalidated"
+  - id: V49
+    claim: "avatar SVG accepted after a '<svg' substring check and served inline as image/svg+xml with no nosniff; the avatar_download sibling forces attachment"
+  - id: V50
+    claim: "check_http_auth compares the bearer token with plain ==, and MCP_HTTP_TOKEN defaults to empty so an enabled-but-unconfigured deployment accepts 'Bearer '"
+
+  # --- injection / deserialization ---
+  - id: V02
+    claim: "load_pipeline_config uses yaml.load with the full Loader; !!python/object/apply executes at parse time"
+  - id: V05
+    claim: "render_report compiles a user-supplied template on an unsandboxed Environment; reachable from /report and /reports/preview"
+  - id: V21
+    claim: "annotate stores free text in the cache; /annotation/render later feeds that same string in as the template, not as data"
+  - id: V08
+    claim: "search_experiments escapes `name` but interpolates `tag` raw one line below, and `sort` straight into ORDER BY"
+  - id: V22
+    claim: "count_by_owner interpolates `owner` with no cast or binding despite the docstring calling it numeric"
+  - id: V33
+    claim: "ask_experiments runs generate_sql's model-authored SQL verbatim; the parameterized ask_experiments_structured sits next to it"
+  - id: V51
+    claim: "import_experiment calls jsonpickle.decode on the request payload; the allow-listed import_experiment_document exists and is never called"
+  - id: V01
+    claim: "_deserialize falls back to pickle.load for any unrecognised framework string, and torch.load/joblib are also unsafe; loaded at predict time with no ownership check"
+  - id: V52
+    claim: "_VerifiedUnpickler allow-lists getattr and globals, so a REDUCE chain reaches builtins.eval despite the restricted find_class"
+  - id: V41
+    claim: "handle_runner_call is bare pickle.loads of runner_call_b64 from the /predict_remote body, exposed over public HTTP"
+  - id: V13
+    claim: "load_feature_cache np.load(path, allow_pickle=True) on a caller-supplied path with no CACHE_DIR restriction; also an arbitrary read primitive"
+  - id: V15
+    claim: "evaluate_metric evals the metric string; a blanked __builtins__ does not stop attribute-chain gadgets"
+  - id: V18
+    claim: "calc runs eval with an empty __builtins__, escapable via ().__class__.__base__.__subclasses__()"
+  - id: V34
+    claim: "run_analysis execs model-generated code; a single-dict exec scope still gets __builtins__ injected, so the 'scoped to df' claim fails"
+  - id: V20
+    claim: "pipeline._resolve treats any op containing ':' as module:attr, importlib-imports it and calls it with attacker args -- {'op':'os:system'} is RCE"
+  - id: V25
+    claim: "parse_model_config sets resolve_entities=True, load_dtd=True, no_network=False and returns parsed fields in the response -- in-band XXE read plus SSRF"
+  - id: V09
+    claim: "convert_model shlex-quotes fmt but not src; the model name flows through sanitize_path, which strips no shell metacharacters, into a shell=True command"
+  - id: V11
+    claim: "_inspect_async interpolates the stored dataset name unquoted into a shell=True command in the worker"
+  - id: V28
+    claim: "retention.purge builds rm -f {cleanup_dir}/{pattern} with shell=True from two separately-stored values"
+
+  # --- files / paths ---
+  - id: V03
+    claim: "sanitize_path does one non-overlapping replace pass; verified that '....//'.replace('../','') yields '../', so /api/models/blob escapes ARTIFACT_DIR"
+  - id: V24
+    claim: "raw_artifact only calls sanitize_path when security.strict_paths is true, and it defaults false, so ?path=/etc/passwd reads any file via read_raw"
+  - id: V04
+    claim: "extract_archive hand-rolls extraction and joins member names with no containment check, in both the zip and tar branches"
+  - id: V10
+    claim: "save_with_metadata joins meta.storage_path onto ARTIFACT_DIR with no sanitisation at all; an absolute path discards the root and makedirs creates the parents"
+  - id: V27
+    claim: "load_template_file joins template_name onto TEMPLATE_DIR with zero sanitisation, from POST /api/reports/custom"
+  - id: V14
+    claim: "apply_updates setattrs every key of the raw PATCH body onto the ORM object, so an owner overwrites artifact_path, owner_id, framework"
+
+  # --- ml supply chain ---
+  - id: V37
+    claim: "run_loader_script execs the stored script; trust_remote_code defaults True and no caller passes False"
+  - id: V54
+    claim: "install_plugin writes uploaded source with enabled=True and load_enabled_plugins exec_module's it on next boot; require_auth only, no admin gate"
+  - id: V53
+    claim: "load_from_hub extracts an attacker zip and exec_module's its hubconf.py with no signature check; the endpoint calls it rather than the manifest-checked sibling"
+  - id: V57
+    claim: "retrain_model pulls every Feedback row with no status filter and folds it into the scorer; the public feedback endpoint is wired to this handler, not to the approved-only sibling"
+
+  # --- agent / LLM ---
+  - id: V16
+    claim: "_stub_chat regex-scans the raw conversation for [[TOOL:name]] and returns any \\w+ name as a tool call without consulting the schema; core.py dispatches with no allow-list, reaching run_sql, read_file, http_get, calc, delete_job"
+  - id: V32
+    claim: "strip_directives matches literal ASCII and runs before _deobfuscate, so a Unicode Tags-block encoded directive survives the only filter in the agent path"
+  - id: V58
+    claim: "install_package pip-installs any attacker requirement specifier including git+https, and _is_destructive never flags it so even the guarded path lets it through"
+  - id: V63
+    claim: "read_file opens any path with the server identity; the correctly-sandboxed read_owner_file exists but is not registered in TOOLS"
+  - id: V60
+    claim: "run_agent_guarded accepts CONFIRMATION_MARKER found anywhere in the conversation text, including the attacker's own message, so the destructive gate is self-satisfiable"
+  - id: V30
+    claim: "memory.recall() is unscoped across owners and /session prepends every recalled memory as a user message, so a planted directive fires in another user's session"
+  - id: V35
+    claim: "run_native_loop calls dispatch(), a bare getattr with no _PUBLIC_ACTIONS check, reaching the unadvertised _debug_eval; dispatch_public exists unused"
+  - id: V39
+    claim: "summarize_via_sampling passes the attacker-writable ToolNote into session.create_message with no filtering; the strip_directives sibling shows the omission"
+  - id: V29
+    claim: "POST /api/admin/tool_notes is @require_auth not @require_admin, and those notes are appended verbatim to MCP tool descriptions"
+  - id: V61
+    claim: "/api/agent/brief queries ExperimentNote by experiment_id only, and /api/agent/notes lets anyone attach a note to any experiment -- cross-tenant read plus stored injection"
+  - id: V17
+    claim: "/api/agent/analyze passes another user's model_card into context with no ownership check"
+  - id: V64
+    claim: "POST /api/agent/preferences merges any namespace into the single global Setting table, so any user flips security.strict_paths off; preferences_scoped restricts correctly but is a separate endpoint"
+
+  # --- dashboard ---
+  - id: V19
+    claim: "render_page uses Environment(autoescape=False) and interpolates title and body verbatim, returned as text/html from a shareable-link endpoint"
+  - id: V76
+    claim: "model_detail passes render_markdown(model_card) through |safe; render_markdown emits input unescaped with no scheme restriction. render_card_markdown is hardened but never called"
+  - id: V77
+    claim: "the chat view renders result['answer'] through render_markdown and |safe, so anything reaching the answer, including tool output, is emitted unescaped"
+  - id: V78
+    claim: "no CSRF token anywhere in the codebase and no SameSite on the auth cookie, so POST /ui/admin -- which flips security.strict_paths -- is cross-site forgeable"
+  - id: V80
+    claim: "the session cookie is set with no httponly/secure/samesite, so injected script reads the JWT out of document.cookie"
+  - id: V74
+    claim: "POST /ui/login redirects to the `next` form field unvalidated; the guarded redirect_after_login_local pattern exists in api/auth.py but is not applied here"
+
+  # --- object-level authz ---
+  - id: V65
+    claim: "GET /api/authz-demo/notes/<id> returns any user's private note with no ownership check"
+  - id: V66
+    claim: "GET /notes/<id>/branchy enforces ownership only when ?mode=strict is passed"
+  - id: V68
+    claim: "GET /team-notes/<id> returns any team note with no membership check"
+  - id: V69
+    claim: "GET /team-notes/<id>/branchy enforces membership only with ?mode=strict"
+  - id: V70
+    claim: "GET /tasks/<id> returns any task with no project or ownership check"
+  - id: V71
+    claim: "GET /projects/<pid>/tasks/<tid>/direct looks the task up by task_id alone; project_id never scopes the query"
+  - id: V72
+    claim: "GET /articles/<id> serves unpublished drafts belonging to any user"
+  - id: V73
+    claim: "GET /articles/<id>/branchy applies the status gate only with ?strict=1"
+  - id: V81
+    claim: "GET /api/experiments/count?owner=<id> passes the caller-supplied owner through with no check that it is their own"
+  - id: V12
+    claim: "GET /api/models/<id> and /blob return another user's model metadata and artifact bytes with no ownership check"
+  - id: V23
+    claim: "dataset webhook_url is POSTed to by the worker with no validation; is_safe_url guards source_url but was never applied here"
+
+  # --- config findings, scored separately ---
+  - id: CF04
+    claim: "cli.py main() runs create_app().run(debug=True), exposing the Werkzeug debugger"
+  - id: CF05
+    claim: "JWT_SECRET defaults to the hardcoded 'langfail-dev-jwt-secret', so an unconfigured deployment allows offline token forgery"
+
+  # --- unmatched: real bugs with no manifest entry (see notes) ---
+  - id: ~
+    claim: "GET /api/models/<id>/download was registered by two views; Werkzeug serves the first, making the containment-checked view unreachable. A regression from this repo's decoy rename, now fixed"
+  - id: ~
+    claim: "POST /api/models/<id>/load_verified reads model.artifact_path with no containment, chaining off V14's mass assignment into arbitrary local file read"
+  - id: ~
+    claim: "AssistantActions.list_experiment_names takes owner_id from caller-supplied tool arguments with no ownership check"
+  - id: ~
+    claim: "POST /api/authz-demo/team-notes has no membership check on the write path; any user attaches a note to any team"

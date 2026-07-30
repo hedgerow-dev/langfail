@@ -173,7 +173,7 @@ def brief():
 
 @bp.post("/chat_brief")
 @require_auth
-def chat_safe():
+def chat_brief():
     """Assistant chat with output-side redaction of common PII shapes
     (emails, SSNs) applied to the answer before it is returned."""
     data = request.get_json(force=True, silent=True) or {}
@@ -203,7 +203,7 @@ def save_preferences():
 
 @bp.post("/preferences_scoped")
 @require_auth
-def save_preferences_safe():
+def save_preferences_scoped():
     """Like ``/preferences``, but restricted to caller-tunable namespaces
     (``ui``, ``llm``); anything else is reported as rejected."""
     data = request.get_json(force=True, silent=True) or {}

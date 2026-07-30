@@ -1679,7 +1679,7 @@ decoys:
     resembles: V33 (text-to-SQL injection) — SAME feature (NL experiment search), constrained instead of freeform
     why_safe: "ask_experiments_structured() only accepts 'column=value' against an allow-list of columns and always binds the value as a parameter -- the model never authors raw SQL to execute"
     location: {file: langfail/services/experiments.py, symbol: ask_experiments_structured}
-    proof: tests/test_exploits_tier6.py::test_d10_ask_safe_rejects_raw_sql
+    proof: tests/test_exploits_tier6.py::test_d10_ask_structured_rejects_raw_sql
   - id: D11
     resembles: V34 (code-interpreter RCE) — SAME feature (NL dataset analysis), constrained instead of freeform
     why_safe: "run_analysis_aggregate() maps the question to one of a fixed set of aggregate operations by keyword and never exec()s model-generated code"
@@ -1819,7 +1819,7 @@ decoys:
     resembles: V62 (training-data extraction) -- SAME trigger, redacting output path
     why_safe: "/api/agent/chat_brief runs redact_sensitive() over the answer: emails and SSNs are regex-redacted before anything is returned, so the same divergence trigger yields [REDACTED-EMAIL]/[REDACTED-SSN], never raw corpus PII"
     location: {file: langfail/agent/llm.py, symbol: redact_sensitive}
-    proof: tests/test_exploits_agentic.py::test_d38_chat_safe_redacts_corpus_pii
+    proof: tests/test_exploits_agentic.py::test_d38_chat_brief_redacts_corpus_pii
   - id: D39
     resembles: V64 (preference config injection) -- SAME feature, allow-listed namespaces
     why_safe: "merge_user_preferences() only merges PREFERENCE_NAMESPACES ('ui', 'llm') and reports everything else as rejected; a 'security' key is refused and the strict_paths gate stays on"

@@ -82,7 +82,7 @@ def ask():
 
 @bp.post("/ask_structured")
 @require_auth
-def ask_safe():
+def ask_structured():
     """Constrained natural-language search (``column=value`` only, allow-listed
     columns, bound parameters) — no model-authored SQL is ever executed."""
     data = request.get_json(force=True, silent=True) or {}
