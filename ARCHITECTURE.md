@@ -18,7 +18,7 @@ This doc covers how the pieces fit. The bug-by-bug detail lives in
 flowchart TD
     client([HTTP client / attacker / agent])
 
-    subgraph api["langfail/api/ — Blueprints (TAINT SOURCES)"]
+    subgraph api["langfail/api/: Blueprints (TAINT SOURCES)"]
         auth[auth]
         models[models]
         datasets[datasets]
@@ -30,11 +30,11 @@ flowchart TD
         authz_demo[authz_demo\nBOLA deep-dive tier]
     end
 
-    subgraph ui["langfail/ui/views.py — dashboard (TAINT SOURCE)"]
+    subgraph ui["langfail/ui/views.py: dashboard (TAINT SOURCE)"]
         views[views\nserver-rendered HTML]
     end
 
-    subgraph svc["langfail/services/ — business logic (SINKS)"]
+    subgraph svc["langfail/services/: business logic (SINKS)"]
         registry[registry\nfile I/O]
         fetcher[fetcher\nHTTP egress]
         exp_search[experiments\nSQL]
@@ -46,7 +46,7 @@ flowchart TD
         support[support\nPII to LLM]
     end
 
-    subgraph ml["langfail/ml/ — model & data (SINKS)"]
+    subgraph ml["langfail/ml/: model & data (SINKS)"]
         loader[model_loader\npickle/torch/joblib + allow-list unpickler]
         runner_proto[runner\npickle call protocol]
         dsx[dataset\narchive extract + loader script exec]
@@ -58,7 +58,7 @@ flowchart TD
         plugins[plugins\nstartup plugin import]
     end
 
-    subgraph agent["langfail/agent/ — assistant"]
+    subgraph agent["langfail/agent/: assistant"]
         core_a[core\nagent loop, capped + uncapped]
         llm[llm\nstub / ollama]
         tools[tools\nrun_sql/read_file/http_get/calc]
@@ -67,7 +67,7 @@ flowchart TD
         native[native\nraw getattr dispatch]
     end
 
-    subgraph workers["langfail/workers/ — queue + worker (CROSS-PROCESS SINKS)"]
+    subgraph workers["langfail/workers/: queue + worker (CROSS-PROCESS SINKS)"]
         queue[(jobs table\nqueue)]
         runner[runner]
         tasks[tasks]
@@ -80,7 +80,7 @@ flowchart TD
         settings[settings\nruntime settings store]
     end
 
-    subgraph mcpsrv["langfail/mcp_server.py — MCP protocol surface"]
+    subgraph mcpsrv["langfail/mcp_server.py: MCP protocol surface"]
         mcptools[list_tools / call_tool\npoisoned ToolNote]
         mcpsampling[sampling\nno validation]
         mcphttp[serve_http\n0.0.0.0, no auth by default]
@@ -113,19 +113,19 @@ flowchart TD
     ui -.auth/sanitize.-> sec
 ```
 
-- **`langfail/api/`** — the JSON HTTP surface and every request field's point of
+- **`langfail/api/`**: the JSON HTTP surface and every request field's point of
   entry. Handlers authenticate, shape lightly, delegate. All **sources**.
   `authz_demo.py` is the IDOR deep-dive tier: ownership, membership,
   hierarchical, and status-gating checks, each written once vulnerably and once
   safely, side by side.
-- **`langfail/ui/views.py`** — the HTML counterpart of the API (registry
+- **`langfail/ui/views.py`**: the HTML counterpart of the API (registry
   browsing, search, chat, admin settings), authenticating with the same JWT via
   a `session_token` cookie. Home of the dashboard's own bugs: open redirect,
   reflected/stored XSS, CSRF, clickjacking, a JS-readable cookie.
-- **`langfail/services/`** — business logic touching the database, network,
+- **`langfail/services/`**: business logic touching the database, network,
   filesystem, and template engine. Most **sinks** live here, one file away from
   their source.
-- **`langfail/ml/`** — model (de)serialization, including a "verified" loader
+- **`langfail/ml/`**: model (de)serialization, including a "verified" loader
   whose allow-list is subtly wrong; archive extraction; the feature cache;
   format conversion; metric eval; a `trust_remote_code`-style dataset loading
   script (the artifact *is* code); a runner call protocol that pickles arguments
@@ -134,26 +134,26 @@ flowchart TD
   scorer that hands back full probability vectors and per-record loss (the
   extraction/membership-inference signal); and a plugin importer that
   `exec_module`s enabled rows at `create_app()` time. More sinks.
-- **`langfail/workers/`** — a DB-backed job queue and its worker. Work enqueued
+- **`langfail/workers/`**: a DB-backed job queue and its worker. Work enqueued
   by one request runs later in another process: **second-order, cross-process**
   flows.
-- **`langfail/agent/`** — the assistant. A pluggable backend (`stub`/`ollama`),
+- **`langfail/agent/`**: the assistant. A pluggable backend (`stub`/`ollama`),
   real tools, an agent loop capped at `MAX_TOOL_ROUNDS` plus a
   caller-parameterized `run_agent_extended` that isn't, a cross-session
   `memory` store, a `sanitize` filter that normalizes nothing (so
   invisible-Unicode directives sail through), and `native`, modeling the raw
-  OpenAI/Anthropic tool-use pattern — a model-chosen name resolved by bare
+  OpenAI/Anthropic tool-use pattern: a model-chosen name resolved by bare
   `getattr`, versus `core.py`'s explicit `TOOLS` allow-list. LLM and tool output
   are themselves **sources**.
-- **`langfail/core/`** — config, the SQLAlchemy handle, `security.py`
+- **`langfail/core/`**: config, the SQLAlchemy handle, `security.py`
   (auth/JWT plus `sanitize_path`, `escape_sql`, `is_safe_url`), and
   `settings.py`, a runtime key/value store with deep-merge that gates several
   sanitizers at request time. These helpers sit on many taint paths and are
-  deliberately **incomplete** — the false-negative traps.
-- **`langfail/mcp_server.py`** — a standalone entrypoint (not a blueprint)
+  deliberately **incomplete**: the false-negative traps.
+- **`langfail/mcp_server.py`**: a standalone entrypoint (not a blueprint)
   serving `agent/tools.py`'s `TOOLS` over real MCP, on stdio (`langfail
   mcp-serve`) or SSE/HTTP (`langfail mcp-serve-http`, `mcp-http` extra). Its own
-  attack surface — see below.
+  attack surface: see below.
 
 ## Request lifecycle
 
@@ -189,7 +189,7 @@ erDiagram
     Job { int id PK; string kind; text payload_json; string status; text result; int owner_id FK }
 ```
 
-The database isn't just storage — it's a **taint carrier**. A model card or
+The database isn't just storage: it's a **taint carrier**. A model card or
 dataset URL written by one request gets read back by a later one, or by the
 worker, which is what turns several of these into second-order flows.
 
@@ -235,7 +235,7 @@ flowchart LR
 `run_agent` assembles a system prompt, retrieved context documents, and the user
 message; asks the LLM what to do; runs any tools; loops a few rounds. Retrieved
 context can come from content stored by *other* users (a model card, say), so
-the agent's input isn't limited to the caller — that's the indirect-injection
+the agent's input isn't limited to the caller: that's the indirect-injection
 chain. `stub` is deterministic for reproducible scoring; `ollama` drives a real
 local model.
 
@@ -244,10 +244,10 @@ local model.
 MCP is how other AI tools connect to an app's tools directly, skipping its chat
 interface entirely. `langfail/mcp_server.py` exposes the same tool set
 (`run_sql`/`read_file`/`http_get`/`calc`) over real MCP, bypassing `run_agent`
-and all its logic — which earns it a bug set of its own:
+and all its logic, which earns it a bug set of its own:
 
-- **Poisoned tool metadata (V29).** Every tool's description — the text a client
-  trusts as authoritative documentation — is rebuilt on each `list_tools` from
+- **Poisoned tool metadata (V29).** Every tool's description (the text a client
+  trusts as authoritative documentation) is rebuilt on each `list_tools` from
   the docstring plus a stored `ToolNote` (`langfail/api/admin.py`). That note is
   meant to be admin-only, but the write endpoint is gated with `require_auth`
   instead of `require_admin`. Any logged-in user can therefore write text that
@@ -255,7 +255,7 @@ and all its logic — which earns it a bug set of its own:
 - **Poisoned sampling requests (V39).** Same broken check, second victim:
   `summarize_via_sampling` drops that note, unvalidated, straight into an MCP
   **sampling** request (`session.create_message(...)`) and thus into the
-  connected client's model context. Worse than V29, really — it fires on every
+  connected client's model context. Worse than V29, really: it fires on every
   call rather than once at connection.
 - **An open, unauthenticated listener (V40).** Unrelated, and in the optional
   SSE/HTTP transport: `Config.MCP_HTTP_HOST` defaults to `0.0.0.0` and
@@ -266,7 +266,7 @@ and all its logic — which earns it a bug set of its own:
 ## Cross-taint topology (why it's a benchmark)
 
 Connecting a source to a sink should require crossing **a file boundary, a DB
-round-trip, or a process boundary** — not a single-line pattern match:
+round-trip, or a process boundary**, not a single-line pattern match:
 
 | Distance | Example flow |
 |----------|--------------|
@@ -288,7 +288,7 @@ round-trip, or a process boundary** — not a single-line pattern match:
 | Through the cache carrier | annotation → `core/cache` (base64) → later request → `render_report` (SSTI) |
 | Through reflection | stored pipeline op `"module:attr"` → `services/pipeline` `importlib`+`getattr` |
 | Through model-chosen dispatch | LLM tool-call names a method → `agent/native.py` bare `getattr(self, name)`, no allow-list check |
-| Blind / OOB | webhook egress + count-only SQLi — no reflected output, needs a canary/oracle |
+| Blind / OOB | webhook egress + count-only SQLi: no reflected output, needs a canary/oracle |
 | Config-as-taint | user `preferences` write → `core/settings` deep-merge → `raw_artifact`'s `strict_paths` gate flips off → traversal re-opens (V64 → V24) |
 | Credential laundering | forged unsigned service token → `verify_service_token` (signature check disabled) → properly-signed session JWT accepted everywhere |
 | Dormant second-order exec | plugin source uploaded (inert) → DB row + file on disk → next process boot imports it into the app |
@@ -300,7 +300,7 @@ round-trip, or a process boundary** — not a single-line pattern match:
 
 Several of these paths run through `langfail/core/security.py` helpers that
 *look* protective. Whether a tool (or a human) treats them as real defenses or
-as bypassable is exactly what's being measured — see
+as bypassable is exactly what's being measured: see
 [`SCOREBOARD.md`](SCOREBOARD.md).
 
 ### Tier 6 (max difficulty)
@@ -308,56 +308,56 @@ as bypassable is exactly what's being measured — see
 Each numbered tier in `ground_truth.yaml` is harder than the last; Tier 6 is the
 top. Each of these defeats a naive scanner for a different reason:
 
-- **Dynamic dispatch** — `services/pipeline.py` turns a stored `"module:attr"`
+- **Dynamic dispatch**: `services/pipeline.py` turns a stored `"module:attr"`
   string into a callable via `importlib`/`getattr`. The function that actually
   runs appears nowhere in the source.
-- **A cache carrier** — `core/cache.py` launders tainted data through a
+- **A cache carrier**: `core/cache.py` launders tainted data through a
   base64/JSON round trip between two requests, breaking the straight line a
   simpler tool looks for.
-- **Blind / out-of-band sinks** — a completion-webhook SSRF with no allow-list,
+- **Blind / out-of-band sinks**: a completion-webhook SSRF with no allow-list,
   and a count-only boolean SQLi. Neither reflects anything back, so proving them
   needs an external canary or a timing oracle.
-- **A config-gated sanitizer** — the traversal check only runs when
+- **A config-gated sanitizer**: the traversal check only runs when
   `STRICT_PATHS` is on, which it isn't. Read in isolation, the check looks
   unconditional.
-- **An off-list library sink** — `ml/modelconfig.py` has an XXE via `lxml`, a
+- **An off-list library sink**: `ml/modelconfig.py` has an XXE via `lxml`, a
   library most generic rule sets don't cover.
-- **Multi-hop agent chaining** — a page the agent fetches re-enters its own
+- **Multi-hop agent chaining**: a page the agent fetches re-enters its own
   reasoning loop and triggers a *second* tool call, so the exploit spans two
   rounds of the agent's thinking.
-- **Cross-user memory poisoning** — `agent/memory.py` recalls everyone's
+- **Cross-user memory poisoning**: `agent/memory.py` recalls everyone's
   memories into every session, so what one user plants fires later in someone
   else's conversation.
-- **Unicode/ASCII smuggling** — `agent/sanitize.py` strips literal ASCII
+- **Unicode/ASCII smuggling**: `agent/sanitize.py` strips literal ASCII
   `[[TOOL:]]` text. The same instruction in invisible Unicode tag characters
   looks like absolutely nothing in review, and the model reads it as plain
   ASCII.
-- **A second kind of reflection** — `agent/native.py` lets the model pick which
+- **A second kind of reflection**: `agent/native.py` lets the model pick which
   internal method to call by name, resolved with a bare `getattr` and no check
   against the list it's supposedly restricted to. No file write or import
   needed, unlike `services/pipeline.py`.
-- **A sandbox-bypass trap (V52)** — `ml/model_loader.py`'s
+- **A sandbox-bypass trap (V52)**: `ml/model_loader.py`'s
   `load_model_verified` looks like a properly hardened allow-list deserializer,
   but its "safe" builtins (`getattr`/`globals`/`dict`) are plenty to build the
   classic Fickling gadget chain and walk out.
-- **TOCTOU on tool metadata (V59)** — an MCP tool's description gets swapped for
+- **TOCTOU on tool metadata (V59)**: an MCP tool's description gets swapped for
   something malicious *after* a client approved the original, via a delayed
   `applies_after` field.
-- **Config-as-taint (V64)** — a boring user-preferences update quietly flips
+- **Config-as-taint (V64)**: a boring user-preferences update quietly flips
   `security.strict_paths` off, silently reopening a traversal bug that was
   supposedly closed.
-- **Provenance-blind confirmation (V60)** — the agent's "did a human confirm
+- **Provenance-blind confirmation (V60)**: the agent's "did a human confirm
   this?" gate just scans the transcript for the text `[user confirmed]`,
   including text an attacker planted in a fetched page.
 
 Every one ships with a runnable proof-of-exploit and a matching **precision
-decoy** — a safe look-alike (`download_artifact`, `search_by_tag`,
+decoy**: a safe look-alike (`download_artifact`, `search_by_tag`,
 `fetch_external`, others) close enough that flagging it counts as a measurable
 false positive.
 
 ### Config/compose findings
 
-Some planted issues aren't Python bugs at all, just insecure *settings* — the
+Some planted issues aren't Python bugs at all, just insecure *settings*: the
 kind that show up as real CVEs in ML-serving infrastructure while every line of
 code is fine. They live in
 [`deploy/docker-compose.yml`](deploy/docker-compose.yml) and in
@@ -370,6 +370,6 @@ code is fine. They live in
 - hardcoded fallback `SECRET_KEY`/`JWT_SECRET` values (CF05)
 
 Unlike everything else here, these five have no taint path and no exploit
-script — there's no data flow to trace, because the setting *is* the bug.
+script: there's no data flow to trace, because the setting *is* the bug.
 Finding them is a presence check, not an analysis. Scoring: see
 "Config/compose findings" in [`SCOREBOARD.md`](SCOREBOARD.md).

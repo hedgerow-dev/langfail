@@ -59,10 +59,6 @@ repo, where CodeQL and Open-Rowan ran with no setup at all.
 † Scored against a smaller, earlier version of the manifest. Credited with
 zero for vulnerabilities added since.
 
-The 5-region sweep also surfaced two real bugs outside the manifest, now
-fixed: a path traversal in `ml/hub.py` and a missing auth check on
-`add_team_member`.
-
 ## How scoring works
 
 [`benchmarks/ground_truth.yaml`](benchmarks/ground_truth.yaml) is the answer
@@ -150,7 +146,7 @@ presence check, not a taint problem.
 | V32 | 6 | LLM01 | Unicode/ASCII-smuggling prompt injection | tag-block/zero-width directive slips past an ASCII-only `[[TOOL:]]` filter |
 | V33 | 5 | 89 | Text-to-SQL agent executes model-generated SQL directly | LLM completion (not a tool call, not a user param) → raw `db.session.execute` |
 | V34 | 5 | 95 | Code-interpreter RCE via `exec` of model-generated code | NL question → LLM writes Python → `exec` (PandasAI CVE-2024-12366 class) |
-| V35 | 6 | 470 | Unsafe reflection dispatch on a model-chosen action name | `getattr(self, tool_call.function.name)(...)`, no allow-list — raw tool-use pattern |
+| V35 | 6 | 470 | Unsafe reflection dispatch on a model-chosen action name | `getattr(self, tool_call.function.name)(...)`, no allow-list: raw tool-use pattern |
 | V36 | 5 | 400 | Unbounded agent iteration budget (denial of wallet) | caller-supplied `max_rounds` → uncapped billed-LLM-call loop (OWASP LLM10) |
 | V37 | 4 | 94 | RCE via untrusted dataset loading script (`trust_remote_code` class) | `loader_script` → DB → later `prepare` request → `exec` (HF datasets / Keras Lambda) |
 | V38 | 5 | 359 | PII flows into the third-party LLM API call with no redaction | `user.email` → agent context → `requests.post` to the LLM backend, unredacted |
@@ -178,8 +174,8 @@ presence check, not a taint problem.
 | V60 | 6 | 345 | Agent confirmation spoof via injected transcript marker | fetched-page text → provenance-blind gate scan → `delete_job` |
 | V61 | 5 | 639 | Cross-tenant RAG leak via owner-unscoped note retrieval | retrieval crosses the tenant boundary; ordinary summarisation exfiltrates |
 | V62 | 5 | 200 | Training-data extraction via repetition/divergence | repetition trigger → memorized corpus → verbatim PII in the reply (no tool call) |
-| V63 | 5 | 862 | Confused deputy — agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
-| V64 | 6 | 15 | Config-as-taint — preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
+| V63 | 5 | 862 | Confused deputy: agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
+| V64 | 6 | 15 | Config-as-taint: preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
 
 V65-V83 are listed in full in `benchmarks/ground_truth.yaml`: the
 object-level-authorization deep dive (V67 is intentionally absent), the
@@ -195,15 +191,15 @@ D03 and D51 are intentionally absent.
 | D02 | V08/V22 | `search_by_tag` binds `:tag` as a parameter |
 | D04 | V06/V23 | `fetch_external` blocks private IPs, disables redirects |
 | D05 | V02 | `load_document` uses `yaml.safe_load` |
-| D06 | V27 | `render_builtin_report` always passes one of two hardcoded literal filenames to the same sink — a call-site-sensitivity test |
+| D06 | V27 | `render_builtin_report` always passes one of two hardcoded literal filenames to the same sink: a call-site-sensitivity test |
 | D07 | V30 | `recall_for_owner` filters `AgentMemory` by `owner_id` |
 | D08 | V31 | `render_card_markdown` only emits same-origin `<img src>`, no egress channel |
 | D09 | V32 | `strip_directives` removes plainly-visible `[[TOOL:...]]`, just not Unicode-smuggled ones |
 | D10 | V33 | `ask_experiments_structured` only accepts allow-listed `column=value` questions, always parameterized |
-| D11 | V34 | `run_analysis_aggregate` maps to a fixed set of aggregate ops — never `exec`s model-generated code |
+| D11 | V34 | `run_analysis_aggregate` maps to a fixed set of aggregate ops: never `exec`s model-generated code |
 | D12 | V35 | `dispatch_public` rejects any name outside `_PUBLIC_ACTIONS` before ever calling `getattr` |
 | D13 | V36 | `run_agent_tiered` clamps `max_rounds` to a hard ceiling before the loop runs |
-| D14 | V37 | `load_tabular_dataset` never execs anything — custom loading scripts are unsupported |
+| D14 | V37 | `load_tabular_dataset` never execs anything: custom loading scripts are unsupported |
 | D15 | V38 | `draft_support_reply_brief` redacts emails from context before the LLM call |
 | D16 | V39 | `summarize_note_via_sampling` strips `[[TOOL:...]]` directives before sampling |
 | D17 | V40 | `check_http_auth(headers, require_auth=True)` correctly rejects a bad bearer token |
@@ -239,15 +235,13 @@ python benchmarks/check_ground_truth.py
 ```
 
 It parses every referenced file, confirms each declared symbol still exists,
-and flags stale line numbers as drift. It can't catch a *content* bug though,
-a decoy labeled safe that isn't. D03, D08, and D51 were all found by hand.
+and flags stale line numbers as drift. It can't catch a *content* bug though:
+a decoy labeled safe that isn't. Check that by hand too.
 
-Two rules keep the fixture honest going forward:
+Two rules keep the fixture honest:
 
-1. **No function name says whether it's safe.** Decoys used to carry names
-   like `read_artifact_safe` and `dispatch_safe`, so the safe half could be
-   picked out just by reading names. All were renamed to describe what the
-   function does, not what it proves.
+1. **No function name says whether it's safe.** Decoy names describe what a
+   function does, never that it's the safe one.
 2. **No docstring names the flaw.** A plausible cover story is fine; naming
    a CWE, a CVE, or the word "unvalidated" is not.
 
