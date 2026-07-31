@@ -1,0 +1,167 @@
+tool: Open-Rowan hunt --discover (deepseek-chat)
+version: "0.2.0 (b4532f4), backend deepseek-chat"
+category: Agentic pipeline
+date: 2026-07-31
+
+manifest_size: 82
+blind_copy_commit: 2e214db
+raw_output: raw/open-rowan-hunt-deepseek.json
+
+notes: >
+  `open-rowan hunt <blind-copy> --backend deepseek --discover -y --format json`,
+  with `enable_authz: true` set via `.open-rowan.yml` in the blind copy root
+  (hunt has no `--authz` CLI flag; the project-config path is the only way to
+  turn AuthzPass on for a hunt run). One run, 10.4s static scan + LLM stages,
+  61 hypotheses triaged, 25 files re-examined by the discover stage.
+
+  This is a DIFFERENT thing from results/open-rowan.yaml. That file scores the
+  raw static findings (scan --authz) directly against the manifest. This file
+  scores only what hunt's own pipeline stood behind after LLM triage: a
+  hypothesis credited only if hunt's adversarial verify pass marked it
+  "upheld" (verdict "uncertain" or "refuted" is not credited, matching hunt's
+  own bar), plus discover-stage findings that survived the mechanical
+  snippet-provenance gate and its own verify pass. Static findings that hunt's
+  triage never touched are not scored here at all, see "The authz result"
+  below for why that matters.
+
+  Recall: 33/82 (40%). 23 distinct entries from 38 upheld hypotheses (many
+  hypotheses share an entry: multiple CF-SINK/CF-RETURN findings on the same
+  create_model source, or a bug found by both hypothesize and the discover
+  stage, count once). 10 more distinct entries from the discover stage's 17
+  survivors, none overlapping the 23. Zero decoy false positives; one
+  mechanical decoy-location match (D23) that does not survive adjudication,
+  see below.
+
+  THE AUTHZ RESULT IS THE HEADLINE FINDING OF THIS RUN. `.open-rowan.yml`
+  turned AuthzPass on, and the pass ran and produced its usual 33 candidates
+  (verified identical to the 33 in results/open-rowan.yaml's raw scan: same
+  rule_id, same file:line set). Not one was promoted to a hunt hypothesis.
+  `_select_priority_findings` (open_rowan/agents/workflow.py:857) promotes
+  CRITICAL/HIGH severity, taint-flow-bearing, crossfile-engine, or
+  reachability=="reachable" findings unconditionally, with a fallback that
+  promotes MEDIUM-severity/confidence>=0.6 findings ONLY if that first filter
+  produced nothing. Every one of the 33 AuthzPass findings on this app landed
+  at Severity.MEDIUM or LOW (24 medium, 9 low; confidence 0.4 or 0.6; no
+  taint_flow) -- because Langfail's whole IDOR tier is "authenticated but not
+  object-authorized" (a route decorator present, no object-level check), which
+  AuthzPass correctly scores lower than a fully-unguarded "no_guard" case.
+  Since this app also has plenty of unrelated CRITICAL/HIGH findings (pickle,
+  SSTI, command injection), the fallback branch never fires, and the
+  MEDIUM-severity authz candidates never reach an LLM. Net effect: enabling
+  authz for hunt cost nothing (33 fast static findings, no extra LLM calls)
+  and gained nothing over a plain `scan --authz` (0 of them became a
+  triaged hypothesis). The two IDOR entries this run DOES get credit for
+  (V81, V82) came entirely from the discover stage reasoning about
+  api/experiments.py from first principles, not from AuthzPass's own
+  candidates -- an LLM asked to read the file top-to-bottom found the same
+  bug class AuthzPass's deterministic pass already had sitting unused in
+  `state.surface`.
+
+  THE VERIFY STAGE CAUGHT A FALSE POSITIVE THE UNDERLYING STATIC RULE DIDN'T.
+  A hypothesis claimed custom_report()'s `kind` parameter could select an
+  attacker-controlled template (the exact shape of NS-SSTI-001's false
+  positive on D06 in results/open-rowan.yaml, one of that run's two decoy
+  hits). Hunt's adversarial verify pass refuted it: "the sink at reports.py:46
+  only renders from a fixed set of built-in templates via
+  BUILTIN_KINDS.get(kind, 'summary.tpl'), so a malicious 'kind' cannot select
+  an attacker-controlled template." Same underlying static signal, same
+  decoy, opposite outcome, because a second LLM pass was told to try to
+  disprove the first one's claim rather than rubber-stamp it.
+
+  THE ONE DECOY-LOCATION MATCH. The discover stage reported
+  `reset_confirm_code` (D23) accepting an empty new_password with no
+  validation. D23's own why_safe is about token derivation being sound
+  (random, hashed, single-use, unlike V46's md5 derivation); the finding
+  describes something orthogonal that D23 makes no claim about. Per Langfail's
+  own "score the finding, not the symbol" rule this is not a false positive.
+  It is also not new: BACKLOG.md's DISC-6 entry in the open-rowan repo
+  documents the identical finding, on the identical function, from an earlier
+  discover run against this same benchmark, and reaches the same verdict.
+  Recorded as unmatched, not as a decoy FP.
+
+  Provenance gate: 0/41 raw discover claims rejected for a bad path, bad line,
+  or a snippet that didn't match the file at the claimed line (deepseek quoted
+  accurately throughout, so -- as in DISC-6 -- the gate itself went
+  unexercised on this run; it is proven by open-rowan's own test suite, not by
+  this benchmark).
+
+  Not measured: run-to-run stability (this is one run; DISC-6's own two-run
+  comparison found 75% Jaccard agreement on exact file:line, with all
+  high-signal finds reproducing and only the tail varying), and the
+  --exploit/--base-url live-probe stages (off; no running instance was
+  targeted).
+
+findings:
+  # --- from upheld hypotheses (hypothesize + verify stages) ---
+  - id: V01
+    claim: "_get_estimator (inference.py:30) reaches _deserialize's pickle.load fallback at model_loader.py:32 for unrecognised framework strings; corroborated separately by three static rule hits on the same function (torch.load/joblib.load/routing choke point), all upheld"
+  - id: V02
+    claim: "create_experiment (experiments.py:30) passes pipeline_config to load_pipeline_config, which uses yaml.load(Loader=yaml.Loader); corroborated by the discover stage's independent NS-DESER-003 hit on the same line"
+  - id: V03
+    claim: "download_artifact (models.py:68) and get_blob (models.py:76) both reach read_artifact via the bypassable sanitize_path; two separate upheld hypotheses on the same sink"
+  - id: V04
+    claim: "NS-PATH-005 on extract_archive (ml/dataset.py:34): tarfile extraction with no path-traversal check on member names"
+  - id: V05
+    claim: "preview (reports.py:38) and report (models.py:99) both reach render_report's unsandboxed Environment.from_string on a user-supplied template; two independent upheld hypotheses on the same sink from different endpoints"
+  - id: V06
+    claim: "fetch (services/fetcher.py:21): is_safe_url validates the initial URL but requests.get is called with allow_redirects=True and no re-validation, so a redirect to an internal host bypasses the check -- SSRF"
+  - id: V07
+    claim: "import_dataset (workers/tasks.py:45): a downloaded file that looks like a model (by extension/magic bytes) is passed to model_loader.load_model_bytes, chaining the SSRF into pickle.load -- explicitly identified as the V06 chain continuation"
+  - id: V08
+    claim: "search_experiments (services/experiments.py:24,32): escape_sql only replaces a single quote (insufficient for a LIKE pattern) and `sort` is concatenated into ORDER BY with no sanitisation at all; corroborated by the discover stage's independent NS-SQLI-005-style hit on the same function"
+  - id: V10
+    claim: "create_model (models.py:38) passes meta.storage_path to save_with_metadata, which joins it onto ARTIFACT_DIR with no sanitisation before os.makedirs/open; corroborated by the discover stage's independent hit on the same sink"
+  - id: V15
+    claim: "evaluate (experiments.py:184) reaches evaluate_metric's eval(spec, {\"__builtins__\": {}}, context) on a user-supplied metric string"
+  - id: V19
+    claim: "preview (reports.py:40) and custom_report (reports.py:81) both reach render_page's Environment(autoescape=False), rendering user-influenced body_html unescaped; two independent upheld hypotheses on the same sink"
+  - id: V20
+    claim: "run (experiments.py:107): a stage's user-controlled 'op' string (e.g. 'os:system') is importlib-imported and called by run_pipeline's _resolve, explicitly named as an RCE-via-reflection primitive"
+  - id: V23
+    claim: "[discover] api/datasets.py:55: dataset webhook_url is POSTed to with no validation -- SSRF via completion webhook"
+  - id: V24
+    claim: "raw_artifact (models.py:149): 'path' is only sanitised when strict_paths is true, which defaults false, so read_raw opens an unsanitised path -- traversal behind a config-gated sanitizer"
+  - id: V27
+    claim: "custom_report (reports.py:77) loads template_src via load_template_file(template_name) with no path check on the caller-supplied filename; corroborated by the discover stage's independent hit on load_template_file itself (services/reports.py:37)"
+  - id: V28
+    claim: "cleanup_dataset (workers/tasks.py:87) calls purge(cleanup_dir, pattern), which builds 'rm -f {cleanup_dir}/{pattern}' with shell=True from two separately-supplied values with no sanitisation"
+  - id: V33
+    claim: "ask (experiments.py:80): a user-supplied question is converted to SQL by generate_sql and executed by ask_experiments verbatim, not the parameterized ask_experiments_structured sibling"
+  - id: V34
+    claim: "analyze_dataset (datasets.py:85) and run_analysis (services/analysis.py:32, two separate hypotheses: sink and return-taint) all point at exec(code, scope) on model-generated code from a user question, with no sandboxing of the exec scope"
+  - id: V37
+    claim: "prepare_dataset (datasets.py:98) reaches run_loader_script's exec(script_src, scope) on the dataset's own stored loader_script, with trust_remote_code defaulting true"
+  - id: V41
+    claim: "predict_remote (inference.py:123) reaches handle_runner_call's pickle.loads(payload) on a base64-decoded runner_call_b64 from the request body"
+  - id: V42
+    claim: "[discover] api/auth.py:45: registration takes 'role' verbatim from the signup JSON, so any caller self-assigns admin"
+  - id: V44
+    claim: "[discover] api/auth.py:91: the service-token exchange trusts a forged token's role claim with no signature validation"
+  - id: V45
+    claim: "redirect_after_login (auth.py:98): request.args.get('next') is passed straight to redirect() with no validation -- framed by the model as CRLF/header-injection risk rather than open redirect, but the same unvalidated-next defect and the same declared sink"
+  - id: V49
+    claim: "[discover] api/auth.py:203 and :224: an SVG avatar is accepted after only a '<svg' substring check and served inline as image/svg+xml with no nosniff -- two independent hits, upload side and serve side"
+  - id: V51
+    claim: "[discover] api/experiments.py:149: import_experiment calls jsonpickle.decode on the request payload -- one of DISC-6's three headline finds, reproduced here"
+  - id: V53
+    claim: "import_hub (models.py:185) accepts a base64 zip, extracted and hubconf.py imported via importlib with no signature check, by load_from_hub"
+  - id: V60
+    claim: "[discover] agent/core.py:168: the CONFIRMATION_MARKER destructive-action gate can be satisfied by text the attacker's own message injected into the conversation, not just a genuine human confirmation"
+  - id: V64
+    claim: "[discover] api/agent.py:199: preference-merge namespace keys are unvalidated, so any caller can overwrite an arbitrary runtime setting including the strict_paths security toggle"
+  - id: V74
+    claim: "login (ui/views.py:87): request.form.get('next') passed straight to redirect() with no validation"
+  - id: V77
+    claim: "chat (views.py:147) reaches render_markdown's unescaped src/href substitution, allowing a javascript: URL or unsanitised markdown image/link through to the rendered HTML"
+  - id: V81
+    claim: "[discover] api/experiments.py:60: the count endpoint's 'owner' query parameter defaults to the caller's own id but is not restricted to it -- IDOR"
+  - id: V82
+    claim: "[discover] api/experiments.py:48 and :68: neither the search endpoint nor by_tag filters by owner_id at all -- two independent hits on the gap the manifest's own V82 notes say spans all four experiment-search functions"
+  - id: V35
+    claim: "[discover] agent/native.py:98: run_native_loop's bare getattr dispatch reaches unadvertised actions, not just the _PUBLIC_ACTIONS allow-list dispatch_public exists for"
+
+  # --- unmatched: real, no manifest entry ---
+  - id: ~
+    claim: "create_model (models.py:41) passes the user-controlled 'name' field to store_artifact, which runs it through the same bypassable sanitize_path used on the read side (V03) before an unrestricted open(path, 'wb') write -- a write-side twin of V03 with no matching sink in the manifest (V03's sink is read_artifact; V10's is a different function, save_with_metadata, keyed off storage_path, not name). Two upheld hypotheses (sink + return-taint) on the same defect"
+  - id: ~
+    claim: "[discover] api/auth.py:152 (reset_confirm) and :188 (reset_confirm_code): both accept an empty new_password with no validation, hashing '' as the new credential. Not a decoy hit despite landing on D23's function: D23's safety claim is about token derivation, not password validation. Identical to a finding already recorded in open-rowan's own BACKLOG.md (DISC-6) from an earlier discover run against this same benchmark"
