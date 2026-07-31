@@ -1,0 +1,221 @@
+tool: Open-Rowan (--authz)
+version: "0.2.0 (b4532f4)"
+category: Static/taint
+date: 2026-07-30
+
+manifest_size: 82
+blind_copy_commit: 6e51527
+raw_output: raw/open-rowan-authz.json
+
+notes: >
+  `open-rowan scan <blind-copy> --authz`, no config, no custom rules, no
+  baseline. 173 findings (146 code, 27 SCA) in 11.5s. The default-flag run is
+  committed alongside as raw/open-rowan-default.json.
+
+  This supersedes nothing. The existing "Open-Rowan 40/82 (49%), 3 FPs" row in
+  SCOREBOARD.md's unverified table was a different, unrecorded run against a
+  smaller manifest and a leaky blind copy. Per commit 0c63c5d that row was
+  itself a flag-ON number (the flag-off figure recorded at the time was 39%),
+  so it is not comparable to either column below.
+
+  ANCHORING, and it is the thing that most changed this score. Open-Rowan
+  reports cross-file flows, so a finding's file/line often sits at the SOURCE
+  function while the message names the sink. An earlier draft of this file
+  scored by sink-function co-location only and threw away several correctly
+  reasoned findings for being anchored one frame up. V03 is the clearest case:
+  the engine emitted "get_blob() reaches a sink via read_artifact() ... path is
+  passed through sanitize_path(), but its implementation does a single
+  non-recursive strip of a literal traversal sequence, which is bypassable
+  (e.g. '....//' collapses to '../' after one pass)". That is a complete and
+  correct statement of V03, anchored at api/models.py, not at the declared sink
+  in services/registry.py. Scoring rule used here: a finding credits an entry
+  if it is anchored in that entry's declared SOURCE or SINK function AND its
+  message describes that entry's defect. Location alone never suffices.
+
+  That rule matters because source-anchoring is otherwise wildly generous: five
+  separate manifest entries (V10, V17, V26, V31, V52) declare create_model() as
+  their source, so one finding there would credit all five on location alone.
+  Only V10 is credited, because only V10's defect is what the message
+  describes.
+
+  THREE NUMBERS FROM ONE SCAN. On identical output:
+    co-location, sink only          41/82 (50%)
+    co-location AND CWE agreement   28/82 (34%)
+    adjudicated per the rule above  36/82 (44%)  <- the score recorded here
+  The spread is not noise, it is the rubric. Co-location alone credits V80 (a
+  missing HttpOnly flag) because an open-redirect rule fired elsewhere in the
+  same login(), and V81 (an IDOR) because a SQLi rule fired on the same line.
+  CWE agreement discards a correct eval() finding for reporting CWE-94 where
+  the key says CWE-95.
+
+  THE --authz FLAG. Open-Rowan's object-level authorization pass is off by
+  default. Adjudicated the same way both times:
+    default   28/82 (34%), 140 findings
+    --authz   36/82 (44%), 173 findings
+  The delta is exactly 8 entries, V65/V66/V68-V73, every one an IDOR. (V12 is
+  credited in BOTH runs: the default run already reached it through a
+  cross-file finding, so it is not part of the delta. V81 is co-located in both
+  runs via a SQLi rule and is credited in neither.)
+
+  PRECISION. Two decoy false positives:
+  - D06 render_builtin_report: NS-SSTI-001 fires on `_env.from_string(...)`
+    without noticing the filename is always one of a fixed literal set from
+    BUILTIN_KINDS. The call-site-sensitivity test, working as designed.
+  - D10 ask_experiments_structured: NS-SQLI-005 fires on the f-string without
+    noticing the column is allow-listed and the value is bound as :value.
+
+  A third wrong call that is NOT scored as a decoy FP because the function is
+  not a decoy: AUTHZ-BOLA-001 on add_team_member, which does check
+  `g.user_id not in team.members` before writing. It is a false positive in
+  substance, it is --authz-only, and honest precision for the flag is therefore
+  "8 real, 1 wrong" on the authz tier rather than a clean sweep. The pass did
+  not fire on any of the 10 correctly-scoped decoys (D41-D50) sitting beside
+  the real ones.
+
+  THE 33 AUTHZ FINDINGS. The flag produces 33 AUTHZ-BOLA-001 hits, and only 9
+  are adjudicated above (8 credited + add_team_member). The remaining 24 land
+  on handlers that really do fetch an object by caller-supplied id with no
+  ownership check, but which the manifest does not key as IDOR entries:
+  get_dataset, prepare_dataset, run, export_experiment, evaluate, predict,
+  predict_label, train_row, get_model, convert, render_annotation,
+  fetch_artifact, load_verified, upload_config, model_detail and others. They
+  are recorded as unmatched, not as false positives, and four of them were
+  independently flagged as unkeyed gaps by the Sonnet and Haiku sweeps
+  (load_verified by Sonnet; run, evaluate and get_dataset by Haiku). Three
+  independent reviewers converging on the same set is a strong signal the key
+  under-keys missing-authorization bugs, in the same way it did before V81 and
+  V82 were added.
+
+  One near-miss worth recording. AUTHZ-BOLA-001 fires on the predict_label
+  ROUTE handler in api/inference.py, which is a different function from the
+  D31 decoy (predict_label in ml/predict.py). D31's safety claim is about
+  model extraction (only an argmax label leaves the API), which is orthogonal
+  to authorization, and the route handler's missing ownership check is real.
+  Not scored as a decoy FP.
+
+  CREDITED DESPITE A CWE MISMATCH (5): V15 and V34 (key says CWE-95, rule
+  reports CWE-94 for the same eval/exec defect); V19 (key says CWE-79, rule
+  NS-SSTI-001 reports CWE-1336 on the same misconfigured Environment); V46
+  (key says CWE-640, rule reports CWE-328 "MD5 is broken" on
+  derive_recovery_code, which is the mechanism of the bug, consistent with the
+  same call made in results/bandit.yaml); V06 (generic cross-file rule, but
+  the message reads "URL parsing validated but fetcher bypasses the check",
+  which is exactly the is_safe_url gap).
+
+  REJECTED AS ACCIDENTAL CO-LOCATION (8): V23, V36, V53, V55, V76, V80, V81,
+  V83. In each case a finding lands in the right function while describing a
+  different bug. V53 (hubconf.py exec at install) got a tarfile zip-slip rule.
+  V55 (model extraction) and V76 (stored XSS) each got an unrelated BOLA
+  finding. V83 (STORED XSS via a model name) and V75 (REFLECTED XSS via the
+  search query) share the search() sink; the single TNT-XSS-001 there says
+  "reflected XSS", so V75 is credited and V83 is not. Scoring the finding as
+  described, not the symbol.
+
+findings:
+  # --- deserialization ---
+  - id: V01
+    claim: "NS-DESER-001/004 + ns-aiml-030/031 on ml/model_loader.py:28-32 (_deserialize): pickle.load, joblib.load, torch.load without weights_only"
+  - id: V02
+    claim: "NS-DESER-003 + ns-aiml-069 on services/config_loader.py:20 (load_pipeline_config): yaml.load without SafeLoader"
+  - id: V13
+    claim: "ns-aiml-032 on ml/features.py:37 (load_feature_cache): np.load with allow_pickle=True"
+  - id: V41
+    claim: "NS-DESER-001 on ml/runner.py:24 (handle_runner_call): pickle.loads on the runner protocol payload"
+
+  # --- injection ---
+  - id: V05
+    claim: "NS-SSTI-001 on services/reports.py:31 (render_report): template rendered from a user-controlled string"
+  - id: V21
+    claim: "NS-SSTI-001 on services/reports.py:31 -- same sink as V05, reached on the second-order cache path"
+  - id: V08
+    claim: "NS-SQLI-005 on services/experiments.py:31 (search_experiments): interpolated f-string query"
+  - id: V22
+    claim: "NS-SQLI-005 on services/experiments.py:45 (count_by_owner): interpolated f-string in a numeric context"
+  - id: V09
+    claim: "NS-CMDI-002 + NS-INJECT-003 on ml/convert.py:25 (convert_model): subprocess shell=True"
+  - id: V11
+    claim: "NS-CMDI-002 + NS-INJECT-003 on workers/tasks.py:65 (_inspect_async): subprocess shell=True in the worker"
+  - id: V28
+    claim: "NS-CMDI-002 + NS-INJECT-003 on services/retention.py:15 (purge): subprocess shell=True"
+  - id: V18
+    claim: "NS-INJECT-001 on agent/tools.py:42 (calc): eval executes arbitrary Python"
+  - id: V15
+    claim: "ns-aiml-046 on ml/metrics.py:30 (evaluate_metric): eval/exec/compile. CWE-94 reported against the key's CWE-95 -- see notes"
+  - id: V34
+    claim: "NS-INJECT-002 + ns-aiml-046 on services/analysis.py:36 (run_analysis): exec of model-generated code, plus a 3-hop cross-file flow from analyze_dataset. CWE-94 vs key CWE-95"
+  - id: V37
+    claim: "NS-AIML-001 + ns-aiml-113 on ml/dataset.py:73-85 (run_loader_script): trust_remote_code executes the dataset's own loader"
+
+  # --- files / paths ---
+  - id: V04
+    claim: "NS-PATH-005 on ml/dataset.py:34 (extract_archive): tarfile extractall with no path filter -- zip slip"
+  - id: V03
+    claim: "CF-SINK-001 anchored at api/models.py:76 (get_blob, V03's declared source): 'reaches a sink via read_artifact() ... sanitize_path() does a single non-recursive strip of a literal traversal sequence, which is bypassable (e.g. ....// collapses to ../ after one pass)'. Names the sink and the exact bypass"
+  - id: V10
+    claim: "CF-SINK-001 anchored at api/models.py:38 (create_model, V10's declared source): 'reaches a sink via save_with_metadata() ... path built from a base-dir join with a function parameter reaches os.makedirs() with no sanitizer applied'"
+  - id: V24
+    claim: "CF-SINK-001 anchored at api/models.py:149 (raw_artifact, V24's declared source): 'reaches a sink via read_raw() ... base-dir join with a function parameter reaches open() with no sanitizer applied'. Identifies the unsanitized read; says nothing about the strict_paths gate"
+
+  # --- ssrf ---
+  - id: V06
+    claim: "CF-SINK-001 on services/fetcher.py:21 (fetch), message 'URL parsing validated but fetcher bypasses the check' -- the is_safe_url gap that is V06. Credited on the message, not the rule id"
+
+  # --- auth ---
+  - id: V44
+    claim: "NS-AUTH-101 on core/security.py:70 (verify_service_token): JWT signature verification disabled"
+  - id: V45
+    claim: "NS-REDIRECT-001 + ns-fw-py-003 on api/auth.py:98 (redirect_after_login): unvalidated redirect target"
+  - id: V46
+    claim: "NS-CRYPTO-001 on core/security.py:113 (derive_recovery_code): MD5. Reported as weak-hash (CWE-328) rather than predictable-token (CWE-640) -- see notes"
+
+  # --- object-level authorization (--authz pass only, except V12) ---
+  - id: V12
+    claim: "AUTHZ-BOLA-001 on api/models.py:65 (download_artifact): reads Model keyed by user-controlled id with no ownership check. Also reached in the default run via CF-SINK-001"
+  - id: V65
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:112 (get_note): PrivateNote keyed by user-controlled input, unscoped"
+  - id: V66
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:123 (get_note_branchy): ownership enforced only on the ?mode=strict branch"
+  - id: V68
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:191 (get_team_note): TeamNote returned with no membership check"
+  - id: V69
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:202 (get_team_note_branchy): membership enforced only on the strict branch"
+  - id: V70
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:245 (get_task): Task returned with no project or ownership check"
+  - id: V71
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:256 (get_task_under_project): task looked up by task_id alone, project_id never scopes it"
+  - id: V72
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:296 (get_article): unpublished drafts served to any user"
+  - id: V73
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:308 (get_article_branchy): status gate applied only with ?strict=1"
+
+  # --- dashboard ---
+  - id: V74
+    claim: "NS-REDIRECT-001 + ns-fw-py-003 on ui/views.py:87 (login): unvalidated `next` form field"
+  - id: V77
+    claim: "TNT-XSS-001 on ui/views.py:148 (chat): assistant answer reflected into the response unescaped"
+  - id: V75
+    claim: "TNT-XSS-001 on ui/views.py:134 (search): 'user input reflected in response without sanitization -- reflected XSS'. Credited as the reflected variant, not the stored one (V83) -- see notes"
+  - id: V19
+    claim: "NS-SSTI-001 on services/reports.py:72 (render_page): the unsandboxed Environment that is the autoescape=False defect. Reported as SSTI (CWE-1336) rather than XSS (CWE-79) -- see notes"
+
+  # --- false positives on decoys ---
+  - id: D06
+    claim: "NS-SSTI-001 on services/reports.py:46 (render_builtin_report) -- the filename is always one of a fixed literal set from BUILTIN_KINDS, never caller-controlled"
+  - id: D10
+    claim: "NS-SQLI-005 on services/experiments.py:83 (ask_experiments_structured) -- the column is allow-listed against _ASK_ALLOWED_COLUMNS and the value is bound as :value"
+
+  # --- unmatched ---
+  - id: ~
+    claim: "AUTHZ-BOLA-001 on api/authz_demo.py:54 (add_team_member) -- the handler does check `g.user_id not in team.members` before writing. A false positive in substance, but not on a keyed decoy. --authz only"
+  - id: ~
+    claim: "AUTHZ-BOLA-001 on 24 further handlers with genuinely absent ownership checks that the key does not enumerate: get_dataset, prepare_dataset, run, export_experiment, evaluate, predict, predict_label, train_row, get_model, convert, render_annotation, fetch_artifact, load_verified, upload_config, model_detail and others. Candidates for the key, not false positives -- four were independently flagged by the Sonnet and Haiku sweeps"
+  - id: ~
+    claim: "ns-auth-001 rate-limiting notices on api/auth.py, api/authz_demo.py and ui/views.py login handlers -- a real hardening gap, not a keyed entry"
+  - id: ~
+    claim: "TNT-HEADER-001 CRLF-in-header findings co-reported with every open-redirect hit (api/auth.py:98, ui/views.py:87) -- the redirect is the defect, the header claim is a duplicate framing"
+  - id: ~
+    claim: "ns-aiml-071 decompression-bomb notice on ml/dataset.py:34, alongside the zip-slip hit credited as V04"
+  - id: ~
+    claim: "ns-aiml-120 (unbounded agent loop / denial of wallet) fired once, on the `while True:` queue-drain loop in workers/runner.py:32, which is an ordinary worker daemon loop and correct. It did NOT fire on run_agent_extended, the V36 sink, so V36 is scored as missed even though the engine ships a rule for exactly that bug class. Wrong-loop match, not a decoy, so unmatched rather than a decoy FP"
+  - id: ~
+    claim: "27 SCA/dependency findings against the declared requirements -- out of scope for a key of planted source bugs"
