@@ -20,9 +20,7 @@ results with no evidence trail, for two independent reasons:
 2. **None of it is independently verifiable.** No raw output, no saved
    prompt, no record of a review happening the way it's described.
 
-Treat every number below as unconfirmed, not merely imprecise. The only
-scores in this file with an artifact you can check yourself are under
-[**Reproducible results**](#reproducible-results), further down.
+Treat every number below as unconfirmed, not merely imprecise.
 
 ## Scores (unverified — see the caveat above)
 
@@ -57,52 +55,6 @@ Pysa                  ██████░░░░░░░░░░░░░�
 † Scored against a smaller, earlier version of the manifest. Credited with
 zero for vulnerabilities added since — itself unverifiable, for the same
 reason as everything else in this table.
-
-## Reproducible results
-
-Runs recorded properly: raw output committed, every finding mapped to a
-manifest id in writing, score computed rather than asserted:
-
-<!-- generated: python benchmarks/score.py --markdown -->
-
-| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched |
-|------|----------|--------|--------------|-----------|
-| Claude Sonnet 5, 5-region sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 |
-| Claude Haiku 4.5, 5-region sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 |
-| Bandit | Static/pattern | 21/82 (26%) | 2 | 10 |
-
-Everything above this section lacks an artifact in
-[`benchmarks/results/`](benchmarks/results/) and can't be moved down here
-without re-running it. The rows below use the same partitioned-sweep method,
-run against a clean fixture with the prompt in
-[`sweep_prompt.md`](benchmarks/sweep_prompt.md).
-
-```bash
-python benchmarks/score.py            # scores every run in benchmarks/results/
-python benchmarks/score.py --markdown # regenerate the table above
-```
-
-The Bandit row is deliberately unflattering to the *method* rather than the
-tool: Bandit reports dangerous sinks, never source-to-sink flows, so scoring
-it against this manifest at all requires crediting sink matches instead of
-flows. That judgement, and the two others that move its number, are written
-down in [`results/bandit.yaml`](benchmarks/results/bandit.yaml) where you can
-disagree with them line by line. That is the whole point of the directory.
-
-The Sonnet and Haiku rows are the first scores in this file measured on the
-clean fixture, so (unlike everything above) their zero-false-positive
-columns mean what they look like they mean. Both runs were also told to state
-what they inspected and believed safe; neither made a wrong safety claim, and
-between them they correctly named the same ~20 genuinely-safe functions
-(`download_artifact`, `search_by_tag`, `ask_experiments_structured`,
-`render_card_markdown`, `load_document`, `fetch_external`, and the ten scoped
-`authz_demo.py` variants among them). [`results/claude-sonnet-sweep.yaml`](benchmarks/results/claude-sonnet-sweep.yaml)
-and [`results/claude-haiku-sweep.yaml`](benchmarks/results/claude-haiku-sweep.yaml)
-record the id mapping and every judgement call, including four findings each
-run made that describe real gaps with no matching manifest entry: the same
-shape as V81/V82, which is how those two got added in the first place. One of
-Sonnet's four was a genuine route-registration bug, now covered by a
-regression test (`test_no_duplicate_routes`).
 
 ## How scoring works
 

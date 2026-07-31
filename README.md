@@ -8,7 +8,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
 [![Planted vulnerabilities: 82](https://img.shields.io/badge/planted%20vulnerabilities-82-orange.svg)](benchmarks/ground_truth.yaml)
-[![Best verified score: 80%](https://img.shields.io/badge/best%20verified%20score-80%25-red.svg)](SCOREBOARD.md#reproducible-results)
+[![Best reported score: 57%](https://img.shields.io/badge/best%20reported%20score-57%25-red.svg)](SCOREBOARD.md)
 [![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
 
 **A realistic MLOps web app with 82 security bugs planted in it on purpose:
@@ -43,11 +43,8 @@ Every one of the 82 bugs is real and has a test that proves it's exploitable.
 a mapping anyone can check.** They're self-reported, with no evidence trail
 behind them, and some were reviewed against blind copies that were looser
 about hiding the answer key than the current exporter is. Treat every number
-above as unconfirmed, not merely imprecise. Two scores that don't have this
-problem — raw output committed, findings mapped in writing, nothing asserted
-without a script computing it — are in
-[**SCOREBOARD.md**](SCOREBOARD.md) under "Reproducible results." Full
-accounting there too.
+above as unconfirmed, not merely imprecise. Full accounting in
+[**SCOREBOARD.md**](SCOREBOARD.md).
 
 ---
 
