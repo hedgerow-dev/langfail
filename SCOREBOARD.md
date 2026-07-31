@@ -20,7 +20,30 @@ results with no evidence trail, for two independent reasons:
 2. **None of it is independently verifiable.** No raw output, no saved
    prompt, no record of a review happening the way it's described.
 
-Treat every number below as unconfirmed, not merely imprecise.
+Treat every number below as unconfirmed, not merely imprecise. The scores
+that don't have this problem, raw output committed, every finding mapped to
+an id in writing, score computed by a script, are in
+[`benchmarks/results/`](benchmarks/results/):
+
+<!-- generated: python benchmarks/score.py --markdown -->
+
+| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched |
+|------|----------|--------|--------------|-----------|
+| Claude Sonnet 5, 5-region sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 |
+| Claude Haiku 4.5, 5-region sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 |
+| Open-Rowan (--authz) | Static/taint | 36/82 (44%) | 2 | 7 |
+| Open-Rowan hunt --discover (deepseek-chat) | Agentic pipeline | 33/82 (40%) | 0 | 2 |
+| Bandit | Static/pattern | 21/82 (26%) | 2 | 10 |
+
+```bash
+python benchmarks/score.py            # scores every run in benchmarks/results/
+python benchmarks/score.py --markdown # regenerate the table above
+```
+
+Not comparable row-to-row across the two Open-Rowan entries: `--authz` scores
+the raw static pass, `hunt --discover` scores only what its own LLM triage
+stood behind after adversarial verification. Full notes on every judgement
+call in each run's `results/<tool>.yaml`.
 
 ## Scores (unverified — see the caveat above)
 
