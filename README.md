@@ -21,13 +21,14 @@ code review.**
 
 ---
 
-## Eleven tools have tried. The best single-pass one found 57%.
+## Twelve tools have tried. The best single-pass one found 57%.
 
 ```
 Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  57%
 VVAH + DeepSeek   ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
-Open-Rowan        ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
 GPT-5.5           ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
+Open-Rowan‡       ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
+Open-Rowan hunt‡  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  40%
 Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
 CodeQL            █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
 Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  30%
@@ -39,11 +40,13 @@ Pysa              ██████░░░░░░░░░░░░░░�
 
 Every one of the 82 bugs is real and has a test that proves it's exploitable.
 
-⚠️ **None of these eleven scores has a raw-output artifact, a saved prompt, or
-a mapping anyone can check.** They're self-reported, with no evidence trail
-behind them, and some were reviewed against blind copies that were looser
-about hiding the answer key than the current exporter is. Treat every number
-above as unconfirmed, not merely imprecise. Full accounting in
+⚠️ **None of these scores has a raw-output artifact, a saved prompt, or
+a mapping anyone can check, except the two marked ‡.** The other ten are
+self-reported, with no evidence trail behind them, and some were reviewed
+against blind copies that were looser about hiding the answer key than the
+current exporter is. Treat every number above as unconfirmed, not merely
+imprecise, except Open-Rowan's two: raw output committed, findings mapped to
+manifest ids, scored by a script. Full accounting in
 [**SCOREBOARD.md**](SCOREBOARD.md).
 
 ---

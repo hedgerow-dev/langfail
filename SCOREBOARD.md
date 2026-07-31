@@ -6,9 +6,9 @@
 
 ## A caveat before the numbers
 
-None of the eleven scores below have a raw-output artifact, a saved prompt,
-or a per-finding id mapping anywhere in this repository. They're self-reported
-results with no evidence trail, for two independent reasons:
+None of the other ten scores below have a raw-output artifact, a saved
+prompt, or a per-finding id mapping anywhere in this repository. They're
+self-reported results with no evidence trail, for two independent reasons:
 
 1. **Some of the blind copies they were reviewed against were leaky.**
    Compiled test bytecode with assertion messages intact, docstrings that
@@ -20,38 +20,25 @@ results with no evidence trail, for two independent reasons:
 2. **None of it is independently verifiable.** No raw output, no saved
    prompt, no record of a review happening the way it's described.
 
-Treat every number below as unconfirmed, not merely imprecise. The scores
-that don't have this problem, raw output committed, every finding mapped to
-an id in writing, score computed by a script, are in
-[`benchmarks/results/`](benchmarks/results/):
+Treat every number below as unconfirmed, not merely imprecise — except the
+two rows marked ‡. Those are Open-Rowan, rerun against a fresh blind copy
+with raw output committed and every finding mapped to an id in
+[`benchmarks/results/open-rowan.yaml`](benchmarks/results/open-rowan.yaml)
+and
+[`open-rowan-hunt.yaml`](benchmarks/results/open-rowan-hunt.yaml). They
+replace the tool's old, unverified numbers in this same list rather than
+sitting in a separate table, because they measure the same subject the old
+row did (Static/taint) plus one new one (Agentic pipeline, `hunt --discover`)
+that didn't have an entry here before.
 
-<!-- generated: python benchmarks/score.py --markdown -->
-
-| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched |
-|------|----------|--------|--------------|-----------|
-| Claude Sonnet 5, 5-region sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 |
-| Claude Haiku 4.5, 5-region sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 |
-| Open-Rowan (--authz) | Static/taint | 36/82 (44%) | 2 | 7 |
-| Open-Rowan hunt --discover (deepseek-chat) | Agentic pipeline | 33/82 (40%) | 0 | 2 |
-| Bandit | Static/pattern | 21/82 (26%) | 2 | 10 |
-
-```bash
-python benchmarks/score.py            # scores every run in benchmarks/results/
-python benchmarks/score.py --markdown # regenerate the table above
-```
-
-Not comparable row-to-row across the two Open-Rowan entries: `--authz` scores
-the raw static pass, `hunt --discover` scores only what its own LLM triage
-stood behind after adversarial verification. Full notes on every judgement
-call in each run's `results/<tool>.yaml`.
-
-## Scores (unverified — see the caveat above)
+## Scores (twelve tools, mostly unverified — see the caveat above)
 
 ```
 Claude Opus           ███████████████████████░░░░░░░░░░░░░░░░░  57%
 VVAH + DeepSeek       ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
-Open-Rowan            ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
 GPT-5.5               ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
+Open-Rowan (--authz)  ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
+Open-Rowan hunt       ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  40%
 Kimi K3               ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
 CodeQL                █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
 Claude Sonnet         ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  30%
@@ -65,8 +52,9 @@ Pysa                  ██████░░░░░░░░░░░░░�
 |------|----------|--------|--------------------------------|
 | Claude Opus† | LLM review | 47/82 (57%) | 0 |
 | VVAH + DeepSeek | Agentic pipeline | 42/82 (51%) | 0 |
-| Open-Rowan (Hedgerow.dev) | Static/taint | 40/82 (49%) | 3 |
 | GPT-5.5† | LLM review | 36/82 (44%) | 2 |
+| Open-Rowan (--authz)‡ | Static/taint | 36/82 (44%) | 2 |
+| Open-Rowan hunt --discover (deepseek-chat)‡ | Agentic pipeline | 33/82 (40%) | 0 |
 | Kimi K3† | LLM review | 29/82 (35%) | 0 |
 | CodeQL† | Static/taint | 26/82 (32%) | 4 |
 | Claude Sonnet† | LLM review | 25/82 (30%) | 0 |
@@ -78,6 +66,30 @@ Pysa                  ██████░░░░░░░░░░░░░�
 † Scored against a smaller, earlier version of the manifest. Credited with
 zero for vulnerabilities added since — itself unverifiable, for the same
 reason as everything else in this table.
+
+‡ Verified: raw output committed, every finding mapped to a manifest id,
+score computed by `benchmarks/score.py`, not typed in. Not comparable to
+each other: `--authz` scores the raw static pass, `hunt --discover` scores
+only what its own LLM triage stood behind after adversarial verification.
+Regenerate both from `benchmarks/results/`:
+
+```bash
+python benchmarks/score.py            # scores every run in benchmarks/results/
+python benchmarks/score.py --markdown # emits a table for the current results/ dir
+```
+
+## Two more verified runs that don't fit this table
+
+[`results/claude-sonnet-sweep.yaml`](benchmarks/results/claude-sonnet-sweep.yaml)
+(66/82, 80%) and
+[`results/claude-haiku-sweep.yaml`](benchmarks/results/claude-haiku-sweep.yaml)
+(41/82, 50%) are also fully verified, but aren't merged above: they're a
+5-region partitioned sweep, not a single-pass review like the Claude Sonnet
+and Claude Haiku rows already in the table, and `sweep_prompt.md` says
+explicitly that a partitioned run isn't comparable to a single-pass run of
+the same model. [`results/bandit.yaml`](benchmarks/results/bandit.yaml)
+(21/82, 26%) is Bandit alone against a clean blind copy, not the older,
+differently-scored "Bandit + Semgrep" combination above.
 
 ## How scoring works
 
