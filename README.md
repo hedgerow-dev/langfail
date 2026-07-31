@@ -21,11 +21,12 @@ code review.**
 
 ---
 
-## Ten tools have tried. The best single-pass one found 57%.
+## Eleven tools have tried. The best single-pass one found 57%.
 
 ```
 Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  57%
 VVAH + DeepSeek   ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
+Open-Rowan        ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
 GPT-5.5           ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
 Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
 CodeQL            █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
@@ -38,7 +39,7 @@ Pysa              ██████░░░░░░░░░░░░░░�
 
 Every one of the 82 bugs is real and has a test that proves it's exploitable.
 
-⚠️ **None of these ten scores has a raw-output artifact, a saved prompt, or
+⚠️ **None of these eleven scores has a raw-output artifact, a saved prompt, or
 a mapping anyone can check.** They're self-reported, with no evidence trail
 behind them, and some were reviewed against blind copies that were looser
 about hiding the answer key than the current exporter is. Treat every number

@@ -6,7 +6,7 @@
 
 ## A caveat before the numbers
 
-None of the ten scores below have a raw-output artifact, a saved prompt,
+None of the eleven scores below have a raw-output artifact, a saved prompt,
 or a per-finding id mapping anywhere in this repository. They're self-reported
 results with no evidence trail, for two independent reasons:
 
@@ -45,17 +45,12 @@ the raw static pass, `hunt --discover` scores only what its own LLM triage
 stood behind after adversarial verification. Full notes on every judgement
 call in each run's `results/<tool>.yaml`.
 
-Open-Rowan is not in the list below anymore. It was, at 40/82 (49%), until
-the two rows above replaced it with a real number this run's provenance can
-be checked against. Same logic as the deleted 91% Opus row: once a verified
-figure exists for the same subject, the unverifiable one next to it doesn't
-add information, it just invites someone to average the two.
-
 ## Scores (unverified — see the caveat above)
 
 ```
 Claude Opus           ███████████████████████░░░░░░░░░░░░░░░░░  57%
 VVAH + DeepSeek       ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
+Open-Rowan            ████████████████████░░░░░░░░░░░░░░░░░░░░  49%
 GPT-5.5               ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
 Kimi K3               ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
 CodeQL                █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
@@ -70,6 +65,7 @@ Pysa                  ██████░░░░░░░░░░░░░�
 |------|----------|--------|--------------------------------|
 | Claude Opus† | LLM review | 47/82 (57%) | 0 |
 | VVAH + DeepSeek | Agentic pipeline | 42/82 (51%) | 0 |
+| Open-Rowan (Hedgerow.dev) | Static/taint | 40/82 (49%) | 3 |
 | GPT-5.5† | LLM review | 36/82 (44%) | 2 |
 | Kimi K3† | LLM review | 29/82 (35%) | 0 |
 | CodeQL† | Static/taint | 26/82 (32%) | 4 |
