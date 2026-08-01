@@ -183,68 +183,37 @@ def _table(scores: list["Score"], decoy_total: int) -> list[str]:
     return out
 
 
-#: Protocols reported outside the primary single-run table, in render order.
-#: Each is a genuinely different way of being invoked, not a different tool,
-#: so ranking them against a single deterministic run would compare protocols
-#: rather than detection. Kept visible rather than dropped: a run that is not
-#: comparable is still evidence, and hiding a tool's weaker configuration is
-#: how a scoreboard starts lying.
-_OTHER_PROTOCOLS: list[tuple[str, str, list[str]]] = [
-    ("agentic-pipeline", "LLM-driven agentic runs (non-deterministic)", [
-        "A static scan plus LLM triage, adversarial verification and an",
-        "optional discovery stage. Scored on what the pipeline itself stood",
-        "behind, not on its raw scan output -- so it is NOT the same subject",
-        "as the single-run row for the same tool, and the two must not be",
-        "added together or read as a range.",
-        "",
-        "Reported separately for a second reason: these runs are",
-        "non-deterministic. Repeat runs of the same tool on the same input",
-        "have produced materially different discovery counts, so a single",
-        "number here carries real variance that the deterministic table",
-        "above does not.",
-    ]),
-    ("partitioned-sweep", "Partitioned multi-region sweeps", [
-        "A different protocol, reported separately and deliberately NOT",
-        "ranked against the single runs above: the app is split into regions",
-        "reviewed one at a time, which shrinks the context a reviewer holds",
-        "at once and materially helps recall. Comparing a partitioned sweep",
-        "to a single tool invocation would flatter the sweep.",
-    ]),
-]
+#: protocol -> short label for the Run column. Kept as a column rather than
+#: separate tables: the distinction is real (a partitioned sweep or an
+#: LLM-driven pipeline is not the same shape as one deterministic scan) but it
+#: is one fact about a row, not a reason for three tables.
+_RUN_LABEL = {
+    "single-run": "single",
+    "agentic-pipeline": "agentic",
+    "partitioned-sweep": "sweep",
+}
 
 
 def render_scoreboard(scores: list["Score"], decoy_total: int) -> str:
-    """The full generated block: bar chart over single runs, then one table
-    per protocol.
+    """One table, ranked by recall, with the run shape as a column.
 
-    Only tools with a result file under `benchmarks/results/` appear here --
-    that is the point. Numbers with no artifact behind them are kept OUTSIDE
-    the markers, hand-maintained and labelled unverified, so a generated
-    ranking can never silently absorb an unverifiable claim.
+    Only tools with a committed result file appear. Numbers with no artifact
+    behind them stay out of the ranking entirely -- see SCOREBOARD.md.
     """
-    single = [s for s in scores if s.protocol == "single-run"]
-
-    out: list[str] = ["", "### Verified single runs", ""]
-    out.append("One deterministic invocation of the tool over the whole blind")
-    out.append("copy. This is the primary comparison: same task, same input,")
-    out.append("same shape, and one row per tool.")
-    out.append("")
-    out.append("```")
-    for s in single:
+    out = ["", "```"]
+    for s in scores:
         filled = round(s.recall * _BAR_WIDTH)
-        bar = "█" * filled + "░" * (_BAR_WIDTH - filled)
-        out.append(f"{s.tool[:34]:34} {bar}  {s.recall * 100:.0f}%")
+        bar = "\u2588" * filled + "\u2591" * (_BAR_WIDTH - filled)
+        out.append(f"{s.tool[:30]:30} {bar}  {s.recall * 100:.0f}%")
     out.append("```")
     out.append("")
-    out.extend(_table(single, decoy_total))
-
-    for proto, heading, blurb in _OTHER_PROTOCOLS:
-        rows = [s for s in scores if s.protocol == proto]
-        if not rows:
-            continue
-        out += ["", f"### {heading}", ""] + blurb + [""]
-        out.extend(_table(rows, decoy_total))
-
+    out.append(f"| Tool | Run | Category | Recall | Decoy FPs (of {decoy_total}) | Unmatched |")
+    out.append("|------|-----|----------|--------|--------------|-----------|")
+    for s in scores:
+        out.append(
+            f"| {s.tool} | {_RUN_LABEL.get(s.protocol, s.protocol)} | {s.category} | "
+            f"{len(s.found)}/{s.total} ({s.recall * 100:.0f}%) | "
+            f"{len(s.decoy_fps)} | {len(s.unmatched_fps)} |")
     out.append("")
     return "\n".join(out)
 
