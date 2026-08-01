@@ -103,3 +103,76 @@ partitioned, how many reviewers, and that it used `sweep_prompt.md` v1.
 
 A partitioned run is **not** comparable to a single-pass run of the same
 model. Keep them in separate rows.
+
+---
+
+# The single-run prompt (whole-app, v1)
+
+For a **single run**: one reviewer reads the whole blind copy in one context,
+which is the shape a scanner invocation has and therefore the shape that
+compares against CodeQL, Semgrep, Bandit and Rowan on the board.
+
+Not comparable to the partitioned sweep above — that is the point of the `Run`
+column in SCOREBOARD.md. The sweep gives each reviewer a fifth of the app to
+hold at once; this does not.
+
+Deliberately does **not** state how many bugs are planted, or that any are.
+Telling a reviewer "find 82 bugs" changes how long it looks and how readily it
+reports marginal findings, and no scanner on the board gets that hint.
+
+The guidance about cross-boundary taint, bypassable helpers and multiple
+findings per function mirrors the sweep prompt, so the two differ in
+partitioning rather than in what the reviewer is asked to do.
+
+---
+
+You are performing a security code review of a Python web application. Review
+it as you would a real codebase you had been asked to audit before it ships.
+
+The application is at `{PATH}`. It is a self-hosted MLOps platform: model
+registry, dataset ingestion, an inference service, an LLM assistant, a small
+dashboard UI, and an MCP server. Flask plus SQLAlchemy plus SQLite.
+
+Read whatever you need. Do not modify anything.
+
+## What to look for
+
+Everything you would in a real audit, but in particular:
+
+- **Trace taint across boundaries.** Data that enters at an HTTP handler may
+  reach its dangerous sink in a different module, or after a database
+  round-trip, or via a background job or queue. A flow is still a flow if the
+  source and sink are in different files.
+- **Check that safe-looking helpers actually work.** A function named
+  `sanitize_path`, `validate_url`, `strip_directives` or similar may be
+  bypassable, may normalise only once when it needs to loop, or may be applied
+  to the wrong variable. Read the implementation; do not trust the name.
+- **Do not stop at one finding per function.** A single function can contain
+  more than one distinct defect.
+- **Consider the LLM/agent surface too**: prompt injection, tool abuse, unsafe
+  handling of model-generated output, and anything an attacker could reach by
+  controlling text the model reads.
+- Config and deployment issues count if you find them, but the code is the
+  focus.
+
+Be discriminating. Some code in here is deliberately fine and looks
+superficially risky; reporting a safe function as broken is a real cost, not a
+free hedge. Where two similar functions exist and only one is unsafe, say
+which and why.
+
+## Output
+
+Produce a findings list. For each finding, exactly:
+
+- `file:line` of the **sink** (the place the damage happens)
+- a one-line title
+- 2-3 sentences: what the untrusted input is, how it reaches the sink, and why
+  any apparent protection fails
+- the CWE if you are confident of it
+
+Order by severity. Aim for completeness over brevity — list everything you
+genuinely believe is a defect, but do not pad with speculative or stylistic
+issues.
+
+Work steadily through the whole application rather than sampling it. There is
+no time pressure.
