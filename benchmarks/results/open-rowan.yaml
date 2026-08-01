@@ -1,4 +1,4 @@
-tool: Open-Rowan (--authz)
+tool: Rowan (hedgerow.dev)
 version: "0.2.0 (b4532f4)"
 category: Static/taint
 protocol: single-run

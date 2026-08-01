@@ -8,7 +8,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
 [![Planted vulnerabilities: 82](https://img.shields.io/badge/planted%20vulnerabilities-82-orange.svg)](benchmarks/ground_truth.yaml)
-[![Best reported score: 57%](https://img.shields.io/badge/best%20reported%20score-57%25-red.svg)](SCOREBOARD.md)
+[![Best verified score: 80%](https://img.shields.io/badge/best%20verified%20score-80%25-red.svg)](SCOREBOARD.md)
 [![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
 
 **A realistic MLOps web app with 82 security bugs planted in it on purpose:
@@ -21,33 +21,32 @@ code review.**
 
 ---
 
-## Twelve tools have tried. The best single-pass one found 57%.
+## The best deterministic scanner finds 48% of the 82 planted bugs.
 
+<!-- SCOREBOARD:START -->
 ```
-Claude Opus       ███████████████████████░░░░░░░░░░░░░░░░░  57%
-VVAH + DeepSeek   ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
-GPT-5.5           ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
-Open-Rowan‡       ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
-Open-Rowan hunt‡  ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  40%
-Kimi K3           ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
-CodeQL            █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
-Claude Sonnet     ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  30%
-Bandit + Semgrep  ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
-DeepSeek-chat     ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
-Claude Haiku      ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  17%
-Pysa              ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
+Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%  (sweep)
+Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%  (sweep)
+Rowan (hedgerow.dev)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%  (single)
+CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%  (single)
+Bandit                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  26%  (single)
+Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%  (single)
 ```
+
+<!-- SCOREBOARD:END -->
 
 Every one of the 82 bugs is real and has a test that proves it's exploitable.
 
-⚠️ **None of these scores has a raw-output artifact, a saved prompt, or
-a mapping anyone can check, except the two marked ‡.** The other ten are
-self-reported, with no evidence trail behind them, and some were reviewed
-against blind copies that were looser about hiding the answer key than the
-current exporter is. Treat every number above as unconfirmed, not merely
-imprecise, except Open-Rowan's two: raw output committed, findings mapped to
-manifest ids, scored by a script. Full accounting in
-[**SCOREBOARD.md**](SCOREBOARD.md).
+Every score above is **verified**: raw output committed, every finding mapped
+to a manifest id, arithmetic done by
+[`benchmarks/score.py`](benchmarks/score.py) rather than typed in. `single` is
+one deterministic pass; `sweep` reviews the app in regions, which materially
+helps recall and is why it isn't compared like-for-like against a scanner.
+
+Older self-reported claims (Claude Opus 57%, GPT-5.5 44%, Kimi K3 35% and
+others) have no artifact behind them, and some were reviewed against blind
+copies looser about hiding the answer key than the current exporter. They are
+listed but not ranked in [**SCOREBOARD.md**](SCOREBOARD.md).
 
 ---
 

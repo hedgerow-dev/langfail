@@ -1,7 +1,11 @@
-tool: Open-Rowan hunt --discover (deepseek-chat)
+tool: Rowan (hedgerow.dev) — hunt --discover
 version: "0.2.0 (b4532f4), backend deepseek-chat"
 category: Agentic pipeline
 protocol: agentic-pipeline
+# Kept as evidence but not listed on the board: one row per tool, and
+# this is a different subject from the static run (scored on what the
+# pipeline stood behind, not raw scan output) as well as non-deterministic.
+listed: false
 date: 2026-07-31
 
 manifest_size: 82

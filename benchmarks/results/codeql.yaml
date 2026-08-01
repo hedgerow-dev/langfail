@@ -17,9 +17,9 @@ notes: >
   SOURCE or SINK function AND the message describes that entry's defect.
   Enclosing function resolved by AST.
 
-  Notable: CodeQL credits V48 (ReDoS) where Open-Rowan does not. Both engines
+  Notable: CodeQL credits V48 (ReDoS) where Rowan does not. Both engines
   flag the same nested-quantifier regex, but CodeQL's `py/polynomial-redos`
-  anchors inside `validate_username()` (the declared sink) while Open-Rowan's
+  anchors inside `validate_username()` (the declared sink) while Rowan's
   regex rule anchors on the module-level `_USERNAME_RE` assignment four lines
   above, which is in neither declared function.
 

@@ -84,6 +84,11 @@ class Score:
         # single-run so an omitted field can never silently promote a sweep
         # into the primary comparison.
         self.protocol = doc.get("protocol", "single-run")
+        # Whether this run appears on the board. Defaults True. Set false for a
+        # secondary configuration of a tool that already has a row, so the board
+        # stays one-row-per-tool without the result file being deleted -- the
+        # run is still scored by `score.py` and still committed as evidence.
+        self.listed = doc.get("listed", True)
 
         self.problems: list[str] = []
         self.found: set[str] = set()          # true positives
@@ -153,11 +158,30 @@ class Score:
 
 
 SCOREBOARD = REPO_ROOT / "SCOREBOARD.md"
+README = REPO_ROOT / "README.md"
 MARK_START = "<!-- SCOREBOARD:START -->"
 MARK_END = "<!-- SCOREBOARD:END -->"
 
 #: Bar width for the ASCII chart, in characters, at 100%.
 _BAR_WIDTH = 40
+
+
+def render_readme_chart(scores: list["Score"]) -> str:
+    """Chart-only variant for README.md.
+
+    README used to carry a hand-maintained copy of this chart, which is
+    precisely how it drifted from benchmarks/results/ in the first place. Both
+    files now render from the same scores.
+    """
+    scores = [s for s in scores if s.listed]
+    out = ["", "```"]
+    for s in scores:
+        filled = round(s.recall * _BAR_WIDTH)
+        bar = "\u2588" * filled + "\u2591" * (_BAR_WIDTH - filled)
+        run = _RUN_LABEL.get(s.protocol, s.protocol)
+        out.append(f"{s.tool[:30]:30} {bar}  {s.recall * 100:.0f}%  ({run})")
+    out += ["```", ""]
+    return "\n".join(out)
 
 
 def extract_generated_block(path: Path) -> str | None:
@@ -200,6 +224,7 @@ def render_scoreboard(scores: list["Score"], decoy_total: int) -> str:
     Only tools with a committed result file appear. Numbers with no artifact
     behind them stay out of the ranking entirely -- see SCOREBOARD.md.
     """
+    scores = [s for s in scores if s.listed]
     out = ["", "```"]
     for s in scores:
         filled = round(s.recall * _BAR_WIDTH)
@@ -207,13 +232,12 @@ def render_scoreboard(scores: list["Score"], decoy_total: int) -> str:
         out.append(f"{s.tool[:30]:30} {bar}  {s.recall * 100:.0f}%")
     out.append("```")
     out.append("")
-    out.append(f"| Tool | Run | Category | Recall | Decoy FPs (of {decoy_total}) | Unmatched |")
-    out.append("|------|-----|----------|--------|--------------|-----------|")
+    out.append(f"| Tool | Run | Category | Recall | Decoy FPs (of {decoy_total}) |")
+    out.append("|------|-----|----------|--------|--------------|")
     for s in scores:
         out.append(
             f"| {s.tool} | {_RUN_LABEL.get(s.protocol, s.protocol)} | {s.category} | "
-            f"{len(s.found)}/{s.total} ({s.recall * 100:.0f}%) | "
-            f"{len(s.decoy_fps)} | {len(s.unmatched_fps)} |")
+            f"{len(s.found)}/{s.total} ({s.recall * 100:.0f}%) | {len(s.decoy_fps)} |")
     out.append("")
     return "\n".join(out)
 
@@ -223,6 +247,8 @@ def main() -> int:
     ap.add_argument("results", nargs="*", type=Path)
     ap.add_argument("--markdown", action="store_true",
                     help="emit a SCOREBOARD.md-shaped table")
+    ap.add_argument("--emit-readme", action="store_true",
+                    help="emit the generated chart block for README.md")
     ap.add_argument("--emit-scoreboard", action="store_true",
                     help="emit the full generated SCOREBOARD.md block (bar "
                          "chart + per-protocol tables) for the region between "
@@ -244,25 +270,32 @@ def main() -> int:
     scores = sorted((Score(p, vulns, decoys, config_findings) for p in paths),
                     key=lambda s: -s.recall)
 
-    if args.emit_scoreboard or args.check_scoreboard:
-        block = render_scoreboard(scores, len(decoys))
-        if args.emit_scoreboard:
-            print(block)
-            return 0
-        current = extract_generated_block(SCOREBOARD)
-        if current is None:
-            print(f"{SCOREBOARD.name}: no {MARK_START} / {MARK_END} markers "
-                  f"found -- add them around the generated tables.",
-                  file=sys.stderr)
-            return 1
-        if current.strip() != block.strip():
-            print(f"{SCOREBOARD.name} is out of date with "
-                  f"benchmarks/results/. Regenerate with:\n"
-                  f"  python benchmarks/score.py --emit-scoreboard",
-                  file=sys.stderr)
-            return 1
-        print(f"{SCOREBOARD.name} matches benchmarks/results/.")
+    if args.emit_readme:
+        print(render_readme_chart(scores))
         return 0
+
+    if args.emit_scoreboard or args.check_scoreboard:
+        if args.emit_scoreboard:
+            print(render_scoreboard(scores, len(decoys)))
+            return 0
+        rc = 0
+        for path, block, flag in (
+            (SCOREBOARD, render_scoreboard(scores, len(decoys)), "--emit-scoreboard"),
+            (README, render_readme_chart(scores), "--emit-readme"),
+        ):
+            current = extract_generated_block(path)
+            if current is None:
+                print(f"{path.name}: no {MARK_START} / {MARK_END} markers found.",
+                      file=sys.stderr)
+                rc = 1
+            elif current.strip() != block.strip():
+                print(f"{path.name} is out of date with benchmarks/results/. "
+                      f"Regenerate: python benchmarks/score.py {flag}",
+                      file=sys.stderr)
+                rc = 1
+            else:
+                print(f"{path.name} matches benchmarks/results/.")
+        return rc
 
     if args.markdown:
         print(f"| Tool | Category | Recall | Decoy FPs (of {len(decoys)}) | Unmatched |")

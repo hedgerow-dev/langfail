@@ -10,22 +10,20 @@
 ```
 Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%
 Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%
-Open-Rowan (--authz)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
-Open-Rowan hunt --discover (de ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  40%
+Rowan (hedgerow.dev)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
 CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%
 Bandit                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  26%
 Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
 ```
 
-| Tool | Run | Category | Recall | Decoy FPs (of 50) | Unmatched |
-|------|-----|----------|--------|--------------|-----------|
-| Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 |
-| Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 |
-| Open-Rowan (--authz) | single | Static/taint | 39/82 (48%) | 3 | 8 |
-| Open-Rowan hunt --discover (deepseek-chat) | agentic | Agentic pipeline | 33/82 (40%) | 0 | 2 |
-| CodeQL | single | Static/taint | 22/82 (27%) | 5 | 15 |
-| Bandit | single | Static/pattern | 21/82 (26%) | 2 | 10 |
-| Semgrep | single | Static/pattern | 19/82 (23%) | 1 | 10 |
+| Tool | Run | Category | Recall | Decoy FPs (of 50) |
+|------|-----|----------|--------|--------------|
+| Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/82 (80%) | 0 |
+| Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/82 (50%) | 0 |
+| Rowan (hedgerow.dev) | single | Static/taint | 39/82 (48%) | 3 |
+| CodeQL | single | Static/taint | 22/82 (27%) | 5 |
+| Bandit | single | Static/pattern | 21/82 (26%) | 2 |
+| Semgrep | single | Static/pattern | 19/82 (23%) | 1 |
 
 <!-- SCOREBOARD:END -->
 
@@ -37,20 +35,22 @@ regenerates it, `--check-scoreboard` fails in CI if it drifts.
 **Run** is the invocation shape, and it matters more than the ranking.
 `single` is one deterministic pass over the whole app — the only shape that
 compares cleanly across tools. `sweep` reviews the app in regions, which
-shrinks the context per review and materially helps recall. `agentic` is
-LLM-driven, non-deterministic (repeat runs differ), and scored on what the
-pipeline stood behind after its own triage, not on raw scan output. The two
-Open-Rowan rows are different subjects: don't add them or read them as a
-range.
+shrinks the context per review and materially helps recall.
 
-**Decoy FPs** are the precision signal — the tool called a deliberately-safe
-lookalike broken. **Unmatched** only means "matches no manifest entry"; it
-mixes real noise with correct findings the answer key doesn't cover, so it
-reads worse than it is.
+**Decoy FPs** are the precision signal: the tool called a deliberately-safe
+lookalike broken. Per-tool unmatched counts (findings matching no manifest
+entry) are in `benchmarks/results/` and `python benchmarks/score.py` — off the
+board because they mix real noise with correct findings the answer key simply
+doesn't cover.
 
-Two things to hold against the numbers. Open-Rowan is maintained by this
-repo's authors, who also adjudicated every row above; the per-finding claims
-are committed in `benchmarks/results/` so the calls can be checked rather than
+One row per tool. Rowan also has a verified agentic run (`hunt --discover`,
+33/82) committed in `benchmarks/results/`; it is not listed because it is a
+different subject — scored on what its LLM triage stood behind rather than raw
+scan output — and non-deterministic between runs.
+
+Two things to hold against the numbers. Rowan is maintained by this repo's
+authors, who also adjudicated every row above; the per-finding claims are
+committed in `benchmarks/results/` so the calls can be checked rather than
 trusted. And older hand-adjudicated claims with no artifact — Claude Opus 57%,
 VVAH + DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15% —
 are not reproducible, in some cases were reviewed against blind copies now
