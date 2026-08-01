@@ -51,12 +51,12 @@ findings:
     claim: "B608 string-built query in services/experiments.py:45 (count_by_owner)"
   - id: V28
     claim: "B602 subprocess shell=True in services/retention.py:15 (purge)"
-  - id: V33
-    claim: "B608 string-built query in agent/llm.py:160 (generate_sql)"
+  - id: ~
+    claim: "B608 string-built query in agent/llm.py:160 (generate_sql) -- NOT V33: generate_sql is neither declared symbol, and B608 flags the stub own f-string rather than execution of model-authored SQL, which is V33 point"
   - id: V34
     claim: "B102 exec in services/analysis.py:36 (run_analysis)"
-  - id: V35
-    claim: "B307 eval in agent/native.py:41 (_debug_eval)"
+  - id: ~
+    claim: "B307 eval in agent/native.py:41 (_debug_eval) -- NOT V35: _debug_eval is neither V35 declared source (api/agent.py:native) nor its sink (dispatch), and the finding says nothing about dispatch or the missing allow-list"
     # Located the eval that V35's reflection dispatch reaches, but reported
     # nothing about dispatch() or the missing allow-list. Credited as a sink
     # match under judgement (1) above; a stricter reading would call this a

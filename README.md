@@ -8,7 +8,7 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
 [![Planted vulnerabilities: 82](https://img.shields.io/badge/planted%20vulnerabilities-82-orange.svg)](benchmarks/ground_truth.yaml)
-[![Best verified score: 82%](https://img.shields.io/badge/best%20verified%20score-82%25-red.svg)](SCOREBOARD.md)
+[![Best verified score: 91%](https://img.shields.io/badge/best%20verified%20score-91%25-red.svg)](SCOREBOARD.md)
 [![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
 
 **A realistic MLOps web app with 82 security bugs planted in it on purpose:
@@ -25,12 +25,12 @@ code review.**
 
 <!-- SCOREBOARD:START -->
 ```
-Claude Opus 5                  █████████████████████████████████░░░░░░░  82%  (single)
+Claude Opus 5                  █████████████████████████████████████░░░  91%  (single)
 Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%  (sweep)
 Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%  (sweep)
 Rowan (hedgerow.dev)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%  (single)
 CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%  (single)
-Bandit                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  26%  (single)
+Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%  (single)
 Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%  (single)
 ```
 

@@ -127,12 +127,10 @@ notes: >
   New false positives: two CF-RETURN-001 cross-file findings, one naming
   verify_password (decoy D19), one naming find_table (no manifest entry).
 
-  NOT credited: ns-websec-1333-001 fires on the genuine nested-quantifier
-  regex behind V48, but anchors on the module-level _USERNAME_RE assignment
-  (core/security.py:134), which is neither V48's declared source (register)
-  nor its declared sink (validate_username). CodeQL credits V48 because
-  py/polynomial-redos anchors inside validate_username itself. Left
-  uncredited rather than relaxing the anchoring rule for one row.
+  V48 IS credited (line below), via the module-level clarification later
+  documented in SCOREBOARD.md's anchoring rule: _USERNAME_RE embodies the
+  defect and validate_username matches with it. An earlier draft of this note
+  said the opposite and was left stale after the rule was written down.
 
 findings:
   # --- deserialization ---
@@ -148,8 +146,8 @@ findings:
   # --- injection ---
   - id: V05
     claim: "NS-SSTI-001 on services/reports.py:31 (render_report): template rendered from a user-controlled string"
-  - id: V21
-    claim: "NS-SSTI-001 on services/reports.py:31 -- same sink as V05, reached on the second-order cache path"
+  - id: ~
+    claim: "NS-SSTI-001 on services/reports.py:31 -- duplicate of the finding already credited as V05. The first pass credited this same single finding to V21 as well; its message says only 'Rendering templates from user-controlled strings enables SSTI', with nothing about annotate, the cache, or base64 laundering. That gloss was the adjudicator's, not the tool's."
   - id: V08
     claim: "NS-SQLI-005 on services/experiments.py:31 (search_experiments): interpolated f-string query"
   - id: V22
@@ -252,3 +250,7 @@ findings:
     claim: "CF-RETURN-001 in api/datasets.py:46 -- tainted return from find_table(); matches no manifest entry"
   - id: V48
     claim: "ns-websec-1333-001 in core/security.py:134 -- _USERNAME_RE nested-quantifier regex, consumed by validate_username()"
+  - id: V47
+    claim: "NS-CRYPTO-001 in core/security.py:96 legacy_access_key -- MD5 is cryptographically broken. Same rule, anchor and vocabulary that earned Bandit, Semgrep, CodeQL and Opus their V47; wrongly omitted from the first pass."
+  - id: D06
+    claim: "CF-SINK-001 at api/reports.py:79 -- claims custom_report reaches a sink via render_builtin_report, whose template filename is always one of two hardcoded literals. Second decoy assertion; the first pass recorded only one."

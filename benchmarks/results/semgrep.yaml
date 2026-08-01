@@ -18,11 +18,10 @@ notes: >
   alone never suffices. Enclosing function resolved by AST, not by line
   proximity.
 
-  Deliberately NOT credited, though anchored in the right function: the two
-  md5 findings in `derive_recovery_code` (V46). V46's defect is that a
-  recovery token is predictable (CWE-640, insufficient randomness); "md5 is a
-  weak hash" is a different claim about the same line, and crediting it would
-  be exactly the location-based generosity the rubric exists to prevent.
+  V46 IS credited (see below), under the "tool's own vocabulary" clarification
+  in SCOREBOARD.md's anchoring rule and matching how Bandit was scored. An
+  earlier draft of this note argued the opposite and was left stale after the
+  rule was written down.
 
   The three `template-unescaped-with-safe` hits are in .html templates, not
   Python, and name no manifest source/sink function; V76/V77/V83 declare their

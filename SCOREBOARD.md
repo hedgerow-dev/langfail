@@ -8,23 +8,23 @@
 
 <!-- SCOREBOARD:START -->
 ```
-Claude Opus 5                  █████████████████████████████████░░░░░░░  82%
+Claude Opus 5                  █████████████████████████████████████░░░  91%
 Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%
 Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%
 Rowan (hedgerow.dev)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
 CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%
-Bandit                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  26%
+Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
 Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
 ```
 
 | Tool | Run | Category | Recall | Decoy FPs (of 50) |
 |------|-----|----------|--------|--------------|
-| Claude Opus 5 | single | LLM review | 67/82 (82%) | 0 |
+| Claude Opus 5 | single | LLM review | 75/82 (91%) | 0 |
 | Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/82 (80%) | 0 |
 | Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/82 (50%) | 0 |
-| Rowan (hedgerow.dev) | single | Static/taint | 39/82 (48%) | 3 |
+| Rowan (hedgerow.dev) | single | Static/taint | 39/82 (48%) | 4 |
 | CodeQL | single | Static/taint | 22/82 (27%) | 5 |
-| Bandit | single | Static/pattern | 21/82 (26%) | 2 |
+| Bandit | single | Static/pattern | 19/82 (23%) | 2 |
 | Semgrep | single | Static/pattern | 19/82 (23%) | 1 |
 
 <!-- SCOREBOARD:END -->
@@ -50,10 +50,25 @@ One row per tool. Rowan also has a verified agentic run (`hunt --discover`,
 different subject — scored on what its LLM triage stood behind rather than raw
 scan output — and non-deterministic between runs.
 
-Two things to hold against the numbers. Rowan is maintained by this repo's
-authors, who also adjudicated every row above; the per-finding claims are
-committed in `benchmarks/results/` so the calls can be checked rather than
-trusted. And older hand-adjudicated claims with no artifact — VVAH + DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15% —
+Three things to hold against the numbers.
+
+Rowan is maintained by this repo's authors, who also adjudicated every row
+above. An adversarial re-adjudication (2026-08-01) checked every credit
+mechanically and found the bias ran **against** the top competitor, not for
+the home tool: Opus had been held to a "one finding, one manifest id" rule
+invented for that row alone and documented nowhere, while the Sonnet sweep was
+credited eight vulns from a single bullet. Applying one standard moved Opus
+67 -> 75. Rowan itself lost an unearned V21 (one finding credited to two
+vulns, which its own notes condemn), gained a V47 it had denied itself, and
+picked up an unrecorded decoy FP: net 39/82 either way. Bandit lost two.
+
+The Sonnet and Haiku sweeps have **not** been re-adjudicated under the same
+standard and are not strictly comparable to the rows above and below them.
+
+The reviewed source is not currently recoverable: the `blind_copy_commit`
+hashes in most result files do not resolve to objects in this repository, so
+the per-finding claims can be read but not replayed against the exact tree
+they were made on. And older hand-adjudicated claims with no artifact — VVAH + DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15% —
 are not reproducible, in some cases were reviewed against blind copies now
 known to be leaky, and are deliberately not ranked here. Opus's old 57% claim
 is superseded by the verified single run above.

@@ -17,7 +17,7 @@ notes: >
   no saved prompt. Not comparable to the 5-region sweep either: this is one
   context over the whole app.
 
-  83 findings, zero decoy false positives. The review explicitly listed safe
+  85 findings (the first pass silently dropped two), zero decoy false positives. The review explicitly listed safe
   twins it declined to flag -- download_artifact, read_owner_file,
   render_card_markdown, fetch_external, search_by_tag,
   ask_experiments_structured, load_model_numeric, dispatch_public,
@@ -27,8 +27,21 @@ notes: >
   including get_note_late_built, which looks like a TOCTOU bug and is not.
 
   ADJUDICATED BY THE ROWAN AUTHORS, and this is the row where that conflict
-  matters most: it outscores their own tool. Judgement calls, all made toward
-  crediting the reviewer:
+  matters most: it outscores their own tool.
+
+  CORRECTED 2026-08-01 after an adversarial re-adjudication. The first pass
+  scored this 67/82 and claimed its judgement calls were "all made toward
+  crediting the reviewer". That claim was FALSE: every unlisted call went the
+  other way. The first pass also invented a "one finding, one manifest id"
+  constraint, applied it ONLY to this row to withhold credits, and left it out
+  of SCOREBOARD.md -- while the Sonnet sweep was credited eight separate vulns
+  from a single bullet with sub-clauses. Applying the Sonnet standard here
+  restores seven credits (V12, V50, V59, V63, V69, V71, V73) plus V75, which
+  Rowan had been credited on strictly weaker evidence. The overcorrection was
+  most likely anxiety about the disclosed conflict; the effect was to
+  disadvantage the top-scoring competitor.
+
+  Remaining judgement calls, stated plainly:
     - agent/sanitize.py:17 names strip_directives, which is decoy D09. Scored
       as V32, not a decoy FP: the claim is not "this safe function is broken"
       but the real Unicode-ordering defect (the stub deobfuscates Tags-block
@@ -211,3 +224,21 @@ findings:
     claim: "langfail/core/security.py:134 -- Username regex is both ReDoS-prone and newline-permissive"
   - id: V36
     claim: "langfail/api/agent.py:85 -- Unbounded max_rounds on the assistant loop"
+  - id: V12
+    claim: "langfail/api/models.py:59 -- get_model returns any model's card/metadata by id; update_model DOES check owner_id, which establishes these objects are meant to be owner-scoped (finding was dropped from the first pass entirely)"
+  - id: V50
+    claim: "langfail/mcp_server.py:210 -- check_http_auth compares the bearer with == rather than hmac.compare_digest (score.py's own worked example of a valid V50 credit)"
+  - id: V59
+    claim: "langfail/mcp_server.py:29 -- applies_after staging makes the tool-note a delayed rug-pull: hidden until the client has listed tools N times"
+  - id: V63
+    claim: "langfail/agent/tools.py:31 -- read_file does a bare open() with no root; read_owner_file is the correct realpath+prefix implementation and is not in the TOOLS registry"
+  - id: V69
+    claim: "langfail/api/authz_demo.py:208 -- get_team_note_branchy gates the membership check on a caller-supplied ?mode=strict flag"
+  - id: V71
+    claim: "langfail/api/authz_demo.py:259 -- get_task_under_project takes a project_id in the path but looks the task up by task_id alone; the path parameter is decorative"
+  - id: V73
+    claim: "langfail/api/authz_demo.py:314 -- get_article_branchy puts the publication gate behind ?strict=1"
+  - id: V75
+    claim: "langfail/ui/templates/search.html:17 -- reflected AND stored XSS through the highlight helper (?q= reflected source, stored model name, |safe)"
+  - id: ~
+    claim: "langfail/api/authz_demo.py:67 -- create_team_note/create_task have no membership or ownership check (write-side BOLA; correct, but matches no manifest entry)"
