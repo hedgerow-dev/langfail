@@ -1,0 +1,90 @@
+tool: Semgrep
+version: "1.168.0"
+category: Static/pattern
+protocol: single-run
+date: 2026-08-01
+
+manifest_size: 82
+blind_copy_commit: c06b704
+raw_output: raw/semgrep.json
+
+notes: >
+  `semgrep --config p/python --config p/security-audit` against a fresh blind
+  copy, no custom rules. 30 results.
+
+  Adjudicated by the same rule SCOREBOARD.md states for every other row: a
+  finding credits an entry when it is anchored in that entry's declared SOURCE
+  or SINK function AND its message describes that entry's defect. Location
+  alone never suffices. Enclosing function resolved by AST, not by line
+  proximity.
+
+  Deliberately NOT credited, though anchored in the right function: the two
+  md5 findings in `derive_recovery_code` (V46). V46's defect is that a
+  recovery token is predictable (CWE-640, insufficient randomness); "md5 is a
+  weak hash" is a different claim about the same line, and crediting it would
+  be exactly the location-based generosity the rubric exists to prevent.
+
+  The three `template-unescaped-with-safe` hits are in .html templates, not
+  Python, and name no manifest source/sink function; V76/V77/V83 declare their
+  sinks in ui/views.py. Left unmatched rather than credited by file adjacency.
+findings:
+  - id: V18
+    claim: "eval-detected in agent/tools.py:42 calc() — code-interpreter tool eval"
+  - id: V44
+    claim: "unverified-jwt-decode in core/security.py:70 verify_service_token()"
+  - id: V09
+    claim: "subprocess-shell-true in ml/convert.py:25 convert_model()"
+  - id: V37
+    claim: "exec-detected in ml/dataset.py:85 run_loader_script()"
+  - id: V13
+    claim: "avoid-pickle in ml/features.py:39 load_feature_cache()"
+  - id: V15
+    claim: "eval-detected in ml/metrics.py:30 evaluate_metric()"
+  - id: V01
+    claim: "avoid-pickle in ml/model_loader.py:32 _deserialize()"
+  - id: V41
+    claim: "avoid-pickle in ml/runner.py:24 handle_runner_call()"
+  - id: V34
+    claim: "exec-detected in services/analysis.py:36 run_analysis()"
+  - id: V02
+    claim: "avoid-pyyaml-load in services/config_loader.py:20 load_pipeline_config()"
+  - id: V08
+    claim: "avoid-sqlalchemy-text in services/experiments.py:34 search_experiments()"
+  - id: V22
+    claim: "avoid-sqlalchemy-text in services/experiments.py:46 count_by_owner()"
+  - id: V28
+    claim: "subprocess-shell-true in services/retention.py:15 purge()"
+  - id: V11
+    claim: "subprocess-shell-true in workers/tasks.py:65 _inspect_async()"
+  - id: V74
+    claim: "open-redirect in ui/views.py:87 login()"
+  - id: V80
+    claim: "secure-set-cookie in ui/views.py:88 login()"
+  - id: D10
+    claim: "avoid-sqlalchemy-text in services/experiments.py:81 ask_experiments_structured — a parameterised query; decoy"
+  - id: ~
+    claim: "eval-detected in agent/native.py:41 _debug_eval"
+  - id: ~
+    claim: "debug-enabled in cli.py:77 main"
+  - id: V47
+    claim: "insecure-hash-algorithm-md5 in core/security.py:96 legacy_access_key -- unsalted md5 access key"
+  - id: ~
+    claim: "md5-used-as-password in core/security.py:96 legacy_access_key (second hit on the V47 line)"
+  - id: V46
+    claim: "insecure-hash-algorithm-md5 in core/security.py:113 derive_recovery_code -- md5 over predictable input as a recovery token"
+  - id: ~
+    claim: "avoid-pickle in ml/features.py:30 save_feature_cache (write path)"
+  - id: ~
+    claim: "avoid-pickle in ml/model_loader.py:51 save_model (write path)"
+  - id: ~
+    claim: "avoid-pickle in ml/model_loader.py:74 find_class"
+  - id: ~
+    claim: "avoid-pickle in ml/model_loader.py:101 find_class"
+  - id: V19
+    claim: "incorrect-autoescape-disabled in services/reports.py:62 -- _page_env = Environment(autoescape=False), consumed by render_page()"
+  - id: ~
+    claim: "template-unescaped-with-safe in ui/templates/chat.html:11"
+  - id: ~
+    claim: "template-unescaped-with-safe in ui/templates/model_detail.html:7"
+  - id: ~
+    claim: "template-unescaped-with-safe in ui/templates/search.html:17"

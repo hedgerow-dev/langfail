@@ -1,6 +1,7 @@
 tool: Claude Sonnet 5, 5-region sweep
 version: "claude-sonnet-5"
 category: LLM review (partitioned)
+protocol: partitioned-sweep
 date: 2026-07-29
 
 manifest_size: 82

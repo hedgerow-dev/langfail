@@ -6,9 +6,11 @@
 
 ## A caveat before the numbers
 
-None of the other ten scores below have a raw-output artifact, a saved
-prompt, or a per-finding id mapping anywhere in this repository. They're
-self-reported results with no evidence trail, for two independent reasons:
+Scores are split into two sections, and the split is the point. **Verified
+scores** are generated from committed result files; **unverified scores** are
+older hand-adjudicated claims kept only for history. The ten unverified
+entries have no raw-output artifact, no saved prompt, and no per-finding id
+mapping anywhere in this repository, for two independent reasons:
 
 1. **Some of the blind copies they were reviewed against were leaky.**
    Compiled test bytecode with assertion messages intact, docstrings that
@@ -20,76 +22,186 @@ self-reported results with no evidence trail, for two independent reasons:
 2. **None of it is independently verifiable.** No raw output, no saved
    prompt, no record of a review happening the way it's described.
 
-Treat every number below as unconfirmed, not merely imprecise — except the
-two rows marked ‡. Those are Open-Rowan, rerun against a fresh blind copy
-with raw output committed and every finding mapped to an id in
-[`benchmarks/results/open-rowan.yaml`](benchmarks/results/open-rowan.yaml)
-and
-[`open-rowan-hunt.yaml`](benchmarks/results/open-rowan-hunt.yaml). They
-replace the tool's old, unverified numbers in this same list rather than
-sitting in a separate table, because they measure the same subject the old
-row did (Static/taint) plus one new one (Agentic pipeline, `hunt --discover`)
-that didn't have an entry here before.
+Treat every number in the unverified table as unconfirmed, not merely
+imprecise. Nothing in it outranks anything in the verified table, whatever
+the percentages say.
 
-## Scores (twelve tools, mostly unverified — see the caveat above)
+## Verified scores
 
-```
-Claude Opus           ███████████████████████░░░░░░░░░░░░░░░░░  57%
-VVAH + DeepSeek       ████████████████████░░░░░░░░░░░░░░░░░░░░  51%
-GPT-5.5               ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
-Open-Rowan (--authz)  ██████████████████░░░░░░░░░░░░░░░░░░░░░░  44%
-Open-Rowan hunt       ████████████████░░░░░░░░░░░░░░░░░░░░░░░░  40%
-Kimi K3               ██████████████░░░░░░░░░░░░░░░░░░░░░░░░░░  35%
-CodeQL                █████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░  32%
-Claude Sonnet         ████████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░  30%
-Bandit + Semgrep      ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
-DeepSeek-chat         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  24%
-Claude Haiku          ███████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  17%
-Pysa                  ██████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  15%
+Everything below this heading is **generated** from the result files in
+`benchmarks/results/` by `benchmarks/score.py`. A tool appears here only if
+it has a committed result file with raw output and every finding mapped to a
+manifest id. Do not hand-edit the block between the markers; regenerate it:
+
+```bash
+python benchmarks/score.py --emit-scoreboard   # regenerate the block below
+python benchmarks/score.py --check-scoreboard  # CI guard: fails if it drifted
+python benchmarks/score.py                     # per-run detail
 ```
 
-| Tool | Category | Recall | False positives |
-|------|----------|--------|--------------------------------|
+One row per tool in the primary table. Open-Rowan's `hunt --discover`
+pipeline is tabled below it rather than alongside: it is LLM-driven and
+non-deterministic, it is scored on a different subject (what its triage stood
+behind, not its raw scan output), and giving one product two rows in a
+four-row comparison would overweight it. Note that the row moved out is
+Open-Rowan's **lower** number — the reason is category, not the score, and it
+stays fully visible.
+
+**One of the four single-run rows is the tool this repo's authors also
+maintain**, and it is the top row. Worth knowing when reading the ranking; the
+per-finding adjudications behind every row are in `benchmarks/results/` so the
+call can be checked rather than trusted. Pysa is the one named comparator
+still missing a verified run; it needs `pyre-check`, which the others did
+not.
+
+<!-- SCOREBOARD:START -->
+### Verified single runs
+
+One deterministic invocation of the tool over the whole blind
+copy. This is the primary comparison: same task, same input,
+same shape, and one row per tool.
+
+```
+Open-Rowan (--authz)               ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
+CodeQL                             ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%
+Bandit                             ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  26%
+Semgrep                            █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
+```
+
+| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched | Reviewed |
+|------|----------|--------|--------------|-----------|----------|
+| Open-Rowan (--authz) | Static/taint | 39/82 (48%) | 3 | 8 | `c06b704` |
+| CodeQL | Static/taint | 22/82 (27%) | 5 | 15 | `c06b704` |
+| Bandit | Static/pattern | 21/82 (26%) | 2 | 10 | `9aa352e` |
+| Semgrep | Static/pattern | 19/82 (23%) | 1 | 10 | `c06b704` |
+
+### LLM-driven agentic runs (non-deterministic)
+
+A static scan plus LLM triage, adversarial verification and an
+optional discovery stage. Scored on what the pipeline itself stood
+behind, not on its raw scan output -- so it is NOT the same subject
+as the single-run row for the same tool, and the two must not be
+added together or read as a range.
+
+Reported separately for a second reason: these runs are
+non-deterministic. Repeat runs of the same tool on the same input
+have produced materially different discovery counts, so a single
+number here carries real variance that the deterministic table
+above does not.
+
+| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched | Reviewed |
+|------|----------|--------|--------------|-----------|----------|
+| Open-Rowan hunt --discover (deepseek-chat) | Agentic pipeline | 33/82 (40%) | 0 | 2 | `2e214db` |
+
+### Partitioned multi-region sweeps
+
+A different protocol, reported separately and deliberately NOT
+ranked against the single runs above: the app is split into regions
+reviewed one at a time, which shrinks the context a reviewer holds
+at once and materially helps recall. Comparing a partitioned sweep
+to a single tool invocation would flatter the sweep.
+
+| Tool | Category | Recall | Decoy FPs (of 50) | Unmatched | Reviewed |
+|------|----------|--------|--------------|-----------|----------|
+| Claude Sonnet 5, 5-region sweep | LLM review (partitioned) | 66/82 (80%) | 0 | 4 | `3ff7e43` |
+| Claude Haiku 4.5, 5-region sweep | LLM review (partitioned) | 41/82 (50%) | 0 | 4 | `3ff7e43` |
+
+<!-- SCOREBOARD:END -->
+
+## Unverified scores (no artifact — retained for history only)
+
+These predate `benchmarks/score.py`. They were hand-adjudicated, left no raw
+output, no per-finding id mapping, and no way to re-derive or re-score them,
+and several were reviewed against blind copies now known to have been leaky.
+They are kept for history and are **deliberately not ranked against the
+verified table above** — an unverifiable number should never outrank a
+reproducible one just because it is larger.
+
+| Tool | Category | Recall (claimed) | False positives (claimed) |
+|------|----------|------------------|---------------------------|
 | Claude Opus† | LLM review | 47/82 (57%) | 0 |
-| VVAH + DeepSeek | Agentic pipeline | 42/82 (51%) | 0 |
+| VVAH + DeepSeek† | Agentic pipeline | 42/82 (51%) | 0 |
 | GPT-5.5† | LLM review | 36/82 (44%) | 2 |
-| Open-Rowan (--authz)‡ | Static/taint | 36/82 (44%) | 2 |
-| Open-Rowan hunt --discover (deepseek-chat)‡ | Agentic pipeline | 33/82 (40%) | 0 |
 | Kimi K3† | LLM review | 29/82 (35%) | 0 |
-| CodeQL† | Static/taint | 26/82 (32%) | 4 |
-| Claude Sonnet† | LLM review | 25/82 (30%) | 0 |
-| Bandit + Semgrep† | Static/pattern | 20/82 (24%) | 2 |
+| CodeQL† *(superseded — see verified table)* | Static/taint | 26/82 (32%) | 4 |
+| Claude Sonnet† (single run) | LLM review | 25/82 (30%) | 0 |
+| Bandit + Semgrep† *(superseded — both now verified separately)* | Static/pattern | 20/82 (24%) | 2 |
 | DeepSeek-chat† | LLM review | 20/82 (24%) | 0 |
-| Claude Haiku† | LLM review | 14/82 (17%) | 0 |
+| Claude Haiku† (single run) | LLM review | 14/82 (17%) | 0 |
 | Pysa† | Static/taint | 12/82 (15%) | 1 |
 
 † Scored against a smaller, earlier version of the manifest. Credited with
 zero for vulnerabilities added since — itself unverifiable, for the same
-reason as everything else in this table.
+reason as everything else in this table. The Claude Sonnet and Claude Haiku
+rows here are old **single**-run numbers; verified **partitioned sweeps** for
+both models appear in the generated section above and score far higher. The
+two are different protocols and neither supersedes the other.
 
-‡ Verified: raw output committed, every finding mapped to a manifest id,
-score computed by `benchmarks/score.py`, not typed in. Not comparable to
-each other: `--authz` scores the raw static pass, `hunt --discover` scores
-only what its own LLM triage stood behind after adversarial verification.
-Regenerate both from `benchmarks/results/`:
+## Adding a tool to the verified table
+
+Produce a result file under `benchmarks/results/` (see the format in
+`benchmarks/score.py`'s docstring and `_template.yaml`), commit the raw
+output alongside it, then regenerate:
 
 ```bash
-python benchmarks/score.py            # scores every run in benchmarks/results/
-python benchmarks/score.py --markdown # emits a table for the current results/ dir
+python benchmarks/score.py --emit-scoreboard
 ```
 
-## Two more verified runs that don't fit this table
+Set `protocol: partitioned-sweep` if the app was reviewed in regions rather
+than in one pass; anything else is treated as a single run. The default is
+`single-run`, so an omitted field can never quietly promote a sweep into the
+primary comparison.
 
+Two notes on rows that already exist.
+[`results/bandit.yaml`](benchmarks/results/bandit.yaml) (21/82, 26%) is
+Bandit **alone** against a clean blind copy, not the older, differently
+scored "Bandit + Semgrep" combination in the unverified table.
 [`results/claude-sonnet-sweep.yaml`](benchmarks/results/claude-sonnet-sweep.yaml)
-(66/82, 80%) and
+and
 [`results/claude-haiku-sweep.yaml`](benchmarks/results/claude-haiku-sweep.yaml)
-(41/82, 50%) are also fully verified, but aren't merged above: they're a
-5-region partitioned sweep, not a single-pass review like the Claude Sonnet
-and Claude Haiku rows already in the table, and `sweep_prompt.md` says
-explicitly that a partitioned run isn't comparable to a single-pass run of
-the same model. [`results/bandit.yaml`](benchmarks/results/bandit.yaml)
-(21/82, 26%) is Bandit alone against a clean blind copy, not the older,
-differently-scored "Bandit + Semgrep" combination above.
+are partitioned sweeps; `sweep_prompt.md` states explicitly that a
+partitioned run is not comparable to a single-pass run of the same model,
+which is why they are tabled separately rather than ranked.
+
+**Wanted:** a verified single run for Pysa, the last named comparator without
+one. It needs `pyre-check` installed and configured, which is why it lagged
+behind CodeQL, Semgrep and Bandit.
+
+Note how far the verified CodeQL and Semgrep numbers sit below their old
+unverified rows (23% vs 32%, 20% vs 24% as half of "Bandit + Semgrep"). That
+is the expected direction: the earlier numbers were adjudicated by hand
+against a smaller manifest and, in some cases, a leaky blind copy. Read it as
+the unverified numbers having been optimistic, not as the tools regressing.
+
+## The anchoring rule
+
+A finding credits a manifest entry when it is **anchored in that entry's
+declared source or sink function** AND **its message describes that entry's
+defect**. Location alone never suffices — five entries declare
+`create_model()` as their source, so a co-location rule would credit all five
+for one finding.
+
+Two clarifications, both applied uniformly to every result file:
+
+**Module-level definitions.** A finding anchored at module scope credits an
+entry when the definition *itself embodies the defect* and is consumed by the
+declared source or sink function. `_page_env = Environment(autoescape=False)`
+credits V19 because `render_page()` renders with it; `_USERNAME_RE =
+re.compile(r"^([a-zA-Z0-9_]+)*$")` credits V48 because `validate_username()`
+matches with it. This is not new — Bandit's V19 credit has always worked this
+way — it simply was not written down.
+
+The limit is "embodies the defect", not "is used by". A bare `import pickle`
+does **not** credit V01: the defect is unpickling untrusted input inside
+`_deserialize()`, and the import is a dependency, not the flaw. Bandit's
+`B403 import pickle` findings stay unmatched for exactly this reason.
+
+**Naming the weakness in the tool's own vocabulary is enough.** A tool that
+reports "weak MD5" at `derive_recovery_code()` credits V46 even though V46's
+CWE is 640 (predictable token) rather than 327. The tool put a finding on the
+right code for the right reason in the vocabulary it has. Requiring CWE
+agreement discards correct work over taxonomy — the same run scores 28/82
+instead of 36/82 purely on that choice.
 
 ## How scoring works
 

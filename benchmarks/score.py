@@ -75,6 +75,15 @@ class Score:
         self.manifest_size = doc.get("manifest_size")
         self.blind_copy_commit = doc.get("blind_copy_commit")
         self.raw_output = doc.get("raw_output")
+        # How the tool was invoked. `single-run` is one invocation over the
+        # whole blind copy -- the only shape directly comparable across tools.
+        # `partitioned-sweep` splits the app into regions and reviews each
+        # separately, which materially helps recall by shrinking the context a
+        # reviewer must hold at once; those runs are reported in their own
+        # table rather than ranked against single runs. Defaults to
+        # single-run so an omitted field can never silently promote a sweep
+        # into the primary comparison.
+        self.protocol = doc.get("protocol", "single-run")
 
         self.problems: list[str] = []
         self.found: set[str] = set()          # true positives
@@ -143,11 +152,116 @@ class Score:
         return "\n".join(out)
 
 
+SCOREBOARD = REPO_ROOT / "SCOREBOARD.md"
+MARK_START = "<!-- SCOREBOARD:START -->"
+MARK_END = "<!-- SCOREBOARD:END -->"
+
+#: Bar width for the ASCII chart, in characters, at 100%.
+_BAR_WIDTH = 40
+
+
+def extract_generated_block(path: Path) -> str | None:
+    """The text between the generated-block markers, or None if absent."""
+    if not path.exists():
+        return None
+    text = path.read_text()
+    try:
+        after = text.split(MARK_START, 1)[1]
+        return after.split(MARK_END, 1)[0]
+    except IndexError:
+        return None
+
+
+def _table(scores: list["Score"], decoy_total: int) -> list[str]:
+    out = [f"| Tool | Category | Recall | Decoy FPs (of {decoy_total}) | Unmatched | Reviewed |",
+           "|------|----------|--------|--------------|-----------|----------|"]
+    for s in scores:
+        out.append(
+            f"| {s.tool} | {s.category} | {len(s.found)}/{s.total} "
+            f"({s.recall * 100:.0f}%) | {len(s.decoy_fps)} | "
+            f"{len(s.unmatched_fps)} | `{s.blind_copy_commit or '?'}` |")
+    return out
+
+
+#: Protocols reported outside the primary single-run table, in render order.
+#: Each is a genuinely different way of being invoked, not a different tool,
+#: so ranking them against a single deterministic run would compare protocols
+#: rather than detection. Kept visible rather than dropped: a run that is not
+#: comparable is still evidence, and hiding a tool's weaker configuration is
+#: how a scoreboard starts lying.
+_OTHER_PROTOCOLS: list[tuple[str, str, list[str]]] = [
+    ("agentic-pipeline", "LLM-driven agentic runs (non-deterministic)", [
+        "A static scan plus LLM triage, adversarial verification and an",
+        "optional discovery stage. Scored on what the pipeline itself stood",
+        "behind, not on its raw scan output -- so it is NOT the same subject",
+        "as the single-run row for the same tool, and the two must not be",
+        "added together or read as a range.",
+        "",
+        "Reported separately for a second reason: these runs are",
+        "non-deterministic. Repeat runs of the same tool on the same input",
+        "have produced materially different discovery counts, so a single",
+        "number here carries real variance that the deterministic table",
+        "above does not.",
+    ]),
+    ("partitioned-sweep", "Partitioned multi-region sweeps", [
+        "A different protocol, reported separately and deliberately NOT",
+        "ranked against the single runs above: the app is split into regions",
+        "reviewed one at a time, which shrinks the context a reviewer holds",
+        "at once and materially helps recall. Comparing a partitioned sweep",
+        "to a single tool invocation would flatter the sweep.",
+    ]),
+]
+
+
+def render_scoreboard(scores: list["Score"], decoy_total: int) -> str:
+    """The full generated block: bar chart over single runs, then one table
+    per protocol.
+
+    Only tools with a result file under `benchmarks/results/` appear here --
+    that is the point. Numbers with no artifact behind them are kept OUTSIDE
+    the markers, hand-maintained and labelled unverified, so a generated
+    ranking can never silently absorb an unverifiable claim.
+    """
+    single = [s for s in scores if s.protocol == "single-run"]
+
+    out: list[str] = ["", "### Verified single runs", ""]
+    out.append("One deterministic invocation of the tool over the whole blind")
+    out.append("copy. This is the primary comparison: same task, same input,")
+    out.append("same shape, and one row per tool.")
+    out.append("")
+    out.append("```")
+    for s in single:
+        filled = round(s.recall * _BAR_WIDTH)
+        bar = "█" * filled + "░" * (_BAR_WIDTH - filled)
+        out.append(f"{s.tool[:34]:34} {bar}  {s.recall * 100:.0f}%")
+    out.append("```")
+    out.append("")
+    out.extend(_table(single, decoy_total))
+
+    for proto, heading, blurb in _OTHER_PROTOCOLS:
+        rows = [s for s in scores if s.protocol == proto]
+        if not rows:
+            continue
+        out += ["", f"### {heading}", ""] + blurb + [""]
+        out.extend(_table(rows, decoy_total))
+
+    out.append("")
+    return "\n".join(out)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("results", nargs="*", type=Path)
     ap.add_argument("--markdown", action="store_true",
                     help="emit a SCOREBOARD.md-shaped table")
+    ap.add_argument("--emit-scoreboard", action="store_true",
+                    help="emit the full generated SCOREBOARD.md block (bar "
+                         "chart + per-protocol tables) for the region between "
+                         "the SCOREBOARD:START/END markers")
+    ap.add_argument("--check-scoreboard", action="store_true",
+                    help="exit non-zero if SCOREBOARD.md's generated block is "
+                         "not what --emit-scoreboard would produce (CI guard "
+                         "against the table drifting from results/ again)")
     args = ap.parse_args()
 
     vulns, decoys, config_findings = load_manifest()
@@ -160,6 +274,26 @@ def main() -> int:
 
     scores = sorted((Score(p, vulns, decoys, config_findings) for p in paths),
                     key=lambda s: -s.recall)
+
+    if args.emit_scoreboard or args.check_scoreboard:
+        block = render_scoreboard(scores, len(decoys))
+        if args.emit_scoreboard:
+            print(block)
+            return 0
+        current = extract_generated_block(SCOREBOARD)
+        if current is None:
+            print(f"{SCOREBOARD.name}: no {MARK_START} / {MARK_END} markers "
+                  f"found -- add them around the generated tables.",
+                  file=sys.stderr)
+            return 1
+        if current.strip() != block.strip():
+            print(f"{SCOREBOARD.name} is out of date with "
+                  f"benchmarks/results/. Regenerate with:\n"
+                  f"  python benchmarks/score.py --emit-scoreboard",
+                  file=sys.stderr)
+            return 1
+        print(f"{SCOREBOARD.name} matches benchmarks/results/.")
+        return 0
 
     if args.markdown:
         print(f"| Tool | Category | Recall | Decoy FPs (of {len(decoys)}) | Unmatched |")

@@ -1,10 +1,11 @@
 tool: Open-Rowan (--authz)
 version: "0.2.0 (b4532f4)"
 category: Static/taint
-date: 2026-07-30
+protocol: single-run
+date: 2026-08-01
 
 manifest_size: 82
-blind_copy_commit: 6e51527
+blind_copy_commit: c06b704
 raw_output: raw/open-rowan-authz.json
 
 notes: >
@@ -110,6 +111,28 @@ notes: >
   search query) share the search() sink; the single TNT-XSS-001 there says
   "reflected XSS", so V75 is credited and V83 is not. Scoring the finding as
   described, not the symbol.
+
+  RERUN 2026-08-01 against a fresh blind copy. 178 findings (was 173). Net
+  +2 recall, +2 false positives.
+
+  New credits: V25 (XXE, ns-websec-611-001 in parse_model_config) and V43
+  (bearer token in query string, ns-websec-598-001 in _extract_token). Both
+  come from rules added on 2026-08-01, and both were selected BECAUSE this
+  benchmark was missing those classes -- so read them as benchmark-directed
+  coverage, not as evidence of general capability. Of the two rules,
+  ns-websec-598-001 has an independent real-world true positive (ragflow,
+  api_key read from a query string); ns-websec-611-001 has none across 11
+  large Python repos and ships declared unvalidated in its own rule file.
+
+  New false positives: two CF-RETURN-001 cross-file findings, one naming
+  verify_password (decoy D19), one naming find_table (no manifest entry).
+
+  NOT credited: ns-websec-1333-001 fires on the genuine nested-quantifier
+  regex behind V48, but anchors on the module-level _USERNAME_RE assignment
+  (core/security.py:134), which is neither V48's declared source (register)
+  nor its declared sink (validate_username). CodeQL credits V48 because
+  py/polynomial-redos anchors inside validate_username itself. Left
+  uncredited rather than relaxing the anchoring rule for one row.
 
 findings:
   # --- deserialization ---
@@ -219,3 +242,13 @@ findings:
     claim: "ns-aiml-120 (unbounded agent loop / denial of wallet) fired once, on the `while True:` queue-drain loop in workers/runner.py:32, which is an ordinary worker daemon loop and correct. It did NOT fire on run_agent_extended, the V36 sink, so V36 is scored as missed even though the engine ships a rule for exactly that bug class. Wrong-loop match, not a decoy, so unmatched rather than a decoy FP"
   - id: ~
     claim: "27 SCA/dependency findings against the declared requirements -- out of scope for a key of planted source bugs"
+  - id: V25
+    claim: "ns-websec-611-001 in ml/modelconfig.py:24 parse_model_config -- lxml XMLParser with resolve_entities=True"
+  - id: V43
+    claim: "ns-websec-598-001 in api/deps.py:17 _extract_token -- request.args.get('token') as a credential"
+  - id: D19
+    claim: "CF-RETURN-001 in ui/views.py:83 -- tainted return from verify_password(); verify_password is a decoy"
+  - id: ~
+    claim: "CF-RETURN-001 in api/datasets.py:46 -- tainted return from find_table(); matches no manifest entry"
+  - id: V48
+    claim: "ns-websec-1333-001 in core/security.py:134 -- _USERNAME_RE nested-quantifier regex, consumed by validate_username()"

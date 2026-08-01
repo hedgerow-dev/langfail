@@ -1,6 +1,7 @@
 tool: Open-Rowan hunt --discover (deepseek-chat)
 version: "0.2.0 (b4532f4), backend deepseek-chat"
 category: Agentic pipeline
+protocol: agentic-pipeline
 date: 2026-07-31
 
 manifest_size: 82

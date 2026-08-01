@@ -1,6 +1,7 @@
 tool: Claude Haiku 4.5, 5-region sweep
 version: "claude-haiku-4-5-20251001"
 category: LLM review (partitioned)
+protocol: partitioned-sweep
 date: 2026-07-29
 
 manifest_size: 82

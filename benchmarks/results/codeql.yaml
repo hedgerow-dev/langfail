@@ -1,0 +1,119 @@
+tool: CodeQL
+version: "2.25.6"
+category: Static/taint
+protocol: single-run
+date: 2026-08-01
+
+manifest_size: 82
+blind_copy_commit: c06b704
+raw_output: raw/codeql.sarif
+
+notes: >
+  `codeql database create --language=python` then `database analyze` with
+  the stock `codeql/python-queries:codeql-suites/python-security-extended.qls`
+  suite. No custom queries, no custom taint model. 42 results.
+
+  Adjudicated by SCOREBOARD.md's stated rule: anchored in the entry's declared
+  SOURCE or SINK function AND the message describes that entry's defect.
+  Enclosing function resolved by AST.
+
+  Notable: CodeQL credits V48 (ReDoS) where Open-Rowan does not. Both engines
+  flag the same nested-quantifier regex, but CodeQL's `py/polynomial-redos`
+  anchors inside `validate_username()` (the declared sink) while Open-Rowan's
+  regex rule anchors on the module-level `_USERNAME_RE` assignment four lines
+  above, which is in neither declared function.
+
+  NOT credited despite landing in a declared function, because the claim is a
+  different defect than the entry: py/polynomial-redos in `_stub_chat` (V62 is
+  training-data extraction), py/stack-trace-exposure in `predict` (V13 is
+  deserialization — credited separately via the features.py hit),
+  py/weak-sensitive-data-hashing in `derive_recovery_code` (V46 is
+  predictability, not hash strength), py/path-injection x3 in `load_from_hub`
+  (V53 is hubconf execution, CWE-829), py/polynomial-redos x2 in
+  `render_markdown` (V31 is markdown-image egress). Each is a real finding
+  about a different problem on the same code.
+findings:
+  - id: V45
+    claim: "py/url-redirection in api/auth.py:98 redirect_after_login()"
+  - id: V51
+    claim: "py/unsafe-deserialization in api/experiments.py:149 import_experiment() — jsonpickle"
+  - id: V48
+    claim: "py/polynomial-redos in core/security.py:140 validate_username()"
+  - id: V09
+    claim: "py/command-line-injection in ml/convert.py:25 convert_model()"
+  - id: V13
+    claim: "py/unsafe-deserialization in ml/features.py:37 load_feature_cache()"
+  - id: V15
+    claim: "py/code-injection in ml/metrics.py:30 evaluate_metric()"
+  - id: V25
+    claim: "py/xxe in ml/modelconfig.py:25 parse_model_config()"
+  - id: V41
+    claim: "py/unsafe-deserialization in ml/runner.py:24 handle_runner_call()"
+  - id: V34
+    claim: "py/code-injection in services/analysis.py:36 run_analysis()"
+  - id: V02
+    claim: "py/unsafe-deserialization in services/config_loader.py:20 load_pipeline_config()"
+  - id: V08
+    claim: "py/sql-injection in services/experiments.py:34 search_experiments()"
+  - id: V22
+    claim: "py/sql-injection in services/experiments.py:46 count_by_owner()"
+  - id: V33
+    claim: "py/sql-injection in services/experiments.py:69 ask_experiments() — model-generated SQL"
+  - id: V03
+    claim: "py/path-injection in services/registry.py:30 read_artifact()"
+  - id: V24
+    claim: "py/path-injection in services/registry.py:40 read_raw()"
+  - id: V10
+    claim: "py/path-injection in services/registry.py:66 save_with_metadata()"
+  - id: V05
+    claim: "py/template-injection in services/reports.py:31 render_report()"
+  - id: V27
+    claim: "py/path-injection in services/reports.py:38 load_template_file()"
+  - id: V74
+    claim: "py/url-redirection in ui/views.py:87 login()"
+  - id: D38
+    claim: "py/polynomial-redos in agent/llm.py:135 redact_sensitive"
+  - id: D09
+    claim: "py/polynomial-redos in agent/sanitize.py:18 strip_directives"
+  - id: D22
+    claim: "py/url-redirection in api/auth.py:107 redirect_after_login_local"
+  - id: D10
+    claim: "py/polynomial-redos in services/experiments.py:77 ask_experiments_structured"
+  - id: D10
+    claim: "py/sql-injection in services/experiments.py:82 ask_experiments_structured"
+  - id: ~
+    claim: "py/polynomial-redos in agent/llm.py:91 _stub_chat (V62 is training-data extraction)"
+  - id: ~
+    claim: "py/stack-trace-exposure in api/inference.py:55 predict (V13 is deserialization)"
+  - id: ~
+    claim: "py/flask-debug in cli.py:77 main"
+  - id: V47
+    claim: "py/weak-sensitive-data-hashing in core/security.py:96 legacy_access_key -- unsalted md5 access key"
+  - id: V46
+    claim: "py/weak-sensitive-data-hashing in core/security.py:113 derive_recovery_code -- md5 over predictable input as a recovery token"
+  - id: ~
+    claim: "py/redos in core/security.py:134 (module level, neither declared function)"
+  - id: ~
+    claim: "py/polynomial-redos in ml/hub.py:34 _repo_dir"
+  - id: ~
+    claim: "py/path-injection in ml/hub.py:49 load_from_hub (V53 is hubconf execution)"
+  - id: ~
+    claim: "py/path-injection in ml/hub.py:51 load_from_hub (V53 is hubconf execution)"
+  - id: ~
+    claim: "py/path-injection in ml/hub.py:53 load_from_hub (V53 is hubconf execution)"
+  - id: ~
+    claim: "py/path-injection in ml/plugins.py:75 _store"
+  - id: ~
+    claim: "py/polynomial-redos in services/markdown.py:31 render_markdown (V31 is image egress)"
+  - id: ~
+    claim: "py/polynomial-redos in services/markdown.py:32 render_markdown (V31 is image egress)"
+  - id: ~
+    claim: "py/path-injection in services/registry.py:21 store_artifact"
+  - id: ~
+    claim: "py/path-injection in services/registry.py:22 store_artifact"
+  - id: ~
+    claim: "py/path-injection in services/registry.py:67 save_with_metadata (second hit, same defect as the credited one)"
+  - id: V19
+    claim: "py/jinja2/autoescape-false in services/reports.py:62 -- _page_env = Environment(autoescape=False), consumed by render_page()"
+  - id: ~
+    claim: "py/url-redirection in ui/views.py:87 login (duplicate of the credited V74 hit)"
