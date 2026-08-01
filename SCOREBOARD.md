@@ -8,6 +8,7 @@
 
 <!-- SCOREBOARD:START -->
 ```
+Claude Opus 5                  █████████████████████████████████░░░░░░░  82%
 Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%
 Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%
 Rowan (hedgerow.dev)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
@@ -18,6 +19,7 @@ Semgrep                        █████████░░░░░░░�
 
 | Tool | Run | Category | Recall | Decoy FPs (of 50) |
 |------|-----|----------|--------|--------------|
+| Claude Opus 5 | single | LLM review | 67/82 (82%) | 0 |
 | Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/82 (80%) | 0 |
 | Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/82 (50%) | 0 |
 | Rowan (hedgerow.dev) | single | Static/taint | 39/82 (48%) | 3 |
@@ -51,10 +53,10 @@ scan output — and non-deterministic between runs.
 Two things to hold against the numbers. Rowan is maintained by this repo's
 authors, who also adjudicated every row above; the per-finding claims are
 committed in `benchmarks/results/` so the calls can be checked rather than
-trusted. And older hand-adjudicated claims with no artifact — Claude Opus 57%,
-VVAH + DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15% —
+trusted. And older hand-adjudicated claims with no artifact — VVAH + DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15% —
 are not reproducible, in some cases were reviewed against blind copies now
-known to be leaky, and are deliberately not ranked here.
+known to be leaky, and are deliberately not ranked here. Opus's old 57% claim
+is superseded by the verified single run above.
 
 ## Adding a tool
 

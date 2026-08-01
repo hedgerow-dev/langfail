@@ -1,0 +1,213 @@
+tool: Claude Opus 5
+version: "single run, sweep_prompt.md single-run v1"
+category: LLM review
+protocol: single-run
+date: 2026-08-01
+
+manifest_size: 82
+blind_copy_commit: c06b704
+raw_output: raw/claude-opus-single.md
+
+notes: >
+  One reviewer, whole blind copy, one context. Prompt is the "single-run
+  (whole-app, v1)" text in benchmarks/sweep_prompt.md, verbatim. The reviewer
+  was NOT told how many bugs are planted, or that any are.
+
+  REPLACES the old unverified "Claude Opus 57%" row, which had no artifact and
+  no saved prompt. Not comparable to the 5-region sweep either: this is one
+  context over the whole app.
+
+  83 findings, zero decoy false positives. The review explicitly listed safe
+  twins it declined to flag -- download_artifact, read_owner_file,
+  render_card_markdown, fetch_external, search_by_tag,
+  ask_experiments_structured, load_model_numeric, dispatch_public,
+  install_from_catalog, new_recovery_code, run_agent_with_signal,
+  import_experiment_document, run_analysis_aggregate,
+  build_tool_list_snapshot, and the authz-demo guarded/fused variants --
+  including get_note_late_built, which looks like a TOCTOU bug and is not.
+
+  ADJUDICATED BY THE ROWAN AUTHORS, and this is the row where that conflict
+  matters most: it outscores their own tool. Judgement calls, all made toward
+  crediting the reviewer:
+    - agent/sanitize.py:17 names strip_directives, which is decoy D09. Scored
+      as V32, not a decoy FP: the claim is not "this safe function is broken"
+      but the real Unicode-ordering defect (the stub deobfuscates Tags-block
+      characters BEFORE the filter scans), which is V32's mechanism. Per
+      SCOREBOARD.md, score the finding, not the symbol.
+    - agent/tools.py:25 (run_sql unrestricted) credits V16 only. V17/V26/V30/
+      V32 share that sink; crediting one finding for all five is the
+      location-based generosity the rubric forbids. V30 and V32 are credited
+      from their own separate findings.
+    - core/security.py:96 -> V47 and core/security.py:134 -> V48 use the
+      module-level and vocabulary clarifications, matching how Bandit scored.
+    - workers/tasks.py:45 -> V07 and api/reports.py:40 -> V19 are
+      source-function anchors, per the V03 precedent.
+
+  A second opinion on this mapping would be worth having.
+findings:
+  - id: V44
+    claim: "langfail/api/auth.py:92 -- Session tokens minted from an unverified JWT (full authentication bypass)"
+  - id: V42
+    claim: "langfail/api/auth.py:46 -- Registration accepts a caller-supplied role (privilege escalation)"
+  - id: V46
+    claim: "langfail/core/security.py:113 -- Password-reset code is a deterministic MD5 of public account fields"
+  - id: V47
+    claim: "langfail/core/security.py:96 -- Legacy access key is unsalted MD5 of the password, and is a valid credential"
+  - id: V40
+    claim: "langfail/mcp_server.py:210 -- MCP-over-HTTP auth is applied to /sse but not to /messages/"
+  - id: V41
+    claim: "langfail/api/inference.py:123 -- Direct pickle.loads of a base64 request body (unauthenticated-shape RCE)"
+  - id: V51
+    claim: "langfail/api/experiments.py:149 -- jsonpickle.decode of a caller-supplied document"
+  - id: V54
+    claim: "langfail/api/experiments.py:170 -- Any authenticated user can install a Python plugin that is imported at boot"
+  - id: ~
+    claim: "langfail/api/experiments.py:107 -- Pipeline stages from the request body reach importlib + call"
+  - id: V02
+    claim: "langfail/api/experiments.py:30 -- Experiment creation parses caller YAML with the unsafe loader"
+  - id: V15
+    claim: "langfail/api/experiments.py:184 -- Caller-named metric reaches eval"
+  - id: ~
+    claim: "langfail/ml/metrics.py:30 -- eval() of a custom metric expression with a defeatable sandbox"
+  - id: V37
+    claim: "langfail/ml/dataset.py:85 -- exec() of an attacker-supplied dataset 'loader script'"
+  - id: V34
+    claim: "langfail/services/analysis.py:36 -- exec() of LLM-generated analysis code driven by a user question"
+  - id: V53
+    claim: "langfail/ml/hub.py:59 -- Hub import executes attacker-supplied Python, and extracts without containment"
+  - id: V28
+    claim: "langfail/services/retention.py:14 -- Command injection in the dataset retention sweep"
+  - id: V11
+    claim: "langfail/workers/tasks.py:65 -- Command injection in the post-import file inspection"
+  - id: V09
+    claim: "langfail/ml/convert.py:24-25 -- Command injection through a stored artifact path"
+  - id: V05
+    claim: "langfail/services/reports.py:31 -- Server-side template injection in user-supplied report templates"
+  - id: V21
+    claim: "langfail/api/models.py:134 -- Second SSTI sink: cached annotations rendered as templates"
+  - id: V52
+    claim: "langfail/ml/model_loader.py:74 -- The 'verified' unpickler allow-list is escapable to full RCE (confirmed)"
+  - id: V16
+    claim: "langfail/agent/tools.py:25 -- Assistant run_sql tool executes arbitrary SQL despite its 'read-only' docstring"
+  - id: V18
+    claim: "langfail/agent/tools.py:42 -- Assistant calc tool is eval with an ineffective sandbox"
+  - id: V58
+    claim: "langfail/agent/tools.py:74 -- Assistant install_package tool pip-installs an arbitrary specifier"
+  - id: V35
+    claim: "langfail/agent/native.py:69 -- Reflective dispatch reaches the undeclared _debug_eval action"
+  - id: V01
+    claim: "langfail/ml/model_loader.py:32 -- Unpickling of registry artifacts"
+  - id: ~
+    claim: "langfail/ml/runner.py:24 -- pickle.loads on the runner-call protocol payload"
+  - id: V13
+    claim: "langfail/api/inference.py:48 -- Caller-controlled path loaded through a pickle-enabled numpy loader"
+  - id: ~
+    claim: "langfail/ml/features.py:37-39 -- Feature cache loaded with pickle enabled (duplicate of the credited V13 finding)"
+  - id: V07
+    claim: "langfail/workers/tasks.py:45 -- Remote import unpickles the downloaded blob"
+  - id: V08
+    claim: "langfail/services/experiments.py:34 -- SQL injection via the tag filter and the sort column"
+  - id: V22
+    claim: "langfail/services/experiments.py:45 -- SQL injection in count_by_owner"
+  - id: V33
+    claim: "langfail/services/experiments.py:69 -- LLM-authored SQL executed verbatim (text-to-SQL injection)"
+  - id: V25
+    claim: "langfail/ml/modelconfig.py:24-25 -- XXE: external entities and DTD loading enabled"
+  - id: V20
+    claim: "langfail/services/pipeline.py:25 -- Arbitrary module import and call from a pipeline stage op"
+  - id: ~
+    claim: "langfail/services/config_loader.py:20 -- yaml.load with the unsafe full Loader"
+  - id: V10
+    claim: "langfail/services/registry.py:65 -- Arbitrary file write via meta.storage_path"
+  - id: ~
+    claim: "langfail/services/registry.py:20 -- Second write primitive in create_model: traversal through the artifact name"
+  - id: V04
+    claim: "langfail/ml/dataset.py:31 -- Zip-slip / tar-slip in dataset archive extraction"
+  - id: V24
+    claim: "langfail/services/registry.py:40 -- Unrestricted file read via read_raw"
+  - id: V03
+    claim: "langfail/services/registry.py:30 -- Path traversal in read_artifact despite sanitize_path"
+  - id: V27
+    claim: "langfail/api/reports.py:77 -- Path traversal in template_name reads and renders arbitrary files"
+  - id: ~
+    claim: "langfail/agent/tools.py:31 -- Assistant read_file tool reads any path on the host"
+  - id: ~
+    claim: "langfail/api/models.py:174 -- Arbitrary file read through an attacker-writable artifact_path"
+  - id: V14
+    claim: "langfail/services/config_loader.py:26 -- Unrestricted mass assignment onto ORM instances"
+  - id: ~
+    claim: "langfail/api/admin.py:50 -- MCP tool-note write is not admin-gated (tool-description prompt injection)"
+  - id: V29
+    claim: "langfail/mcp_server.py:29 -- Stored note concatenated into tool descriptions served to connecting agents"
+  - id: V39
+    claim: "langfail/mcp_server.py:103 -- Stored note relayed verbatim into an MCP sampling request"
+  - id: V32
+    claim: "langfail/agent/sanitize.py:17 -- strip_directives filters the wrong representation and is trivially bypassed"
+  - id: V60
+    claim: "langfail/agent/core.py:170 -- Destructive-action confirmation can be forged by untrusted context"
+  - id: V30
+    claim: "langfail/agent/memory.py:30 -- Assistant long-term memory is global, enabling cross-user poisoning and leakage"
+  - id: V64
+    claim: "langfail/api/agent.py:199 -- User preference merge writes any settings namespace, including security"
+  - id: V49
+    claim: "langfail/api/auth.py:224 -- Stored XSS via user-controlled SVG avatar served inline"
+  - id: V83
+    claim: "langfail/ui/templates/search.html:17 -- Reflected and stored XSS through the highlight helper"
+  - id: V76
+    claim: "langfail/ui/templates/model_detail.html:7 -- Stored XSS from a model card"
+  - id: V77
+    claim: "langfail/ui/templates/chat.html:11 -- Model output rendered as trusted HTML"
+  - id: V19
+    claim: "langfail/api/reports.py:40 -- Reflected XSS: caller HTML wrapped by a non-escaping page shell"
+  - id: V31
+    claim: "langfail/services/markdown.py:31-32 -- Markdown renderer interpolates src/href unescaped"
+  - id: V80
+    claim: "langfail/ui/views.py:88 -- Session cookie set without HttpOnly, Secure, or SameSite"
+  - id: V78
+    claim: "langfail/ui/views.py:151 -- No CSRF protection on any cookie-authenticated form"
+  - id: V06
+    claim: "langfail/services/fetcher.py:23 -- SSRF: allow-list check, then redirects followed"
+  - id: V23
+    claim: "langfail/api/datasets.py:55 -- SSRF via the dataset completion webhook"
+  - id: ~
+    claim: "langfail/agent/tools.py:37 -- Assistant http_get tool is an unrestricted SSRF/exfiltration primitive"
+  - id: ~
+    claim: "langfail/core/security.py:150 -- sanitize_path strips traversal only once"
+  - id: ~
+    claim: "langfail/core/security.py:175 -- is_safe_url allow-list uses suffix matching"
+  - id: ~
+    claim: "langfail/core/config.py:22 -- Hardcoded default secrets for session and JWT signing"
+  - id: ~
+    claim: "langfail/cli.py:76 -- main() starts Flask with debug=True"
+  - id: ~
+    claim: "langfail/cli.py:30-35 -- Seed command installs known-credential accounts including an admin"
+  - id: V61
+    claim: "langfail/api/agent.py:170 -- Experiment briefing leaks other users' private notes"
+  - id: V65
+    claim: "langfail/api/authz_demo.py:115 -- Broken object-level authorization: private notes readable by id"
+  - id: V66
+    claim: "langfail/api/authz_demo.py:129 -- Ownership check gated behind a caller-supplied query flag"
+  - id: V68
+    claim: "langfail/api/authz_demo.py:194 -- Team notes readable without membership"
+  - id: V70
+    claim: "langfail/api/authz_demo.py:248 -- Tasks readable without checking the parent project's owner"
+  - id: V72
+    claim: "langfail/api/authz_demo.py:299 -- Unpublished articles returned by the ungated read"
+  - id: V57
+    claim: "langfail/workers/tasks.py:102 -- Retrain ingests unreviewed feedback (model poisoning)"
+  - id: V62
+    claim: "langfail/agent/llm.py:100 -- Assistant regurgitates its seeded corpus, which contains SSNs and card numbers"
+  - id: ~
+    claim: "langfail/__init__.py:60-70 -- Boot seeds live-looking PII into the database unconditionally"
+  - id: V38
+    claim: "langfail/services/support.py:29 -- Account email sent to the LLM backend unredacted"
+  - id: V45
+    claim: "langfail/api/auth.py:98 -- Open redirect on /api/auth/redirect"
+  - id: V74
+    claim: "langfail/ui/views.py:87 -- Open redirect on dashboard login"
+  - id: V43
+    claim: "langfail/api/deps.py:17 -- Session token accepted from the URL query string"
+  - id: V48
+    claim: "langfail/core/security.py:134 -- Username regex is both ReDoS-prone and newline-permissive"
+  - id: V36
+    claim: "langfail/api/agent.py:85 -- Unbounded max_rounds on the assistant loop"
