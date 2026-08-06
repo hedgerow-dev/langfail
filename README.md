@@ -1,23 +1,20 @@
-<div align="center">
-
 # Langfail
 
-### A deliberately vulnerable MLOps platform, built to be broken
+**A deliberately vulnerable MLOps platform, built to be broken.** A realistic
+Flask application with 82 security bugs planted in it on purpose: target
+practice for scanners, for agents, and for anyone who rates their own code
+review highly.
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
-[![Type: security benchmark](https://img.shields.io/badge/type-security%20benchmark-critical.svg)](SECURITY.md)
-[![Planted vulnerabilities: 82](https://img.shields.io/badge/planted%20vulnerabilities-82-orange.svg)](benchmarks/ground_truth.yaml)
-[![Best verified score: 91%](https://img.shields.io/badge/best%20verified%20score-91%25-red.svg)](SCOREBOARD.md)
-[![Tests: 137+ passing](https://img.shields.io/badge/tests-137%2B%20passing-brightgreen.svg)](tests/)
+[![License MIT](https://img.shields.io/badge/license-MIT-013D5A?style=flat-square&labelColor=013D5A)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-013D5A?style=flat-square&labelColor=013D5A)](pyproject.toml)
+[![Security benchmark](https://img.shields.io/badge/type-security_benchmark-013D5A?style=flat-square&labelColor=013D5A)](SECURITY.md)
+[![Tests 153 passing](https://img.shields.io/badge/tests-153_passing-708C69?style=flat-square&labelColor=013D5A)](tests/)
+[![Planted vulnerabilities 82](https://img.shields.io/badge/planted_vulnerabilities-82-F4A25B?style=flat-square&labelColor=013D5A)](benchmarks/ground_truth.yaml)
 
-**A realistic MLOps web app with 82 security bugs planted in it on purpose:
-target practice for scanners, AI agents, and humans who think they're good at
-code review.**
+> **Never deploy this, and never point it at anything you care about.** Every
+> bug in it is real and exploitable. It is for local research and teaching.
 
 [Architecture](ARCHITECTURE.md) · [Scoreboard](SCOREBOARD.md) · [Security policy](SECURITY.md)
-
-</div>
 
 ---
 
@@ -207,14 +204,15 @@ Local and pluggable, no cloud API:
 ## Verify the benchmark
 
 ```bash
-PYTHONPATH=. pytest -q                     # 144 tests (6 skipped without the mcp/lxml extras): proof that every planted bug really is exploitable
+PYTHONPATH=. pytest -q                     # 153 tests (6 skipped without the mcp/lxml extras): proof that every planted bug really is exploitable
 PYTHONPATH=. python exploits/chain_a_ssrf_to_rce.py      # multi-step: SSRF leads to remote code execution
 PYTHONPATH=. python exploits/chain_b_indirect_injection.py  # multi-step: hidden data tricks the assistant
 PYTHONPATH=. python benchmarks/check_ground_truth.py     # confirms the answer key still matches the code
 ```
 
-That's 8 ordinary tests, one proof-of-exploit per planted bug, and one check per
-*precision decoy*: code written to look every bit as suspicious as a real bug
+That's 9 ordinary tests, a proof-of-exploit for every planted bug (V07 rides
+along on V06's chain), and a check for all but one of the 50 *precision decoys*:
+code written to look every bit as suspicious as a real bug
 while being perfectly safe. Flag a decoy and you've scored yourself a false
 positive. Installing the `mcp` extra (`pip install -e ".[mcp,mcp-http]"`) adds 5
 otherwise-skipped MCP tests.
