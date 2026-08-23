@@ -6,19 +6,20 @@ are pooled.
 
 ## Provenance
 
-The original 5-region Opus sweep (75/82, on SCOREBOARD.md) was run **without
-saving its prompt**. What follows is reconstructed from the description that
-survived — one region each, trace taint across file/DB/queue boundaries, check
-that safe-looking helpers actually work, don't stop at one finding per
-function. It is faithful in substance and is **not verbatim**.
+This prompt was reconstructed from a described 5-region Opus sweep that saved
+neither its prompt nor its raw output. That sweep's score was later struck from
+SCOREBOARD.md because nothing in this repository shows it ever ran (commit
+`c04c085`), so **no run stands behind this file**. What follows is faithful to
+the surviving description (one region each, trace taint across file/DB/queue
+boundaries, check that safe-looking helpers actually work, don't stop at one
+finding per function) and is **not verbatim**.
 
-Any run using this file is therefore not strictly comparable to that 75/82.
 Record which prompt a run used in its `results/*.yaml` `notes:` field. Do not
-delete or silently edit this file to match a new run — add a version below.
+delete or silently edit this file to match a new run; add a version below.
 
 ## Regions
 
-Five regions, chosen so each is a coherent slice with its own bug flavour and
+Five regions, chosen so each is a coherent slice with its own bug flavor and
 no region is much bigger than the others:
 
 | Region | Paths |
@@ -29,7 +30,7 @@ no region is much bigger than the others:
 | `agent` | `langfail/agent/`, `langfail/mcp_server.py` |
 | `core` | `langfail/core/`, `langfail/ui/`, `langfail/cli.py`, `langfail/models.py` |
 
-A reviewer may **read** any file in the copy — cross-file taint is the point —
+A reviewer may **read** any file in the copy (cross-file taint is the point)
 but only reports findings whose sink is in its own region, so the pooled
 results don't double-count.
 
@@ -97,7 +98,7 @@ python scripts/export_blind_copy.py /tmp/langfail-blind
 ```
 
 Give each reviewer the blind copy and one region's prompt. Pool the findings,
-map each to a manifest id, and write `benchmarks/results/<tool>.yaml` — see
+map each to a manifest id, and write `benchmarks/results/<tool>.yaml`: see
 [`results/README.md`](results/README.md). Note in `notes:` that the run was
 partitioned, how many reviewers, and that it used `sweep_prompt.md` v1.
 
@@ -112,7 +113,7 @@ For a **single run**: one reviewer reads the whole blind copy in one context,
 which is the shape a scanner invocation has and therefore the shape that
 compares against CodeQL, Semgrep, Bandit and Rowan on the board.
 
-Not comparable to the partitioned sweep above — that is the point of the `Run`
+Not comparable to the partitioned sweep above, which is the point of the `Run`
 column in SCOREBOARD.md. The sweep gives each reviewer a fifth of the app to
 hold at once; this does not.
 

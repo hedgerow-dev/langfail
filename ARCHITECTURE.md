@@ -361,7 +361,7 @@ Some planted issues aren't Python bugs at all, just insecure *settings*: the
 kind that show up as real CVEs in ML-serving infrastructure while every line of
 code is fine. They live in
 [`deploy/docker-compose.yml`](deploy/docker-compose.yml) and in
-`ground_truth.yaml`'s `config_findings` section (CF01–CF05):
+`ground_truth.yaml`'s `config_findings` section (CF01 to CF05):
 
 - Ollama bound to `0.0.0.0` with no auth (CF01)
 - TorchServe's management API with token auth disabled (CF02)

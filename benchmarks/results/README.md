@@ -1,14 +1,16 @@
 # Benchmark results
 
 One YAML file per run, plus its raw output. `python benchmarks/score.py`
-reads every file here and prints the scores; `--markdown` emits a table you
-can paste into [SCOREBOARD.md](../../SCOREBOARD.md).
+reads every file here and prints the scores; `--emit-scoreboard` regenerates
+the ranked block in [SCOREBOARD.md](../../SCOREBOARD.md), and
+`--check-scoreboard` fails if that block has drifted.
 
-**This directory is why the scores on SCOREBOARD.md are marked unreliable.**
-It did not exist when they were collected. Nothing recorded which finding a
-tool matched to which manifest entry, so none of those numbers can be
-re-derived, re-scored after a manifest change, or checked by anyone else. Any
-new run belongs here.
+**A run is ranked on SCOREBOARD.md only if it has a file here.** This
+directory did not exist when the older claims listed there were collected.
+Nothing recorded which finding a tool matched to which manifest entry, so none
+of those numbers can be re-derived, re-scored after a manifest change, or
+checked by anyone else; they are listed but not ranked. Any new run belongs
+here.
 
 ## Adding a run
 
@@ -20,7 +22,7 @@ new run belongs here.
    ```
 
    The exporter refuses to produce a copy containing a spoiler. If it exits
-   non-zero, fix the source it points at — do not work around it.
+   non-zero, fix the source it points at. Do not work around it.
 
 2. Run the tool. Save whatever it produces verbatim under `raw/`.
 
@@ -43,7 +45,7 @@ new run belongs here.
 
    It fails on unknown ids, duplicate ids, missing claim text, and a
    `raw_output` path that does not exist. It warns when a run targeted an
-   older, smaller manifest — those entries are credited as missed, which is
+   older, smaller manifest: those entries are credited as missed, which is
    the conservative call, so a re-run is always worth more than a back-fill.
 
 ## What to write in `claim`
