@@ -10,8 +10,8 @@
 ```
 Claude Opus 5                  █████████████████████████████████████░░░  91%
 Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%
+Rowan (hedgerow.dev)           ████████████████████████░░░░░░░░░░░░░░░░  61%
 Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%
-Rowan (hedgerow.dev)           ███████████████████░░░░░░░░░░░░░░░░░░░░░  48%
 CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%
 Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
 Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
@@ -21,34 +21,35 @@ Semgrep                        █████████░░░░░░░�
 |------|-----|----------|--------|--------------|
 | Claude Opus 5 | single | LLM review | 75/82 (91%) | 0 |
 | Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/82 (80%) | 0 |
+| Rowan (hedgerow.dev) | single | Static/taint | 50/82 (61%) | 5 |
 | Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/82 (50%) | 0 |
-| Rowan (hedgerow.dev) | single | Static/taint | 39/82 (48%) | 4 |
 | CodeQL | single | Static/taint | 22/82 (27%) | 5 |
 | Bandit | single | Static/pattern | 19/82 (23%) | 2 |
 | Semgrep | single | Static/pattern | 19/82 (23%) | 1 |
+
 
 <!-- SCOREBOARD:END -->
 
 Generated from `benchmarks/results/`; a tool appears only if it has a
 committed result file with raw output and every finding mapped to a manifest
-id. Don't hand-edit the block — `python benchmarks/score.py --emit-scoreboard`
+id. Don't hand-edit the block: `python benchmarks/score.py --emit-scoreboard`
 regenerates it, `--check-scoreboard` fails in CI if it drifts.
 
 **Run** is the invocation shape, and it matters more than the ranking.
-`single` is one deterministic pass over the whole app — the only shape that
+`single` is one deterministic pass over the whole app, the only shape that
 compares cleanly across tools. `sweep` reviews the app in regions, which
 shrinks the context per review and materially helps recall.
 
 **Decoy FPs** are the precision signal: the tool called a deliberately-safe
 lookalike broken. Per-tool unmatched counts (findings matching no manifest
-entry) are in `benchmarks/results/` and `python benchmarks/score.py` — off the
+entry) are in `benchmarks/results/` and `python benchmarks/score.py`, off the
 board because they mix real noise with correct findings the answer key simply
 doesn't cover.
 
 One row per tool. Rowan also has a verified agentic run (`hunt --discover`,
 33/82) committed in `benchmarks/results/`; it is not listed because it is a
-different subject — scored on what its LLM triage stood behind rather than raw
-scan output — and non-deterministic between runs.
+different subject (scored on what its LLM triage stood behind rather than raw
+scan output) and non-deterministic between runs.
 
 Three things to hold against the numbers.
 
@@ -62,13 +63,21 @@ credited eight vulns from a single bullet. Applying one standard moved Opus
 vulns, which its own notes condemn), gained a V47 it had denied itself, and
 picked up an unrecorded decoy FP: net 39/82 either way. Bandit lost two.
 
+Update (2026-08-22): the Rowan row above is now a newer scan (open-rowan
+v0.3.0, `7ac3c38`) against blind copy `8c3a47d`, which finds 50/82 (61%) with
+5 decoy FPs. The 39/82 figures in the paragraph above describe the superseded
+2026-08-01 run; the +11 gain is new AI/ML and supply-chain rules landing since,
+not a re-adjudication of the old findings (all 39 recur). This newer run has
+not itself been through an adversarial re-adjudication.
+
 The Sonnet and Haiku sweeps have **not** been re-adjudicated under the same
 standard and are not strictly comparable to the rows above and below them.
 
 The reviewed source is not currently recoverable: the `blind_copy_commit`
 hashes in most result files do not resolve to objects in this repository, so
 the per-finding claims can be read but not replayed against the exact tree
-they were made on. And older hand-adjudicated claims with no artifact — VVAH + DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15% —
+they were made on. And older hand-adjudicated claims with no artifact (VVAH +
+DeepSeek 51%, GPT-5.5 44%, Kimi K3 35%, DeepSeek-chat 24%, Pysa 15%)
 are not reproducible, in some cases were reviewed against blind copies now
 known to be leaky, and are deliberately not ranked here. Opus's old 57% claim
 is superseded by the verified single run above.
@@ -116,14 +125,14 @@ claims the safe branch is broken.
 
 **The anchoring rule.** A finding credits an entry when it is anchored in that
 entry's declared source or sink function *and* its message describes that
-entry's defect. Location alone never suffices — five entries declare
+entry's defect. Location alone never suffices: five entries declare
 `create_model()` as their source, so co-location would credit all five for one
 finding. Two clarifications, applied to every result file:
 
 - A module-level definition counts when it *embodies* the defect and is
   consumed by the declared function: `_page_env = Environment(autoescape=False)`
   credits V19 because `render_page()` renders with it. The limit is "embodies",
-  not "is used by" — a bare `import pickle` does not credit V01, because the
+  not "is used by": a bare `import pickle` does not credit V01, because the
   defect is unpickling untrusted input, not the import.
 - Naming the weakness in the tool's own vocabulary is enough. "Weak MD5" at
   `derive_recovery_code()` credits V46 even though V46's CWE is 640 rather
@@ -211,7 +220,7 @@ presence check, not a taint problem.
 | V58 | 5 | 829 | Agent-installable arbitrary package (slopsquatting) | `[[TOOL:install_package]]` directive → pip build-time code exec (no shell injection) |
 | V59 | 6 | 367 | MCP tool-metadata rug pull (TOCTOU) | `applies_after` note → clean description at approval, poisoned after |
 | V60 | 6 | 345 | Agent confirmation spoof via injected transcript marker | fetched-page text → provenance-blind gate scan → `delete_job` |
-| V61 | 5 | 639 | Cross-tenant RAG leak via owner-unscoped note retrieval | retrieval crosses the tenant boundary; ordinary summarisation exfiltrates |
+| V61 | 5 | 639 | Cross-tenant RAG leak via owner-unscoped note retrieval | retrieval crosses the tenant boundary; ordinary summarization exfiltrates |
 | V62 | 5 | 200 | Training-data extraction via repetition/divergence | repetition trigger → memorized corpus → verbatim PII in the reply (no tool call) |
 | V63 | 5 | 862 | Confused deputy: agent tools execute as the server identity | no per-user scoping or consent record on `read_file`/`run_sql`/`http_get` |
 | V64 | 6 | 15 | Config-as-taint: preference deep-merge flips a platform security toggle | settings write → `strict_paths` gate off → V24 traversal re-opens |
@@ -256,7 +265,7 @@ write in one session → exfil in another user's later session).
 ## Regenerating the baseline
 
 ```bash
-PYTHONPATH=. pytest -q     # exploit proofs (V01–V41; V07 shares V06's chain PoC)
+PYTHONPATH=. pytest -q     # exploit proofs (one per planted bug; V07 shares V06's chain PoC)
                            # + decoy precision checks + functional tests
 # (test_v29 self-skips if the optional `mcp` extra isn't installed: pip install -e ".[mcp]")
 ```
