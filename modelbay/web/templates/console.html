@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Console — Modelbay{% endblock %}
+{% block content %}
+<h1>Console settings</h1>
+{% if saved %}<p class="notice">Settings saved.</p>{% endif %}
+<form method="post" action="{{ url_for('web.console') }}">
+  <p>
+    <label>Portal theme<br>
+      <input type="text" name="theme" value="{{ theme }}">
+    </label>
+  </p>
+  <p>
+    <label>
+      <input type="checkbox" name="pin_object_names" value="on" {% if pin_object_names %}checked{% endif %}>
+      Pin object names (hardened mode)
+    </label>
+  </p>
+  <p><button type="submit">Save settings</button></p>
+</form>
+{% endblock %}

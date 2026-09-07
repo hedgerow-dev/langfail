@@ -6,3 +6,10 @@ var/
 .pytest_cache/
 *.egg-info/
 build/
+
+# Held-out mutant-suite answer key and proofs (see docs/adr/0001, and
+# benchmarks/suites/mutant/README.md). The mutated corpus (modelbay/) is public;
+# the key and PoCs are released only after a scored run so a frozen rule set
+# cannot be tuned to them.
+benchmarks/suites/mutant/ground_truth.yaml
+benchmarks/suites/mutant/tests/
