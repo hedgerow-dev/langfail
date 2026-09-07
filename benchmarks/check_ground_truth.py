@@ -8,11 +8,13 @@ that a manifest entry pointing at it is now silently wrong. This script
 AST-parses every referenced source file and verifies each declared symbol
 still exists, flagging line-number drift as informational (non-failing).
 
-Usage: python benchmarks/check_ground_truth.py
+Usage: python benchmarks/check_ground_truth.py            # langfail suite
+       python benchmarks/check_ground_truth.py --suite mutant
 Exit code 0 if every referenced symbol resolves; 1 if any symbol or file is missing.
 """
 from __future__ import annotations
 
+import argparse
 import ast
 import sys
 from pathlib import Path
@@ -21,6 +23,13 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / "benchmarks" / "ground_truth.yaml"
+
+#: Suite -> manifest. Source-file paths inside a manifest are repo-root-relative,
+#: so only the manifest location varies by suite. Mirrors SUITES in score.py.
+SUITES = {
+    "langfail": MANIFEST,
+    "mutant": REPO_ROOT / "benchmarks" / "suites" / "mutant" / "ground_truth.yaml",
+}
 
 
 def _function_ranges(path: Path) -> dict[str, tuple[int, int]]:
@@ -73,7 +82,20 @@ def _check_ref(ref: dict, label: str, problems: list[str], warnings: list[str]) 
 
 
 def main() -> int:
-    manifest = yaml.safe_load(MANIFEST.read_text())
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--suite", default="langfail", choices=sorted(SUITES),
+                    help="benchmark suite to check (default: langfail)")
+    args = ap.parse_args()
+
+    manifest_path = SUITES[args.suite]
+    if not manifest_path.exists():
+        print(f"suite '{args.suite}' manifest not found at "
+              f"{manifest_path.relative_to(REPO_ROOT)} -- held-out suites are "
+              f"released after a scored run; see "
+              f"benchmarks/suites/{args.suite}/README.md", file=sys.stderr)
+        return 1
+
+    manifest = yaml.safe_load(manifest_path.read_text())
     problems: list[str] = []
     warnings: list[str] = []
 

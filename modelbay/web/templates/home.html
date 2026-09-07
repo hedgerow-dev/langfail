@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Overview</h1>
+<div class="card">
+  <strong>{{ bundle_count }}</strong> bundles &middot;
+  <strong>{{ corpus_count }}</strong> corpora &middot;
+  <strong>{{ run_count }}</strong> runs
+</div>
+<h2>Recent bundles</h2>
+{% if recent_bundles %}
+<table>
+  <tr><th>ID</th><th>Name</th><th>Runtime</th></tr>
+  {% for b in recent_bundles %}
+  <tr>
+    <td>{{ b.id }}</td>
+    <td><a href="{{ url_for('web.bundle_page', bundle_id=b.id) }}">{{ b.name }}</a></td>
+    <td>{{ b.runtime }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No bundles registered yet.</p>
+{% endif %}
+{% endblock %}

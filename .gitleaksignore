@@ -15,3 +15,12 @@ tests/conftest.py
 # Fake customer PII (SSN/card/emails) in the seeded fine-tune corpus used by
 # the training-data-extraction proof (V62)
 langfail/__init__.py
+
+# --- mutant suite (modelbay corpus) -- the same intentional content, mutated.
+# See docs/adr/0001-blinded-mutation-benchmark.md.
+
+# Hardcoded dev-secret defaults (the mutant's CF05 analogue)
+modelbay/core/config.py
+
+# Fake customer PII in the seeded transcript corpus used by V62's proof
+modelbay/__init__.py

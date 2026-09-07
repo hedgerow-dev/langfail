@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Bundles — Modelbay{% endblock %}
+{% block content %}
+<h1>Bundle registry</h1>
+{% if bundles %}
+<table>
+  <tr><th>ID</th><th>Name</th><th>Runtime</th><th>Owner</th></tr>
+  {% for b in bundles %}
+  <tr>
+    <td>{{ b.id }}</td>
+    <td><a href="{{ url_for('web.bundle_page', bundle_id=b.id) }}">{{ b.name }}</a></td>
+    <td>{{ b.runtime }}</td>
+    <td>{{ b.owner_id }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}
+<p>No bundles registered yet.</p>
+{% endif %}
+{% endblock %}

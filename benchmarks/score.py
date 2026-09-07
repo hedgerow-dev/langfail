@@ -56,9 +56,21 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = REPO_ROOT / "benchmarks" / "ground_truth.yaml"
 RESULTS_DIR = REPO_ROOT / "benchmarks" / "results"
 
+#: Named benchmark suites -> (manifest, results dir). The default `langfail`
+#: suite keeps the original answer key and results in their existing locations,
+#: so an unflagged run is byte-for-byte the previous behaviour. `mutant` is the
+#: held-out blinded suite (its manifest is released after a scored run -- see
+#: benchmarks/suites/mutant/README.md), scored by the identical arithmetic
+#: because it reuses this schema and the same vulnerability ids.
+_MUTANT_DIR = REPO_ROOT / "benchmarks" / "suites" / "mutant"
+SUITES = {
+    "langfail": (MANIFEST, RESULTS_DIR),
+    "mutant": (_MUTANT_DIR / "ground_truth.yaml", _MUTANT_DIR / "results"),
+}
 
-def load_manifest() -> tuple[set[str], set[str], set[str]]:
-    doc = yaml.safe_load(MANIFEST.read_text())
+
+def load_manifest(manifest: Path = MANIFEST) -> tuple[set[str], set[str], set[str]]:
+    doc = yaml.safe_load(manifest.read_text())
     return ({v["id"] for v in doc.get("vulnerabilities", [])},
             {d["id"] for d in doc.get("decoys", [])},
             {c["id"] for c in doc.get("config_findings", [])})
@@ -245,6 +257,9 @@ def render_scoreboard(scores: list["Score"], decoy_total: int) -> str:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("results", nargs="*", type=Path)
+    ap.add_argument("--suite", default="langfail", choices=sorted(SUITES),
+                    help="benchmark suite to score against (default: langfail; "
+                         "`mutant` is the held-out blinded suite)")
     ap.add_argument("--markdown", action="store_true",
                     help="emit a SCOREBOARD.md-shaped table")
     ap.add_argument("--emit-readme", action="store_true",
@@ -259,11 +274,27 @@ def main() -> int:
                          "against the table drifting from results/ again)")
     args = ap.parse_args()
 
-    vulns, decoys, config_findings = load_manifest()
+    # The public scoreboard/README chart are the langfail suite's; the mutant
+    # suite is held out and never publishes to them.
+    if args.suite != "langfail" and (
+            args.emit_scoreboard or args.check_scoreboard or args.emit_readme):
+        print("scoreboard emit/check operate on the langfail suite only "
+              "(the mutant suite is held out).", file=sys.stderr)
+        return 2
+
+    manifest_path, results_dir = SUITES[args.suite]
+    if not manifest_path.exists():
+        print(f"suite '{args.suite}' manifest not found at "
+              f"{manifest_path.relative_to(REPO_ROOT)} -- held-out suites are "
+              f"released after a scored run; see "
+              f"benchmarks/suites/{args.suite}/README.md", file=sys.stderr)
+        return 1
+
+    vulns, decoys, config_findings = load_manifest(manifest_path)
     paths = args.results or sorted(
-        p for p in RESULTS_DIR.glob("*.yaml") if not p.name.startswith("_"))
+        p for p in results_dir.glob("*.yaml") if not p.name.startswith("_"))
     if not paths:
-        print(f"No result files under {RESULTS_DIR.relative_to(REPO_ROOT)}/ -- "
+        print(f"No result files under {results_dir.relative_to(REPO_ROOT)}/ -- "
               f"see the format in this script's docstring.", file=sys.stderr)
         return 1
 
