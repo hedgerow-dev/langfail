@@ -13,3 +13,8 @@ build/
 # cannot be tuned to them.
 benchmarks/suites/mutant/ground_truth.yaml
 benchmarks/suites/mutant/tests/
+# Remaining-work backlog and un-adjudicated raw scan output. Both reference the
+# held-out answer key (which sinks exist, which are still unported), so they
+# stay private until the suite is released.
+benchmarks/suites/mutant/BACKLOG.md
+benchmarks/suites/mutant/raw/
