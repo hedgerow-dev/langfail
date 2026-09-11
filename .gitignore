@@ -18,3 +18,8 @@ benchmarks/suites/mutant/tests/
 # stay private until the suite is released.
 benchmarks/suites/mutant/BACKLOG.md
 benchmarks/suites/mutant/raw/
+# Scored result files map modelbay symbols to V/D ids. Because langfail's own
+# ground_truth.yaml is public, that mapping is answer-key-equivalent for the
+# blinded corpus, so mutant results are held out too (unlike the langfail
+# suite's public benchmarks/results/, whose corpus is openly published).
+benchmarks/suites/mutant/results/
