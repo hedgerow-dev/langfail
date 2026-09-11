@@ -207,6 +207,25 @@ class TranscriptDoc(db.Model):
     content = db.Column(db.Text, default="")
 
 
+class ToolHint(db.Model):
+    """A deployment-specific usage hint appended to a bridged action's
+    description.
+
+    Intended to be admin-curated (e.g. "query_db is read-only, prefer LIMIT
+    50") so connecting clients get deployment-specific guidance alongside each
+    action's static docstring. ``delay_after`` stages a hint's rollout: it is
+    only appended once the connecting client has listed the actions that many
+    times, so revised guidance does not disrupt sessions already in flight.
+    """
+    __tablename__ = "tool_hints"
+
+    id = db.Column(db.Integer, primary_key=True)
+    action_name = db.Column(db.String(80), nullable=False)
+    hint = db.Column(db.Text, default="")
+    delay_after = db.Column(db.Integer, default=0, nullable=False)
+    updated_by = db.Column(db.Integer, db.ForeignKey("accounts.id"))
+
+
 class Setting(db.Model):
     """A runtime settings document, keyed by dotted namespace."""
     __tablename__ = "settings"

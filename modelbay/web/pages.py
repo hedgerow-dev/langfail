@@ -15,6 +15,7 @@ from typing import Callable, Optional
 from flask import (Blueprint, abort, g, make_response, redirect,
                    render_template, request, url_for)
 
+from ..assistant.loop import run_assistant
 from ..core import runtime_settings
 from ..core.auth import check_secret, mint_session, read_session
 from ..core.store import db
@@ -131,6 +132,20 @@ def find():
         results = (Bundle.query.filter(Bundle.name.like(like)).limit(50).all()
                    + Run.query.filter(Run.name.like(like)).limit(50).all())
     return render_template("find.html", q=q, results=results, mark_hits=mark_hits)
+
+
+@bp.route("/portal/chat", methods=["GET", "POST"])
+@session_required
+def chat():
+    """Assistant chat page. Answers are authored in Markdown by the model and
+    rendered for display."""
+    message = ""
+    answer_html = None
+    if request.method == "POST":
+        message = request.form.get("message", "")
+        result = run_assistant(message)
+        answer_html = to_html(result.get("answer", ""))
+    return render_template("chat.html", message=message, answer_html=answer_html)
 
 
 @bp.route("/portal/console", methods=["GET", "POST"])

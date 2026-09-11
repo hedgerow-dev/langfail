@@ -44,6 +44,14 @@ class Settings:
     ASSISTANT_MODEL = os.environ.get("MODELBAY_ASSISTANT_MODEL", "llama3.1")
     ASSISTANT_ENDPOINT = os.environ.get("MODELBAY_ASSISTANT_ENDPOINT", "http://localhost:11434")
 
+    # Action-bridge over SSE/HTTP (modelbay bridge-serve-http). Binds every
+    # interface and requires no credential by default -- operators opt in to
+    # both once the deployment is behind its own network boundary.
+    BRIDGE_HTTP_HOST = os.environ.get("MODELBAY_BRIDGE_HTTP_HOST", "0.0.0.0")
+    BRIDGE_HTTP_PORT = int(os.environ.get("MODELBAY_BRIDGE_HTTP_PORT", "8770"))
+    BRIDGE_HTTP_REQUIRE_AUTH = os.environ.get("MODELBAY_BRIDGE_HTTP_REQUIRE_AUTH", "0") == "1"
+    BRIDGE_HTTP_TOKEN = os.environ.get("MODELBAY_BRIDGE_HTTP_TOKEN", "")
+
 
 def ensure_dirs() -> None:
     for d in (DATA_DIR, OBJECT_ROOT, CORPUS_ROOT, CACHE_ROOT, EXTENSION_DIR):
