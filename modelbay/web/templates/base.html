@@ -26,6 +26,7 @@
   {% if portal_account %}
     <a href="{{ url_for('web.bundle_list') }}">Bundles</a>
     <a href="{{ url_for('web.find') }}">Find</a>
+    <a href="{{ url_for('web.chat') }}">Assistant</a>
     {% if portal_account.tier == 'admin' %}<a href="{{ url_for('web.console') }}">Console</a>{% endif %}
     <a href="{{ url_for('web.sign_out') }}">Sign out ({{ portal_account.username }})</a>
   {% else %}
