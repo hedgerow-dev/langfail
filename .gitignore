@@ -6,3 +6,20 @@ var/
 .pytest_cache/
 *.egg-info/
 build/
+
+# Held-out mutant-suite answer key and proofs (see docs/adr/0001, and
+# benchmarks/suites/mutant/README.md). The mutated corpus (modelbay/) is public;
+# the key and PoCs are released only after a scored run so a frozen rule set
+# cannot be tuned to them.
+benchmarks/suites/mutant/ground_truth.yaml
+benchmarks/suites/mutant/tests/
+# Remaining-work backlog and un-adjudicated raw scan output. Both reference the
+# held-out answer key (which sinks exist, which are still unported), so they
+# stay private until the suite is released.
+benchmarks/suites/mutant/BACKLOG.md
+benchmarks/suites/mutant/raw/
+# Scored result files map modelbay symbols to V/D ids. Because langfail's own
+# ground_truth.yaml is public, that mapping is answer-key-equivalent for the
+# blinded corpus, so mutant results are held out too (unlike the langfail
+# suite's public benchmarks/results/, whose corpus is openly published).
+benchmarks/suites/mutant/results/

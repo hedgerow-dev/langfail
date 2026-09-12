@@ -1,0 +1,36 @@
+# Serving-infrastructure fixtures deployed alongside Modelbay. These are not
+# part of Modelbay's own runtime and are never started by the app; they are the
+# external model servers an operator runs next to it.
+#
+# docker compose -f modelbay/deploy/docker-compose.yml config
+
+services:
+  # Local inference server for the assistant's remote backend.
+  ollama:
+    image: ollama/ollama:latest
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+    ports:
+      - "11434:11434"
+
+  # TorchServe for native model formats, inference plus management.
+  torchserve:
+    image: pytorch/torchserve:latest
+    command: >
+      torchserve --start
+      --disable-token-auth
+      --enable-model-api
+    ports:
+      - "8080:8080"
+      - "8081:8081"
+
+  # Triton for high-throughput serving with runtime model control.
+  triton:
+    image: nvcr.io/nvidia/tritonserver:latest
+    command: >
+      tritonserver --model-repository=/models
+      --model-control-mode=explicit
+      --allow-http=true
+    ports:
+      - "8000:8000"
+      - "8001:8001"
