@@ -12,10 +12,17 @@ files still live in old commits, and `git show <sha>:benchmarks/ground_truth.yam
 would cheerfully hand them over.
 
 Usage:
-    python scripts/export_blind_copy.py <destination-dir>
+    python scripts/export_blind_copy.py <destination-dir> [--suite langfail|mutant]
+
+`langfail` (default) exports the original corpus; `mutant` exports the modelbay
+corpus only. The two corpora are siblings in one repo, and each is a spoiler for
+the other: langfail's answer key is public, so shipping langfail/ alongside a
+modelbay blind copy would let a reviewer diff the two and recover the mutant set
+outright. Each suite therefore excludes the other.
 """
 from __future__ import annotations
 
+import argparse
 import re
 import shutil
 import subprocess
@@ -25,16 +32,20 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Top-level entries that describe or prove the planted vulnerabilities, or
-# are pure local build/tooling cruft that shouldn't ship anywhere.
+# are pure local build/tooling cruft that shouldn't ship anywhere. These are
+# excluded for BOTH suites; per-suite excludes (below) add the sibling corpus.
 EXCLUDE_NAMES = {
-    "benchmarks",       # the answer key
+    "benchmarks",       # the answer key (both suites) + scoring tooling
     "exploits",         # runnable exploit chain scripts
     "deploy",           # docker-compose fixtures whose comments explain the config findings
+    "docs",             # ADR 0001 narrates the mutation scheme and names transforms
     "scripts",          # this exporter itself -- meta-tooling, not app source
     "ARCHITECTURE.md",  # narrates taint paths and specific vuln IDs
     "SCOREBOARD.md",    # the scoring table, effectively a vuln index
     "SECURITY.md",      # states outright that the app is planted-vulnerable
     "README.md",        # replaced below with a spoiler-free version
+    "CLAUDE.md",        # project instructions that reference the benchmark
+    ".gitignore",       # its comments name the held-out suite and answer key
     ".gitleaksignore",  # lists patterns tied to planted secrets
     ".git",
     ".venv",
@@ -93,7 +104,7 @@ _SCAN_SUFFIXES = {".py", ".md", ".txt", ".html", ".tpl", ".toml", ".cfg",
 _SCAN_NAMES = {".gitignore", ".gitattributes", ".dockerignore", "LICENSE",
                "Dockerfile", "Makefile", "py.typed"}
 
-BLIND_README = """# Langfail
+BLIND_README_LANGFAIL = """# Langfail
 
 A self-hosted MLOps platform: a model registry, dataset ingestion, experiment
 tracking, an inference service, and an LLM assistant -- built with Flask +
@@ -122,6 +133,43 @@ Health check: `curl localhost:5000/health`.
 - `langfail/core/` -- config, db, auth/JWT
 - `tests/` -- functional tests
 """
+
+BLIND_README_MUTANT = """# Modelbay
+
+A self-hosted model-serving control plane: accounts, a bundle registry with
+artifact storage, corpus ingestion, run tracking, a scoring service, an
+assistant with tool access, a background job queue, and a small server-rendered
+portal. Flask + SQLAlchemy + SQLite.
+
+## Layout
+
+- `modelbay/http/` -- Flask blueprints (HTTP routes)
+- `modelbay/web/` -- server-rendered portal
+- `modelbay/store/` -- persistence, serialization, rendering, scoring
+- `modelbay/assistant/` -- assistant backend, actions, loop
+- `modelbay/jobs/` -- background job queue + handlers
+- `modelbay/core/` -- config, db, auth, settings
+- `modelbay/records.py` -- ORM models
+"""
+
+# Per-suite export configuration. `include_top`, when set, is an allow-list of
+# top-level entries to copy (everything else is skipped) -- used to ship one
+# corpus and nothing else. `extra_excludes` adds to EXCLUDE_NAMES; for each
+# suite it names the SIBLING corpus, which is a spoiler for this one.
+SUITES = {
+    "langfail": {
+        "include_top": None,                 # whole repo minus excludes
+        "extra_excludes": {"modelbay"},      # the sibling corpus
+        "readme": BLIND_README_LANGFAIL,
+        "neutralise_pyproject": True,
+    },
+    "mutant": {
+        "include_top": {"modelbay"},         # ship only the modelbay corpus
+        "extra_excludes": {"langfail", "tests"},
+        "readme": BLIND_README_MUTANT,
+        "neutralise_pyproject": False,       # modelbay has no packaging metadata of its own
+    },
+}
 
 
 def _is_excluded_test(rel: Path) -> bool:
@@ -179,7 +227,10 @@ def scan_for_leaks(dest: Path) -> list[str]:
     return hits
 
 
-def export(dest: Path) -> None:
+def export(dest: Path, suite: str = "langfail") -> None:
+    cfg = SUITES[suite]
+    excludes = EXCLUDE_NAMES | cfg["extra_excludes"]
+    include_top = cfg["include_top"]  # None, or an allow-list of top-level entries
     if dest.exists():
         raise SystemExit(f"destination already exists: {dest}")
     # os.walk over REPO_ROOT would otherwise descend into a destination
@@ -193,13 +244,21 @@ def export(dest: Path) -> None:
     for root, dirnames, filenames in __import__("os").walk(REPO_ROOT):
         root_path = Path(root)
         rel_root = root_path.relative_to(REPO_ROOT)
+        at_top = rel_root == Path(".")
 
-        # Prune excluded directories in place so os.walk never descends into them.
-        dirnames[:] = [d for d in dirnames if d not in EXCLUDE_NAMES]
+        # Prune excluded dirs in place so os.walk never descends into them; at
+        # the top level, an include_top allow-list also drops everything else.
+        dirnames[:] = [
+            d for d in dirnames
+            if d not in excludes and not (at_top and include_top is not None and d not in include_top)
+        ]
 
         for name in filenames:
             rel = rel_root / name
-            if rel.parts and rel.parts[0] in EXCLUDE_NAMES:
+            top = rel.parts[0]
+            if top in excludes:
+                continue
+            if include_top is not None and top not in include_top:
                 continue
             if _is_excluded_test(rel):
                 continue
@@ -207,8 +266,9 @@ def export(dest: Path) -> None:
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(root_path / name, target)
 
-    (dest / "README.md").write_text(BLIND_README)
-    _neutralise_pyproject(dest / "pyproject.toml")
+    (dest / "README.md").write_text(cfg["readme"])
+    if cfg["neutralise_pyproject"]:
+        _neutralise_pyproject(dest / "pyproject.toml")
 
     leaks = scan_for_leaks(dest)
     if leaks:
@@ -231,6 +291,9 @@ def export(dest: Path) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        raise SystemExit("usage: python scripts/export_blind_copy.py <destination-dir>")
-    export(Path(sys.argv[1]).resolve())
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("destination", type=Path)
+    ap.add_argument("--suite", default="langfail", choices=sorted(SUITES),
+                    help="which corpus to export (default: langfail)")
+    args = ap.parse_args()
+    export(args.destination.resolve(), args.suite)
