@@ -116,6 +116,35 @@ leaks into the app.
 
 [`ARCHITECTURE.md`](ARCHITECTURE.md) has the diagrams.
 
+## A second, blinded corpus
+
+`langfail` has been public long enough that a tool can score well by recognising
+*it* rather than analysing it: the symbol names, file layout, and library calls
+are all memorisable. So there is a second corpus, [`modelbay/`](modelbay/), that
+carries the same planted vulnerabilities with everything a memoriser keys on
+changed.
+
+Each bug is mutated along six axes while its exploitability is preserved: rename
+(functions, models, keys, the package itself), wrap the dangerous API in an
+equivalently dangerous shim, relocate the source and sink to different files and
+layers, rewrite each broken guard into a different-looking but equally broken
+form, ship a safe twin for every mutation, and hold the answer key out of the
+tree. A scanner has to re-derive each finding from data flow, not from a
+remembered fingerprint.
+
+The corpus is public; the answer key, the proofs, and the per-tool results are
+held out and released after a scored run, so a frozen rule set cannot be tuned
+to the set. Design and rationale:
+[`docs/adr/0001-blinded-mutation-benchmark.md`](docs/adr/0001-blinded-mutation-benchmark.md).
+Once the key is present locally, score a tool with
+`python benchmarks/score.py --suite mutant results/<tool>.yaml`.
+
+**What it shows.** Mutation barely moves a dataflow (taint) engine or a frontier
+LLM reviewer: both re-derive most of the same bugs under the changed surface. It
+hits signature- and pattern-matching tools much harder, because a renamed sink
+or a wrapped library call no longer matches the rule that was looking for it.
+Per-tool figures ship with the results on release.
+
 ## Test a tool or AI agent against it
 
 **Don't point anything at this repo directly.** The answer key sits right next
