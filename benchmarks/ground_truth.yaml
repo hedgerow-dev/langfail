@@ -1649,7 +1649,7 @@ vulnerabilities:
     huntr_analog: "agent framework command-injection: a moderation/guardrail verdict is computed and logged but not enforced before a privileged tool call"
     tier: 5
     exploitable: true
-    ai_native_rule: ns-aiml-132
+    ai_native_rule: ns-aiml-158
     source: {file: langfail/agent/ai_native_examples.py, symbol: run_agent_command, note: "prompt (untrusted, moderation-checked but not gated)"}
     sink: {file: langfail/agent/ai_native_examples.py, symbol: run_agent_command, line_hint: 46}
     taint_path:
@@ -1666,7 +1666,7 @@ vulnerabilities:
     huntr_analog: "MCP/RFC 8707 resource-indicator confusion: a validly-signed token minted for a different (or no) resource is honoured by an MCP server"
     tier: 6
     exploitable: true
-    ai_native_rule: ns-aiml-133
+    ai_native_rule: ns-aiml-159
     source: {file: langfail/core/security.py, symbol: verify_mcp_token, note: "bearer token, decoded with signature check only"}
     sink: {file: langfail/core/security.py, symbol: verify_mcp_token, line_hint: 212}
     taint_path:
@@ -1698,7 +1698,7 @@ vulnerabilities:
     huntr_analog: "AI code-interpreter sandbox escape: the interpreter's container is started with /var/run/docker.sock bind-mounted in, giving container-escape-to-host via the Docker API"
     tier: 6
     exploitable: true
-    ai_native_rule: ns-aiml-140
+    ai_native_rule: ns-aiml-163
     source: {file: langfail/agent/ai_native_examples.py, symbol: start_interpreter_container_unsafe, note: "sandbox container spec"}
     sink: {file: langfail/agent/ai_native_examples.py, symbol: start_interpreter_container_unsafe, line_hint: 157}
     taint_path:
@@ -2011,13 +2011,13 @@ decoys:
     proof: tests/test_exploits_ai_native.py::test_d53_llm_authz_guarded_blocks_cross_tenant_read
   - id: D54
     resembles: V82 (moderation guardrail logged but not enforced)
-    ai_native_rule: ns-aiml-132
+    ai_native_rule: ns-aiml-158
     why_safe: "run_agent_command_safe raises on a flagged verdict before subprocess.run is ever reached -- the guardrail dominates the sink, not merely observes it"
     location: {file: langfail/agent/ai_native_examples.py, symbol: run_agent_command_safe}
     proof: tests/test_exploits_ai_native.py::test_d54_guardrail_raises_before_shell
   - id: D55
     resembles: V83 (MCP token accepted with no audience check)
-    ai_native_rule: ns-aiml-133
+    ai_native_rule: ns-aiml-159
     why_safe: "verify_mcp_token_safe passes audience=MCP_RESOURCE_ID, so PyJWT rejects both a wrong-audience token and an audience-less one before any claims are returned"
     location: {file: langfail/core/security.py, symbol: verify_mcp_token_safe}
     proof: tests/test_exploits_ai_native.py::test_d55_mcp_audienceless_token_rejected
@@ -2029,7 +2029,7 @@ decoys:
     proof: tests/test_exploits_ai_native.py::test_d56_handoff_reaches_unprivileged_agent
   - id: D57
     resembles: V85 (interpreter sandbox mounts the host Docker socket)
-    ai_native_rule: ns-aiml-140
+    ai_native_rule: ns-aiml-163
     why_safe: "start_interpreter_sandbox_safe uses an isolated microVM sandbox (E2B-shaped stand-in) with no host socket or volume mount of any kind"
     location: {file: langfail/agent/ai_native_examples.py, symbol: start_interpreter_sandbox_safe}
     proof: tests/test_exploits_ai_native.py::test_d57_scoped_sandbox_no_docker_access

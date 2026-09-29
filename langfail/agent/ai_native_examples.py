@@ -38,7 +38,7 @@ def _moderate(text: str) -> _ModerationVerdict:
 def run_agent_command(prompt: str) -> str:
     """VULNERABLE: the moderation verdict is checked and logged, but no
     branch stops the request -- a flagged prompt still reaches the shell.
-    (ns-aiml-132 / open-rowan #186)
+    (ns-aiml-158 / open-rowan #186)
     """
     verdict = _moderate(prompt)
     if verdict.flagged:
@@ -148,7 +148,7 @@ def start_interpreter_container_unsafe():
     """VULNERABLE: the Docker socket is bind-mounted into the interpreter
     container -- a common "let the agent spin up its own sandboxes" tutorial
     pattern that actually hands it the host's own container engine.
-    (ns-aiml-140 / open-rowan #189)
+    (ns-aiml-163 / open-rowan #189)
     """
     client = docker_from_env()
     return client.containers.run(

@@ -205,7 +205,7 @@ def verify_mcp_token(token: str) -> Optional[dict[str, Any]]:
 
     VULNERABLE: does not require `aud`. A validly-signed token this
     authorization server minted with no resource scope at all -- or one
-    scoped to a different resource -- is accepted here. (ns-aiml-133 /
+    scoped to a different resource -- is accepted here. (ns-aiml-159 /
     open-rowan #187)
     """
     try:
