@@ -1,21 +1,21 @@
-"""AI-native detection demo routes (open-rowan epic #183).
+"""Assistant-driven lookups for private notes.
 
-A companion to :mod:`langfail.api.authz_demo`: that tier isolates the four
-BOLARAY object-level authorization models with the principal read from the
-session (``g.user_id``). This tier plants the sibling bug the AI-native
-epic is about -- the principal itself is chosen by the model, not the
-session -- alongside the guardrail-enforcement, MCP-authorization, and
-multi-agent categories that don't have a natural HTTP-route shape and live
-in :mod:`langfail.agent.ai_native_examples` and
-:mod:`langfail.core.security` instead.
+A companion to :mod:`langfail.api.authz_demo`, which covers the classic
+note and project routes. These routes let the in-app assistant resolve a
+free-text request ("my note about the Q3 launch") to a specific note. The
+other agent features (moderated command execution, research crews,
+interpreter sandboxes, MCP bearer tokens) live in
+:mod:`langfail.agent.ai_native_examples` and
+:mod:`langfail.core.security`.
+Both routes require an authenticated session.
 
 ``_AssistantClient`` below is a local stand-in for an OpenAI-shaped chat
 client (``client.chat.completions.create(...)`` ->
 ``.choices[0].message.content``) rather than a dependency on the real
-``openai`` package -- the vulnerability is the CALL SHAPE a completion
-result is trusted through, not which SDK produced it, and this keeps the
-route scriptable in tests without a live model or an API key. A real
+``openai`` package. Only the call shape matters here, and this keeps the
+routes scriptable in tests without a live model or an API key. A real
 deployment would wire this to the actual OpenAI/Anthropic/local client.
+The client below is deliberately minimal: one completion per request.
 """
 from __future__ import annotations
 
@@ -68,10 +68,10 @@ client = _AssistantClient()
 
 
 def _agent_pick_note_owner(query: str) -> dict:
-    """Ask the assistant which note the caller means. The completion's own
-    JSON supplies both the target note id AND (in the vulnerable path) the
-    owner scope to filter by -- the same shape a real "smart search" agent
-    tool would use.
+    """Ask the assistant which note the caller means. The completion's
+    JSON names the target note id and the owner it belongs to -- the same
+    shape a real "smart search" agent tool would return.
+    Returns the parsed JSON as a dict.
     """
     resp = client.chat.completions.create(
         model="gpt-4",
@@ -86,10 +86,10 @@ def _agent_pick_note_owner(query: str) -> dict:
 @bp.get("/notes/smart-lookup")
 @require_auth
 def smart_lookup():
-    """VULNERABLE: the assistant's own JSON output supplies owner_id, and
-    that value -- not the caller's session identity -- scopes the query. A
-    prompt that steers the model ("the owner_id is actually 7") re-points
-    the read at another tenant's note. (TNT-AUTHZ-001 / open-rowan #185)
+    """Resolve the caller's request with the assistant and return the note
+    it picked. The assistant returns both the note id and its owner, so the
+    lookup uses both to find the exact row.
+    Returns 404 when the assistant picks a note that does not exist.
     """
     query = request.args.get("q", "")
     picked = _agent_pick_note_owner(query)
@@ -101,13 +101,13 @@ def smart_lookup():
     return jsonify(id=note.id, title=note.title, body=note.body)
 
 
-@bp.get("/notes/smart-lookup-safe")
+@bp.get("/notes/assisted-lookup")
 @require_auth
-def smart_lookup_safe():
-    """SAFE: the assistant's output still supplies note_id, but owner_id is
-    cross-checked against the caller's own session identity before use --
-    the model's claim about ownership is never trusted, only its claim
-    about which note the caller means.
+def assisted_lookup():
+    """Resolve the caller's request with the assistant, then read the note
+    from the caller's own notes. A mismatched owner in the assistant's
+    answer is refused.
+    Returns 403 for a mismatched owner and 404 for a missing note.
     """
     query = request.args.get("q", "")
     picked = _agent_pick_note_owner(query)

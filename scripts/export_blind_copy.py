@@ -91,6 +91,10 @@ LEAK_PATTERNS = [
     r"no credential check",
     r"with no validation",
     r"no upper bound",
+    r"\b(?:un)?safe:",                 # SAFE:/UNSAFE: labels on paired functions
+    r"\bdef \w+_(?:un)?safe\(",          # vulnerable/decoy pairs named by suffix
+    r"open-rowan",                      # the scanner the tiers were written for
+    r"\b(?:ns|tnt|agent|authz|mcp|cf)-[a-z0-9-]*\d{3}\b",  # scanner rule ids
 ]
 
 _LEAK_RE = re.compile("|".join(LEAK_PATTERNS), re.IGNORECASE)
