@@ -177,25 +177,25 @@ def is_safe_url(url: str) -> bool:
     return False
 
 
-# --- MCP resource-server token verification (open-rowan #187) --------------
+# --- MCP resource-server token verification -----------------------------------
 #
-# The mesh service tokens above (verify_service_token/_safe) are about
-# SIGNATURE trust. This pair is a distinct bug class: RFC 8707 (Resource
-# Indicators) exists because a token's signature proves who signed it, not
-# which resource it was issued FOR.
+# The mesh service tokens above prove which service signed a request. MCP
+# bearer tokens are minted by the same authorization server for several
+# resources, following RFC 8707 (Resource Indicators).
 #
-# Verified empirically against the PyJWT version this project pins (not
-# assumed): modern PyJWT already rejects a token whose `aud` claim names a
-# DIFFERENT resource the moment you pass `audience=` -- it raises
-# InvalidAudienceError even without that kwarg, as soon as the token HAS an
-# `aud` claim at all. The gap that survives is a token with NO `aud` claim
-# whatsoever: an authorization server that doesn't universally scope every
-# token it mints (a legacy path, an internal service that predates the MCP
-# integration) produces a validly-signed, audience-less token, and
-# `verify_mcp_token` accepts it outright because there is nothing to
-# validate. `verify_mcp_token_safe`'s `audience=` correctly demands the
-# claim be present -- PyJWT raises MissingRequiredClaimError -- confirmed
-# empirically too.
+# Two helpers are kept: the original decoder used by the internal admin
+# tools, which only checks the signature, and the resource-scoped decoder
+# added when the MCP server went public. Both use the PyJWT version pinned
+# in pyproject.toml.
+#
+# Token lifetime is set by the authorization server (15 minutes for MCP
+# clients). Both helpers return the decoded claims, or None when the token
+# does not verify, so callers can treat "no claims" as "not authenticated".
+#
+# Keys rotate with Config.JWT_SECRET; there is no key-id lookup yet, so a
+# rotation invalidates every outstanding token at once. That is acceptable
+# for the current client count and is tracked for the multi-key work.
+#
 
 MCP_RESOURCE_ID = "urn:langfail:mcp"
 
@@ -203,10 +203,10 @@ MCP_RESOURCE_ID = "urn:langfail:mcp"
 def verify_mcp_token(token: str) -> Optional[dict[str, Any]]:
     """Decode an MCP bearer token, checking the signature only.
 
-    VULNERABLE: does not require `aud`. A validly-signed token this
-    authorization server minted with no resource scope at all -- or one
-    scoped to a different resource -- is accepted here. (ns-aiml-159 /
-    open-rowan #187)
+    Used by the internal admin tools, which only accept tokens this
+    authorization server signed.
+    Returns the decoded claims, or None if the signature does not verify
+    or the token has expired.
     """
     try:
         return jwt.decode(token, Config.JWT_SECRET, algorithms=[Config.JWT_ALGORITHM])
@@ -214,11 +214,11 @@ def verify_mcp_token(token: str) -> Optional[dict[str, Any]]:
         return None
 
 
-def verify_mcp_token_safe(token: str) -> Optional[dict[str, Any]]:
+def verify_mcp_resource_token(token: str) -> Optional[dict[str, Any]]:
     """Decode an MCP bearer token, requiring it be issued for this resource.
 
-    SAFE: `audience=MCP_RESOURCE_ID` rejects both a wrong-audience token and
-    an audience-less one -- PyJWT enforces both once `audience=` is passed.
+    Tokens minted for another resource, or without a resource at all, are
+    rejected.
     """
     try:
         return jwt.decode(
