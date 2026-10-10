@@ -13,6 +13,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sqlite3
+import uuid
 from pathlib import Path
 
 from ..settings import Settings
@@ -28,7 +29,9 @@ def _persist(conn: sqlite3.Connection, settings: Settings, name: str, source: by
            member_id: int | None, active: bool) -> int:
     if not _NAME_RE.match(name):
         raise ValueError(f"invalid addon name: {name!r}")
-    path = _addons_dir(settings) / f"{name}.py"
+    # A staged upload gets its own file, so it never replaces one already in use.
+    filename = f"{name}.py" if active else f"{name}-{uuid.uuid4().hex}.py"
+    path = _addons_dir(settings) / filename
     path.write_bytes(source)
     cur = conn.execute(
         "INSERT INTO addons (member_id, name, path, active) VALUES (?, ?, ?, ?)",
