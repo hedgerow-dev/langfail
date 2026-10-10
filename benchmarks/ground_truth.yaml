@@ -2004,31 +2004,31 @@ decoys:
   # AI-native detection categories -- paired with V81-V85 above.
   # ----------------------------------------------------------------------
   - id: D53
-    resembles: V81 (LLM-directed object lookup trusts the model's claimed owner_id)
+    resembles: V84 (LLM-directed object lookup trusts the model's claimed owner_id)
     ai_native_rule: TNT-AUTHZ-001
     why_safe: "assisted_lookup still lets the model pick note_id, but cross-checks the model's owner_id claim against g.user_id and denies (403) on mismatch before the query runs with anything but the caller's own id"
     location: {file: langfail/api/ai_native_demo.py, symbol: assisted_lookup}
     proof: tests/test_exploits_ai_native.py::test_d53_llm_authz_guarded_blocks_cross_tenant_read
   - id: D54
-    resembles: V82 (moderation guardrail logged but not enforced)
+    resembles: V85 (moderation guardrail logged but not enforced)
     ai_native_rule: ns-aiml-158
     why_safe: "run_operator_command raises on a flagged verdict before subprocess.run is ever reached -- the guardrail dominates the sink, not merely observes it"
     location: {file: langfail/agent/ai_native_examples.py, symbol: run_operator_command}
     proof: tests/test_exploits_ai_native.py::test_d54_guardrail_raises_before_shell
   - id: D55
-    resembles: V83 (MCP token accepted with no audience check)
+    resembles: V86 (MCP token accepted with no audience check)
     ai_native_rule: ns-aiml-159
     why_safe: "verify_mcp_resource_token passes audience=MCP_RESOURCE_ID, so PyJWT rejects both a wrong-audience token and an audience-less one before any claims are returned"
     location: {file: langfail/core/security.py, symbol: verify_mcp_resource_token}
     proof: tests/test_exploits_ai_native.py::test_d55_mcp_audienceless_token_rejected
   - id: D56
-    resembles: V84 (lower-privilege agent output handed to a code-exec agent)
+    resembles: V87 (lower-privilege agent output handed to a code-exec agent)
     ai_native_rule: AGENT-HANDOFF-001
     why_safe: "build_digest_crew hands the research task's output to a sibling agent with no privileged tool at all -- there is no code-interpreter/exec tool anywhere in the crew for scraped content to reach"
     location: {file: langfail/agent/ai_native_examples.py, symbol: build_digest_crew}
     proof: tests/test_exploits_ai_native.py::test_d56_handoff_reaches_unprivileged_agent
   - id: D57
-    resembles: V85 (interpreter sandbox mounts the host Docker socket)
+    resembles: V88 (interpreter sandbox mounts the host Docker socket)
     ai_native_rule: ns-aiml-163
     why_safe: "start_hosted_interpreter uses an isolated microVM sandbox (E2B-shaped stand-in) with no host socket or volume mount of any kind"
     location: {file: langfail/agent/ai_native_examples.py, symbol: start_hosted_interpreter}

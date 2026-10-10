@@ -63,6 +63,9 @@ EXCLUDE_NAMES = {
     "uv.lock",
 }
 
+# Directory names pruned at every depth, not just the top level.
+PRUNE_ANYWHERE = {"__pycache__", ".git", ".pytest_cache"}
+
 # Substrings that must never appear in an exported tree. These are the tells
 # that turn a blind review into an open-book one: vulnerability IDs, the
 # vocabulary of a security writeup, and the fixture's own framing. The scan is
@@ -252,10 +255,16 @@ def export(dest: Path, suite: str = "langfail") -> None:
 
         # Prune excluded dirs in place so os.walk never descends into them; at
         # the top level, an include_top allow-list also drops everything else.
-        dirnames[:] = [
-            d for d in dirnames
-            if d not in excludes and not (at_top and include_top is not None and d not in include_top)
-        ]
+        # Below the top, only PRUNE_ANYWHERE applies: a corpus's own nested
+        # dir (modelbay/deploy/ holds config-finding fixtures) shares a name
+        # with a top-level exclude but is app source.
+        if at_top:
+            dirnames[:] = [
+                d for d in dirnames
+                if d not in excludes and not (include_top is not None and d not in include_top)
+            ]
+        else:
+            dirnames[:] = [d for d in dirnames if d not in PRUNE_ANYWHERE]
 
         for name in filenames:
             rel = rel_root / name
