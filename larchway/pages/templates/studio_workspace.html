@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Workspace · Larchway{% endblock %}
+{% block content %}
+<h1>Workspace</h1>
+{% if saved %}<p class="notice">Saved.</p>{% endif %}
+{% for area, document in areas.items() %}
+<h2>{{ area }}</h2>
+<pre>{{ document|tojson(indent=2) }}</pre>
+{% endfor %}
+<form method="post" action="/studio/workspace">
+  <p><label>Area
+    <select name="area">{% for area in areas %}<option>{{ area }}</option>{% endfor %}</select>
+  </label></p>
+  <p><label>Field <input type="text" name="key"></label></p>
+  <p><label>Value <input type="text" name="value"></label></p>
+  <p><button type="submit">Save</button></p>
+</form>
+{% endblock %}

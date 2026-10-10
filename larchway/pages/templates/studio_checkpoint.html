@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ checkpoint.name }} · Larchway{% endblock %}
+{% block content %}
+<h1>{{ checkpoint.name }}</h1>
+<p>{{ checkpoint.size_bytes }} bytes &middot; added {{ checkpoint.created_at }}</p>
+<div class="readme">{{ readme_html|safe }}</div>
+{% endblock %}

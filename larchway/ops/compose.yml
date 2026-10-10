@@ -1,0 +1,82 @@
+# Workbench stack for a shared lab box: the workbench itself plus the model
+# servers its graders and copilot call out to.
+#
+#   docker compose -f larchway/ops/compose.yml up -d
+
+name: larchway
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  workbench:
+    build:
+      context: ../..
+    command: ["python", "-m", "larchway.cli", "serve", "--host", "0.0.0.0", "--port", "8040"]
+    environment:
+      LARCHWAY_HOME: /srv/larchway
+    volumes:
+      - workbench-data:/srv/larchway
+    ports:
+      - "127.0.0.1:8040:8040"
+
+  # Copilot completions for annotators on the lab network.
+  copilot-llm:
+    image: ollama/ollama:0.3.12
+    environment:
+      OLLAMA_HOST: "0.0.0.0:11434"
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - llm-models:/root/.ollama
+    ports:
+      - target: 11434
+        published: 11434
+    <<: *gpu
+
+  # Grader heads packaged as .mar archives; the second port is where
+  # operators register new heads.
+  grader-serve:
+    image: pytorch/torchserve:0.12.0-gpu
+    command:
+      - torchserve
+      - --start
+      - --foreground
+      - --model-store=/home/model-server/model-store
+      - --disable-token-auth
+      - --enable-model-api
+    volumes:
+      - grader-store:/home/model-server/model-store
+    ports:
+      - target: 8080
+        published: 9080
+      - target: 8081
+        published: 9081
+    <<: *gpu
+
+  # Batch scoring of eval runs; checkpoints are loaded on demand per run.
+  batch-scoring:
+    image: nvcr.io/nvidia/tritonserver:24.08-py3
+    command:
+      - tritonserver
+      - --model-repository=/repo
+      - --model-control-mode=explicit
+      - --allow-http=true
+      - --http-port=8500
+    volumes:
+      - checkpoint-repo:/repo
+    ports:
+      - target: 8500
+        published: 8500
+    <<: *gpu
+
+volumes:
+  workbench-data:
+  llm-models:
+  grader-store:
+  checkpoint-repo:

@@ -23,3 +23,11 @@ benchmarks/suites/mutant/raw/
 # blinded corpus, so mutant results are held out too (unlike the langfail
 # suite's public benchmarks/results/, whose corpus is openly published).
 benchmarks/suites/mutant/results/
+
+# Held-out larchway-suite answer key, proofs, notes, scan output and results
+# (see docs/adr/0002). The corpus (larchway/) is public; these are not.
+benchmarks/suites/larchway/ground_truth.yaml
+benchmarks/suites/larchway/tests/
+benchmarks/suites/larchway/BACKLOG.md
+benchmarks/suites/larchway/raw/
+benchmarks/suites/larchway/results/

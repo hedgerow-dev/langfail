@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Copilot · Larchway{% endblock %}
+{% block content %}
+<h1>Copilot</h1>
+<form method="post" action="/studio/copilot">
+  <p><textarea name="message" rows="3" cols="60">{{ message }}</textarea></p>
+  <p><button type="submit">Ask</button></p>
+</form>
+{% if answer %}
+<div class="answer">{{ answer }}</div>
+{% endif %}
+{% endblock %}

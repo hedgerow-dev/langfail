@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Find · Larchway{% endblock %}
+{% block content %}
+<h1>Find checkpoints</h1>
+<form method="get" action="/studio/sift">
+  <input type="text" name="q" value="{{ q }}" placeholder="Checkpoint name">
+  <button type="submit">Find</button>
+</form>
+{% if q %}
+<h2>Matches for &ldquo;{{ q }}&rdquo;</h2>
+<ul>
+  {% for row in rows %}
+  <li><a href="/studio/checkpoints/{{ row.id }}">{{ row.label }}</a></li>
+  {% else %}
+  <li>Nothing matched.</li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endblock %}
