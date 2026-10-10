@@ -10,6 +10,7 @@ still exists, flagging line-number drift as informational (non-failing).
 
 Usage: python benchmarks/check_ground_truth.py            # langfail suite
        python benchmarks/check_ground_truth.py --suite mutant
+       python benchmarks/check_ground_truth.py --suite larchway
 Exit code 0 if every referenced symbol resolves; 1 if any symbol or file is missing.
 """
 from __future__ import annotations
@@ -29,17 +30,35 @@ MANIFEST = REPO_ROOT / "benchmarks" / "ground_truth.yaml"
 SUITES = {
     "langfail": MANIFEST,
     "mutant": REPO_ROOT / "benchmarks" / "suites" / "mutant" / "ground_truth.yaml",
+    "larchway": REPO_ROOT / "benchmarks" / "suites" / "larchway" / "ground_truth.yaml",
 }
 
 
-def _function_ranges(path: Path) -> dict[str, tuple[int, int]]:
-    """Map every function/method name defined in ``path`` to its (start, end) line range."""
+def _function_ranges(path: Path) -> dict[str, list[tuple[int, int]]]:
+    """Map every function/method in ``path`` to the (start, end) line ranges it names.
+
+    Each definition is recorded under its bare name and, for methods, under its
+    class-qualified name (``Class.method``, ``Outer.Inner.method``). A bare name
+    defined more than once in the file maps to several ranges; the caller treats
+    that as ambiguous rather than silently picking one.
+    """
     tree = ast.parse(path.read_text(), filename=str(path))
-    ranges: dict[str, tuple[int, int]] = {}
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            end = getattr(node, "end_lineno", node.lineno)
-            ranges[node.name] = (node.lineno, end)
+    ranges: dict[str, list[tuple[int, int]]] = {}
+
+    def visit(node: ast.AST, classes: list[str]) -> None:
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.ClassDef):
+                visit(child, classes + [child.name])
+            elif isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                span = (child.lineno, getattr(child, "end_lineno", child.lineno))
+                ranges.setdefault(child.name, []).append(span)
+                if classes and isinstance(node, ast.ClassDef):
+                    ranges.setdefault(".".join(classes + [child.name]), []).append(span)
+                visit(child, [])
+            else:
+                visit(child, classes)
+
+    visit(tree, [])
     return ranges
 
 
@@ -73,7 +92,11 @@ def _check_ref(ref: dict, label: str, problems: list[str], warnings: list[str]) 
         if name not in ranges:
             problems.append(f"{label}: symbol '{name}' not found in {file}")
             continue
-        start, end = ranges[name]
+        if len(ranges[name]) > 1:
+            problems.append(f"{label}: symbol '{name}' is ambiguous in {file} "
+                            f"({len(ranges[name])} definitions); use Class.method")
+            continue
+        start, end = ranges[name][0]
         if line_hint is not None and not (start <= line_hint <= end):
             warnings.append(
                 f"{label}: line_hint {line_hint} is outside {name}'s current range "

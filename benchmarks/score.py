@@ -58,27 +58,40 @@ RESULTS_DIR = REPO_ROOT / "benchmarks" / "results"
 
 #: Named benchmark suites -> (manifest, results dir). The default `langfail`
 #: suite keeps the original answer key and results in their existing locations,
-#: so an unflagged run is byte-for-byte the previous behaviour. `mutant` is the
-#: held-out blinded suite (its manifest is released after a scored run -- see
-#: benchmarks/suites/mutant/README.md), scored by the identical arithmetic
-#: because it reuses this schema and the same vulnerability ids.
+#: so an unflagged run is byte-for-byte the previous behaviour. `mutant` and
+#: `larchway` are held-out blinded suites (each manifest is released after a
+#: scored run -- see benchmarks/suites/<suite>/README.md), scored by the
+#: identical arithmetic because they reuse this schema and the same
+#: vulnerability ids.
 _MUTANT_DIR = REPO_ROOT / "benchmarks" / "suites" / "mutant"
+_LARCHWAY_DIR = REPO_ROOT / "benchmarks" / "suites" / "larchway"
 SUITES = {
     "langfail": (MANIFEST, RESULTS_DIR),
     "mutant": (_MUTANT_DIR / "ground_truth.yaml", _MUTANT_DIR / "results"),
+    "larchway": (_LARCHWAY_DIR / "ground_truth.yaml", _LARCHWAY_DIR / "results"),
 }
 
 
-def load_manifest(manifest: Path = MANIFEST) -> tuple[set[str], set[str], set[str]]:
+def load_manifest(manifest: Path = MANIFEST
+                  ) -> tuple[set[str], set[str], set[str], list[dict], set[str]]:
     doc = yaml.safe_load(manifest.read_text())
-    return ({v["id"] for v in doc.get("vulnerabilities", [])},
-            {d["id"] for d in doc.get("decoys", [])},
-            {c["id"] for c in doc.get("config_findings", [])})
+    # A suite may leave some origin ids out of its corpus (larchway v1 does not
+    # port the agent tier). A top-level `not_ported: [<id>, ...]` list removes
+    # them from every denominator: they cannot be found, so they are not misses.
+    not_ported = set(doc.get("not_ported") or [])
+    # `chains` (langfail's composed paths) and `kill_chains` (larchway's
+    # anonymous-attacker paths, each with a `broken_twin`) are scored alike.
+    chains = (doc.get("chains") or []) + (doc.get("kill_chains") or [])
+    return ({v["id"] for v in doc.get("vulnerabilities", [])} - not_ported,
+            {d["id"] for d in doc.get("decoys", [])} - not_ported,
+            {c["id"] for c in doc.get("config_findings", [])} - not_ported,
+            chains, not_ported)
 
 
 class Score:
     def __init__(self, path: Path, vulns: set[str], decoys: set[str],
-                 config_findings: set[str]):
+                 config_findings: set[str], chains: list[dict] = (),
+                 not_ported: set[str] = frozenset()):
         doc = yaml.safe_load(path.read_text()) or {}
         self.path = path
         self.tool = doc.get("tool") or path.stem
@@ -106,6 +119,8 @@ class Score:
         self.found: set[str] = set()          # true positives
         self.config_found: set[str] = set()   # CF ids, scored separately
         self.decoy_fps: list[str] = []        # claimed a safe function is broken
+        self.decoy_ids: set[str] = set()      # the D ids behind decoy_fps
+        self.chains = chains
         self.unmatched_fps: list[str] = []    # matched no entry at all
 
         for i, finding in enumerate(doc.get("findings") or []):
@@ -126,6 +141,11 @@ class Score:
                 self.config_found.add(fid)
             elif fid in decoys:
                 self.decoy_fps.append(f"[{fid}] {claim}")
+                self.decoy_ids.add(fid)
+            elif fid in not_ported:
+                # Valid origin id, but this corpus does not carry it: the
+                # tool reported a bug that is not there.
+                self.unmatched_fps.append(f"[{fid}] {claim}")
             else:
                 self.problems.append(f"finding {i} references unknown id {fid!r}")
 
@@ -155,6 +175,7 @@ class Score:
         if self.config_found:
             out.append(f"  config findings  {len(self.config_found)} "
                        f"({', '.join(sorted(self.config_found))}) -- scored separately")
+        out += self.chain_lines()
         if self.blind_copy_commit:
             out.append(f"  reviewed         {self.blind_copy_commit}")
         if not self.raw_output:
@@ -167,6 +188,38 @@ class Score:
         for p in self.problems:
             out.append(f"  ! {p}")
         return "\n".join(out)
+
+    def chain_lines(self) -> list[str]:
+        """Per chain: full (every member V found), partial (n/m), or none.
+
+        A chain is only as visible as its least-visible link, so a tool that
+        finds most links of every chain still reports no full chain. For a
+        kill chain, flagging its broken twin's decoy (the same path with one
+        link fixed) is an over-claim and is called out on the chain's line;
+        it is already counted once as a decoy FP above.
+        """
+        if not self.chains:
+            return []
+        tally = {"full": 0, "partial": 0, "none": 0}
+        lines = []
+        for chain in self.chains:
+            members = chain.get("members") or []
+            hit = [m for m in members if m in self.found]
+            if members and len(hit) == len(members):
+                verdict = "full"
+            elif hit:
+                verdict = "partial"
+            else:
+                verdict = "none"
+            tally[verdict] += 1
+            line = f"    {chain['id']:10} {verdict:8} {len(hit)}/{len(members)}"
+            twin = (chain.get("broken_twin") or {}).get("by")
+            if twin in self.decoy_ids:
+                line += f"  ! flagged broken-twin decoy {twin} (over-claim)"
+            lines.append(line)
+        head = (f"  chains           {tally['full']} full, {tally['partial']} "
+                f"partial, {tally['none']} none (of {len(self.chains)})")
+        return [head] + lines
 
 
 SCOREBOARD = REPO_ROOT / "SCOREBOARD.md"
@@ -259,7 +312,7 @@ def main() -> int:
     ap.add_argument("results", nargs="*", type=Path)
     ap.add_argument("--suite", default="langfail", choices=sorted(SUITES),
                     help="benchmark suite to score against (default: langfail; "
-                         "`mutant` is the held-out blinded suite)")
+                         "the others are held-out blinded suites)")
     ap.add_argument("--markdown", action="store_true",
                     help="emit a SCOREBOARD.md-shaped table")
     ap.add_argument("--emit-readme", action="store_true",
@@ -274,12 +327,12 @@ def main() -> int:
                          "against the table drifting from results/ again)")
     args = ap.parse_args()
 
-    # The public scoreboard/README chart are the langfail suite's; the mutant
-    # suite is held out and never publishes to them.
+    # The public scoreboard/README chart are the langfail suite's; held-out
+    # suites never publish to them.
     if args.suite != "langfail" and (
             args.emit_scoreboard or args.check_scoreboard or args.emit_readme):
         print("scoreboard emit/check operate on the langfail suite only "
-              "(the mutant suite is held out).", file=sys.stderr)
+              f"(the {args.suite} suite is held out).", file=sys.stderr)
         return 2
 
     manifest_path, results_dir = SUITES[args.suite]
@@ -290,7 +343,7 @@ def main() -> int:
               f"benchmarks/suites/{args.suite}/README.md", file=sys.stderr)
         return 1
 
-    vulns, decoys, config_findings = load_manifest(manifest_path)
+    vulns, decoys, config_findings, chains, not_ported = load_manifest(manifest_path)
     paths = args.results or sorted(
         p for p in results_dir.glob("*.yaml") if not p.name.startswith("_"))
     if not paths:
@@ -298,7 +351,8 @@ def main() -> int:
               f"see the format in this script's docstring.", file=sys.stderr)
         return 1
 
-    scores = sorted((Score(p, vulns, decoys, config_findings) for p in paths),
+    scores = sorted((Score(p, vulns, decoys, config_findings, chains, not_ported)
+                     for p in paths),
                     key=lambda s: -s.recall)
 
     if args.emit_readme:

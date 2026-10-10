@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Journal · Larchway{% endblock %}
+{% block content %}
+<h1>{{ member.display_name }}'s journal</h1>
+{% for note in notes %}
+<section class="note">
+  <h2>{{ note.entry.heading }}</h2>
+  <div class="note-body">{{ note.html|safe }}</div>
+  <p class="meta">Updated {{ note.entry.updated_at }}</p>
+</section>
+{% else %}
+<p>No journal entries yet.</p>
+{% endfor %}
+{% endblock %}

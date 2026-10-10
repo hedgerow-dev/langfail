@@ -24,3 +24,12 @@ modelbay/core/config.py
 
 # Fake customer PII in the seeded transcript corpus used by V62's proof
 modelbay/__init__.py
+
+# --- larchway suite (larchway corpus) -- the same intentional content, mutated.
+# See benchmarks/suites/larchway/ (held-out key) and docs/adr/0001.
+
+# Hardcoded dev-secret defaults (the larchway CF05 analogue)
+larchway/settings.py
+
+# Seeded demo users and fake PII used by the exploit proofs
+larchway/seed.py

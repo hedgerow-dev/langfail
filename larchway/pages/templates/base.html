@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{% block title %}Larchway{% endblock %}</title>
+</head>
+<body>
+  <header>
+    <a href="/">Larchway</a>
+    <a href="/studio">Journal</a>
+    <a href="/studio/sift">Find</a>
+    <a href="/studio/copilot">Copilot</a>
+  </header>
+  <main>{% block content %}{% endblock %}</main>
+  <script>
+    // Studio widgets call the JSON API with the signed-in session.
+    function studioSession() {
+      const row = document.cookie.split("; ").find((r) => r.startsWith("larchway_session="));
+      return row ? decodeURIComponent(row.slice("larchway_session=".length)) : null;
+    }
+    function studioFetch(path, init = {}) {
+      init.headers = { Authorization: `Bearer ${studioSession()}`, ...(init.headers || {}) };
+      return fetch(path, init);
+    }
+  </script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

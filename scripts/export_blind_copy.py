@@ -12,13 +12,15 @@ files still live in old commits, and `git show <sha>:benchmarks/ground_truth.yam
 would cheerfully hand them over.
 
 Usage:
-    python scripts/export_blind_copy.py <destination-dir> [--suite langfail|mutant]
+    python scripts/export_blind_copy.py <destination-dir> [--suite langfail|mutant|larchway]
 
 `langfail` (default) exports the original corpus; `mutant` exports the modelbay
-corpus only. The two corpora are siblings in one repo, and each is a spoiler for
-the other: langfail's answer key is public, so shipping langfail/ alongside a
-modelbay blind copy would let a reviewer diff the two and recover the mutant set
-outright. Each suite therefore excludes the other.
+corpus only; `larchway` exports the larchway corpus only. The corpora are
+siblings in one repo, and each is a spoiler for the others: langfail's answer
+key is public, so shipping langfail/ alongside a mutant blind copy would let a
+reviewer diff the two and recover the mutant set outright. Each suite therefore
+excludes the others, and the leak scan fails an export whose text names a
+sibling corpus.
 """
 from __future__ import annotations
 
@@ -64,7 +66,8 @@ EXCLUDE_NAMES = {
 }
 
 # Directory names pruned at every depth, not just the top level.
-PRUNE_ANYWHERE = {"__pycache__", ".git", ".pytest_cache"}
+PRUNE_ANYWHERE = {"__pycache__", ".git", ".pytest_cache", ".venv", ".claude",
+                  "build", "var", "langfail.egg-info", ".ruff_cache", ".mypy_cache"}
 
 # Substrings that must never appear in an exported tree. These are the tells
 # that turn a blind review into an open-book one: vulnerability IDs, the
@@ -159,6 +162,20 @@ portal. Flask + SQLAlchemy + SQLite.
 - `modelbay/records.py` -- ORM models
 """
 
+BLIND_README_LARCHWAY = """# Larchway
+
+A self-hosted evaluation and annotation workbench: model checkpoints, data
+collections, labeling jobs, evaluation runs, and an assistant, built on FastAPI
+with SQLite and server-rendered pages.
+
+## Layout
+
+The application lives in `larchway/`: the app factory and settings at the top
+level, HTTP routers and their request dependencies, request/response schemas,
+domain services, storage and I/O adapters, an in-process event bus and a
+background worker, the assistant, and page templates.
+"""
+
 # Per-suite export configuration. `include_top`, when set, is an allow-list of
 # top-level entries to copy (everything else is skipped) -- used to ship one
 # corpus and nothing else. `extra_excludes` adds to EXCLUDE_NAMES; for each
@@ -166,17 +183,27 @@ portal. Flask + SQLAlchemy + SQLite.
 SUITES = {
     "langfail": {
         "include_top": None,                 # whole repo minus excludes
-        "extra_excludes": {"modelbay"},      # the sibling corpus
+        "extra_excludes": {"modelbay", "larchway"},  # the sibling corpora
         "readme": BLIND_README_LANGFAIL,
         "neutralise_pyproject": True,
     },
     "mutant": {
         "include_top": {"modelbay"},         # ship only the modelbay corpus
-        "extra_excludes": {"langfail", "tests"},
+        "extra_excludes": {"langfail", "larchway", "tests"},
         "readme": BLIND_README_MUTANT,
         "neutralise_pyproject": False,       # modelbay has no packaging metadata of its own
     },
+    "larchway": {
+        "include_top": {"larchway"},         # ship only the larchway corpus
+        "extra_excludes": {"langfail", "modelbay", "tests"},
+        "readme": BLIND_README_LARCHWAY,
+        "neutralise_pyproject": False,       # larchway ships a requirements.txt, no packaging metadata
+    },
 }
+
+# Each suite's own corpus name. Any OTHER name appearing in an export is a
+# pointer to a sibling corpus (and so to its public answer key).
+CORPUS_NAMES = {"langfail": "langfail", "mutant": "modelbay", "larchway": "larchway"}
 
 
 def _is_excluded_test(rel: Path) -> bool:
@@ -195,6 +222,8 @@ _PYPROJECT_SUBS: list[tuple[str, str]] = [
     (r'^\s*"(?:Topic :: Security|Private :: Do Not Upload)".*\n', ''),
     (r'^\s*#[^\n]*(?:insecure|vulnerable)[^\n]*\n', ''),
     (r'^\[project\.urls\]\n(?:[^\[]*\n)*?(?=\[|\Z)', ''),
+    # The sibling corpus's optional-dependency group and its comment.
+    (r'^(?:#[^\n]*\n)?larchway = \[[^\]]*\]\n', ''),
 ]
 
 
@@ -207,18 +236,23 @@ def _neutralise_pyproject(path: Path) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def scan_for_leaks(dest: Path) -> list[str]:
+def scan_for_leaks(dest: Path, suite: str = "langfail") -> list[str]:
     """Return every spoiler hit found in the exported tree.
 
     Runs after the copy, over what actually landed on disk, so it catches
     leaks regardless of which stage let them through -- a missing exclusion,
     a new file, or a docstring someone wrote too candidly.
     """
+    siblings = sorted(n for s, n in CORPUS_NAMES.items() if s != suite)
+    sibling_re = re.compile("|".join(siblings), re.IGNORECASE)
     hits: list[str] = []
     for path in sorted(dest.rglob("*")):
         if not path.is_file() or ".git" in path.parts:
             continue
         rel = path.relative_to(dest)
+        match = sibling_re.search(str(rel))
+        if match:
+            hits.append(f"{rel}: path names sibling corpus {match.group(0)!r}")
         if path.suffix.lower() not in _SCAN_SUFFIXES and path.name not in _SCAN_NAMES:
             hits.append(f"{rel}: unexpected non-source file in a blind export")
             continue
@@ -228,7 +262,7 @@ def scan_for_leaks(dest: Path) -> list[str]:
             hits.append(f"{rel}: unreadable as text -- cannot verify it is spoiler-free")
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
-            match = _LEAK_RE.search(line)
+            match = _LEAK_RE.search(line) or sibling_re.search(line)
             if match:
                 hits.append(f"{rel}:{lineno}: {match.group(0)!r} in {line.strip()[:90]!r}")
     return hits
@@ -236,7 +270,7 @@ def scan_for_leaks(dest: Path) -> list[str]:
 
 def export(dest: Path, suite: str = "langfail") -> None:
     cfg = SUITES[suite]
-    excludes = EXCLUDE_NAMES | cfg["extra_excludes"]
+    excludes = EXCLUDE_NAMES | PRUNE_ANYWHERE | cfg["extra_excludes"]
     include_top = cfg["include_top"]  # None, or an allow-list of top-level entries
     if dest.exists():
         raise SystemExit(f"destination already exists: {dest}")
@@ -283,7 +317,7 @@ def export(dest: Path, suite: str = "langfail") -> None:
     if cfg["neutralise_pyproject"]:
         _neutralise_pyproject(dest / "pyproject.toml")
 
-    leaks = scan_for_leaks(dest)
+    leaks = scan_for_leaks(dest, suite)
     if leaks:
         shutil.rmtree(dest)
         print("Spoilers found in the export -- refusing to produce a blind copy:",
