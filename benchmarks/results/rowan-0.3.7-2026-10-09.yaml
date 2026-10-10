@@ -1,0 +1,226 @@
+tool: Rowan (hedgerow.dev)
+version: 0.3.7 (published PyPI)
+category: Static/taint
+protocol: single-run
+date: '2026-10-09'
+manifest_size: 87
+blind_copy_commit: 430ed5b
+raw_output: raw/rowan-0.3.7-original-2026-10-09.json
+notes: 'Published Rowan 0.3.7 from PyPI, frozen rules, no benchmark-specific changes. Fresh blind
+  export using scripts/export_blind_copy.py --suite langfail at Langfail 430ed5b8260d313bcde9cb8f5714bb399ef35b93.
+  Command: rowan scan <blind> --authz --multiagent --audit --no-sca --no-project-config -f
+  json. summary.degraded false. Mappings carried forward from the 0.3.4 result file (rowan-0.3.4-2026-10-04.yaml)
+  by comparing rule id, relative path, and line against the 0.3.7 raw output. A rule listed
+  in duplicate_rule_ids of another finding on the same line counts as present. This is carried-forward
+  mapping, not independent adjudication, and exploit tests were not rerun. Blind exporter
+  excludes deployment files, so external service configuration coverage is out of scope. Unmatched
+  claims are grouped in the inherited baseline; these totals do not estimate per-claim precision.
+  Authorization-gap claims remain review leads with unverified policy and are not confirmed
+  exploits. 206 raw findings (0.3.4: 210). Every carried-forward mapping is still present.
+  One 0.3.4 finding is gone: TNT-STORED-001 api/models.py:46, which was not mapped. All new
+  rule/line keys are extra rule ids on lines that already had a finding (same-sink merging,
+  for example NS-INJECT-003, ns-aiml-046, TNT-REDIR-001, NS-DESER-006/007); no finding appears
+  at a new location, so there are no candidates for adjudication.'
+findings:
+- id: V51
+  claim: WEB-DESER-JSONPICKLE-001 api/experiments.py:149 jsonpickle on import_experiment
+- id: V41
+  claim: NS-DESER-001 ml/runner.py:24 handle_runner_call pickle; CF-SINK predict_remote
+- id: V53
+  claim: IMPORTED-REPO-CODE-001 ml/hub.py:59 load_from_hub exec of repo code
+- id: V74
+  claim: NS-REDIRECT-001 ui/views.py:87 login redirects to unvalidated next
+- id: V80
+  claim: ns-websec-1004-001 ui/views.py:88 session cookie without HttpOnly
+- id: V07
+  claim: CF-SINK workers/tasks.py:45 import_dataset -> load_model_bytes
+- id: V60
+  claim: AGENT-CONFIRMATION-001 agent/core.py:168 run_agent_guarded confirmation gate
+- id: V30
+  claim: TNT-ML-016 agent/core.py:41 persistent memory value reaches LLM prompt
+- id: V33
+  claim: NS-SQLI-005 agent/llm.py:160 generate_sql output executed
+- id: V35
+  claim: AGENT-REFLECTION-SURFACE-001 agent/native.py:69 dispatch resolves model-chosen
+    attribute
+- id: V36
+  claim: AGENT-UNBOUNDED-BUDGET-001 api/agent.py:85 iterate uncapped budget
+- id: V61
+  claim: AUTHZ-RAG-TENANT-SCOPE-001 api/agent.py:170 brief loads other tenants' notes
+- id: V64
+  claim: CONFIG-SECURITY-TAINT-001 api/agent.py:199 preference merge reaches security
+    setting
+- id: V42
+  claim: WEB-PRIVILEGE-ASSIGN-001 api/auth.py:45 register assigns role from request
+- id: V44
+  claim: CF-SINK api/auth.py:85 service_exchange -> verify_service_token; NS-AUTH-101
+    signature not verified
+- id: V45
+  claim: NS-REDIRECT-001 api/auth.py:98 redirect_after_login unvalidated next
+- id: V49
+  claim: WEB-INLINE-ACTIVE-CONTENT-001 api/auth.py:224 get_avatar serves SVG inline
+- id: V34
+  claim: NS-INJECT-002 services/analysis.py:36 exec of generated code
+- id: V37
+  claim: NS-INJECT-002 ml/dataset.py:85 run_loader_script exec
+- id: V43
+  claim: ns-websec-598-001 api/deps.py:17 token from query string
+- id: V02
+  claim: NS-DESER-003 services/config_loader.py:20 yaml full loader
+- id: V81
+  claim: AUTHZ-PRINCIPAL-OVERRIDE-001 api/experiments.py:60 count takes owner from
+    the request
+- id: V82
+  claim: AUTHZ-TENANT-SCOPE-001 api/experiments.py search/by_tag/ask_structured unscoped
+    rows
+- id: V15
+  claim: CF-SINK api/experiments.py:184 evaluate -> evaluate_metric eval
+- id: V01
+  claim: NS-DESER-001/002/004 ml/model_loader.py:28-32 _deserialize, reached from
+    predict
+- id: V55
+  claim: ML-MODEL-EXTRACTION-001 api/inference.py:69 predict_proba full probability
+    vector
+- id: V56
+  claim: ML-MEMBERSHIP-INFERENCE-001 api/inference.py:106 row_loss per-record loss
+- id: V19
+  claim: NS-XSS-005 services/reports.py:62 render_page autoescape off
+- id: V27
+  claim: CF-SINK api/reports.py:77 custom_report -> render_custom_report template_name
+- id: V05
+  claim: NS-SSTI-001 services/reports.py:31 render_report from_string
+- id: V47
+  claim: NS-CRYPTO-001 core/security.py:96 legacy_access_key md5(password)
+- id: V46
+  claim: NS-CRYPTO-001 core/security.py:113 derive_recovery_code md5(username:email)
+- id: V48
+  claim: ns-websec-1333-001 core/security.py:134 nested-quantifier username regex
+- id: V29
+  claim: MCP-STORED-METADATA-AUTHZ-001 mcp_server.py:29 stored tool note reaches tool
+    description
+- id: V39
+  claim: MCP-STORED-SAMPLING-001 mcp_server.py:102 summarize_via_sampling stored text
+    to sampling
+- id: V40
+  claim: MCP-HTTP-BIND-001 mcp_server.py:212 serve_http binds all interfaces without
+    auth
+- id: V50
+  claim: WEB-AUTH-TIMING-001 mcp_server.py:177 check_http_auth non-constant-time compare
+- id: V09
+  claim: NS-CMDI-002 ml/convert.py:25 convert_model shell=True
+- id: V13
+  claim: NS-DESER-001 ml/features.py:39 load_feature_cache pickle/np.load
+- id: V25
+  claim: ns-websec-611-001 ml/modelconfig.py:24 lxml with entity resolution
+- id: V54
+  claim: LIFECYCLE-UPLOADED-CODE-001 ml/plugins.py:56 uploaded plugin imported
+- id: V08
+  claim: NS-SQLI-005 services/experiments.py:31 search_experiments tag/sort
+- id: V22
+  claim: NS-SQLI-005 services/experiments.py:45 count_by_owner owner interpolation
+- id: V31
+  claim: MARKDOWN-IMAGE-EGRESS-001 services/markdown.py:31 render_markdown image egress
+- id: V38
+  claim: TNT-ML-PII-EGRESS-001 services/support.py:29 draft_support_reply PII to LLM
+- id: V76
+  claim: NS-TPL-002 ui/templates/model_detail.html:7 card_html|safe
+- id: V77
+  claim: NS-TPL-002 ui/templates/chat.html:11 answer|safe
+- id: V75
+  claim: NS-TPL-002 ui/templates/search.html:17 / TNT-XSS-001 views.py:134 search
+    highlight
+- id: V79
+  claim: WEB-CLICKJACKING-001 ui/views.py:52 no frame protection
+- id: V78
+  claim: WEB-CSRF-COOKIE-001 ui/views.py:153 admin form on cookie auth
+- id: V85
+  claim: ns-aiml-158 agent/ai_native_examples.py:43 guardrail result tested but never
+    blocks; NS-CMDI-002 :46
+- id: V87
+  claim: AGENT-HANDOFF-001 agent/ai_native_examples.py:105 exec_task receives handoff
+    and holds privileged tool
+- id: V88
+  claim: ns-aiml-163 / ns-bb-016 agent/ai_native_examples.py:157 container with host
+    socket mount
+- id: V18
+  claim: NS-INJECT-001 agent/tools.py:42 calc eval
+- id: V84
+  claim: TNT-AUTHZ-001 api/ai_native_demo.py:97 model-chosen value used as authorization
+    subject
+- id: V86
+  claim: ns-aiml-159 core/security.py:212 verify_mcp_token no audience check
+- id: V65
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_note
+- id: V66
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_note_branchy
+- id: V68
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_team_note
+- id: V69
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_team_note_branchy
+- id: V70
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_task
+- id: V71
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_task_under_project
+- id: V72
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_article
+- id: V73
+  claim: AUTHZ-BOLA-001 api/authz_demo.py get_article_branchy
+- id: V12
+  claim: AUTHZ-BOLA-001 api/models.py:54 get_model no ownership check
+- id: V14
+  claim: WEB-MASS-ASSIGN-001 api/models.py:86 update_model
+- id: V24
+  claim: CF-SINK api/models.py:149 raw_artifact -> read_raw
+- id: V03
+  claim: CF-SINK api/models.py:76 get_blob -> read_artifact sanitize_path
+- id: V10
+  claim: CF-SINK api/models.py:38 create_model -> save_with_metadata
+- id: V04
+  claim: CF-RETURN api/datasets.py:45 create_dataset -> extract_archive
+- id: V28
+  claim: NS-CMDI-002 services/retention.py:15 purge rm -f shell=True
+- id: V11
+  claim: NS-CMDI-002 workers/tasks.py:65 _inspect_async shell=True dataset name
+- id: V57
+  claim: ML-UNREVIEWED-TRAINING-001 workers/tasks.py:101 retrain_model
+- id: V62
+  claim: TNT-ML-TRAINING-DISCLOSURE-001 agent/llm.py:83 memorized corpus disclosure
+- id: V58
+  claim: ns-aiml-168 agent/tools.py:74 install_package
+- id: V06
+  claim: CF-SINK services/fetcher.py:21 fetch -> is_safe_url; PY-FWK-SSRF-TOCTOU-001
+- id: D06
+  claim: NS-SSTI-001 services/reports.py render_builtin_report literal filename (safe)
+- id: D20
+  claim: CF-SINK ui/views.py:33 _current_user -> decode_token (pins HS256, safe)
+- id: D54
+  claim: NS-CMDI-002 agent/ai_native_examples.py run_operator_command (blocks, operator-only)
+- id: D56
+  claim: ns-aiml-138 agent/ai_native_examples.py build_digest_crew (summarizer has
+    no tools)
+- id: null
+  claim: AUTHZ-BOLA-001 api/authz_demo.py:54 add_team_member, which does check membership
+- id: null
+  claim: AUTHZ-BOLA-001 on datasets/experiments/inference/models routes with no keyed
+    entry
+- id: null
+  claim: ns-auth-001 rate limiting on register/login and in test files
+- id: null
+  claim: ns-aiml-071 dataset.py:34 decompression bomb; ns-aiml-120 runner.py:32 worker
+    loop
+- id: CF04
+  claim: NS-CONFIG-101 / ns-fw-py-001 cli.py:77 debug=True
+- id: V23
+  claim: TNT-SSRF-002 langfail/api/datasets.py:55 create_dataset posts to the caller-provided
+    Dataset.webhook_url without URL validation; sync completion-webhook SSRF.
+- id: null
+  claim: TNT-LOG-001 langfail/api/auth.py:158 _deliver_recovery_code logs user.id
+    using %s. ORM numeric field provenance is not proved by Rowan; source indicates
+    an integer identifier. Retained unmatched claim.
+- id: null
+  claim: 'AUTHZ-BOLA-001 langfail/api/auth.py:221 get_avatar: unresolved helper access
+    policy, authorization-gap review lead; no keyed IDOR entry credited.'
+- id: null
+  claim: 'AUTHZ-BOLA-001 langfail/api/auth.py:232 download_avatar: unresolved helper
+    access policy, authorization-gap review lead; no keyed IDOR entry credited.'
+listed: false
