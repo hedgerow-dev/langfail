@@ -183,19 +183,19 @@ background worker, the assistant, and page templates.
 SUITES = {
     "langfail": {
         "include_top": None,                 # whole repo minus excludes
-        "extra_excludes": {"modelbay", "larchway"},  # the sibling corpora
+        "extra_excludes": {"modelbay", "larchway", "deskhand"},  # the sibling corpora and the live target
         "readme": BLIND_README_LANGFAIL,
         "neutralise_pyproject": True,
     },
     "mutant": {
         "include_top": {"modelbay"},         # ship only the modelbay corpus
-        "extra_excludes": {"langfail", "larchway", "tests"},
+        "extra_excludes": {"langfail", "larchway", "deskhand", "tests"},
         "readme": BLIND_README_MUTANT,
         "neutralise_pyproject": False,       # modelbay has no packaging metadata of its own
     },
     "larchway": {
         "include_top": {"larchway"},         # ship only the larchway corpus
-        "extra_excludes": {"langfail", "modelbay", "tests"},
+        "extra_excludes": {"langfail", "modelbay", "deskhand", "tests"},
         "readme": BLIND_README_LARCHWAY,
         "neutralise_pyproject": False,       # larchway ships a requirements.txt, no packaging metadata
     },
@@ -203,7 +203,8 @@ SUITES = {
 
 # Each suite's own corpus name. Any OTHER name appearing in an export is a
 # pointer to a sibling corpus (and so to its public answer key).
-CORPUS_NAMES = {"langfail": "langfail", "mutant": "modelbay", "larchway": "larchway"}
+# deskhand is never exported; listing it makes every export flag a mention of it.
+CORPUS_NAMES = {"langfail": "langfail", "mutant": "modelbay", "larchway": "larchway", "deskhand": "deskhand"}
 
 
 def _is_excluded_test(rel: Path) -> bool:
