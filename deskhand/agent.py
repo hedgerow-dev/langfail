@@ -1,9 +1,7 @@
 """The Deskhand assistant: a system prompt, a tool loop, and two model backends.
 
-* ``stub``: deterministic, offline. It acts on ``[[TOOL:<name> <json>]]`` directives
-  in the newest message, whether that came from the user or from a tool result.
-  So a directive planted in a document runs when the document is read, the way an
-  injected instruction does with a real model.
+* ``stub``: deterministic and offline, for development. It runs the
+  ``[[TOOL:<name> <json>]]`` directives it finds in the newest message.
 * ``openai``: any OpenAI-compatible chat API with tool calling (Ollama, vLLM, a
   hosted provider).
 """

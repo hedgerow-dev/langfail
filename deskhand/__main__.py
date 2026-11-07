@@ -23,7 +23,7 @@ from pathlib import Path
 import requests
 from werkzeug.serving import make_server
 
-from . import agent, canary, grader
+from . import agent, canary, grader, rail
 from .app import create_app
 from .store import Store
 
@@ -31,6 +31,7 @@ USERS = ["alice@acme.example", "dan@acme.example", "bob@globex.example"]
 
 
 def serve(args) -> int:
+    rail.install()
     try:
         canary_ip = ipaddress.ip_address(args.canary_host)
     except ValueError:

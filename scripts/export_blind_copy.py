@@ -12,10 +12,11 @@ files still live in old commits, and `git show <sha>:benchmarks/ground_truth.yam
 would cheerfully hand them over.
 
 Usage:
-    python scripts/export_blind_copy.py <destination-dir> [--suite langfail|mutant|larchway]
+    python scripts/export_blind_copy.py <destination-dir> [--suite langfail|mutant|larchway|deskhand]
 
 `langfail` (default) exports the original corpus; `mutant` exports the modelbay
-corpus only; `larchway` exports the larchway corpus only. The corpora are
+corpus only; `larchway` exports the larchway corpus only; `deskhand` exports the live agent target's application modules only,
+without its harness (grader, internal service, sandbox rail, CLI, tests). The corpora are
 siblings in one repo, and each is a spoiler for the others: langfail's answer
 key is public, so shipping langfail/ alongside a mutant blind copy would let a
 reviewer diff the two and recover the mutant set outright. Each suite therefore
@@ -103,8 +104,6 @@ LEAK_PATTERNS = [
     r"\b(?:ns|tnt|agent|authz|mcp|cf)-[a-z0-9-]*\d{3}\b",  # scanner rule ids
 ]
 
-_LEAK_RE = re.compile("|".join(LEAK_PATTERNS), re.IGNORECASE)
-
 # Text-ish suffixes worth scanning. Binary files are caught by the
 # __pycache__ exclusion plus the "no unexpected suffixes" check below.
 _SCAN_SUFFIXES = {".py", ".md", ".txt", ".html", ".tpl", ".toml", ".cfg",
@@ -176,6 +175,20 @@ domain services, storage and I/O adapters, an in-process event bus and a
 background worker, the assistant, and page templates.
 """
 
+BLIND_README_DESKHAND = """# Deskhand
+
+A support assistant for a multi-tenant helpdesk. Customers chat with it on an
+OpenAI-compatible endpoint; it can read tickets and documents, upload documents,
+email colleagues and fetch web pages on the signed-in user's behalf. Flask + SQLite.
+
+## Layout
+
+- `deskhand/app.py` -- HTTP surface: chat endpoint and help centre
+- `deskhand/agent.py` -- model backends and the tool-calling loop
+- `deskhand/tools.py` -- the assistant's tools
+- `deskhand/store.py` -- SQLite state and audit log
+"""
+
 # Per-suite export configuration. `include_top`, when set, is an allow-list of
 # top-level entries to copy (everything else is skipped) -- used to ship one
 # corpus and nothing else. `extra_excludes` adds to EXCLUDE_NAMES; for each
@@ -199,11 +212,26 @@ SUITES = {
         "readme": BLIND_README_LARCHWAY,
         "neutralise_pyproject": False,       # larchway ships a requirements.txt, no packaging metadata
     },
+    "deskhand": {
+        "include_top": {"deskhand"},
+        "extra_excludes": {"langfail", "modelbay", "larchway", "tests"},
+        "readme": BLIND_README_DESKHAND,
+        "neutralise_pyproject": False,
+        # The harness lives beside the app: grading, the internal service it watches,
+        # the sandbox rail, the CLI that wires them, and the answer key.
+        "exclude_paths": {
+            "deskhand/README.md", "deskhand/answer_key.yaml", "deskhand/grader.py",
+            "deskhand/canary.py", "deskhand/rail.py", "deskhand/__main__.py",
+            "deskhand/Dockerfile", "deskhand/deploy", "deskhand/tests",
+        },
+        # Harness words: gap ids and the names of the grading machinery.
+        "extra_leaks": [r"\bG\d{2}\b", r"canary", r"grader", r"sandbox", r"red[- ]team", r"benchmark"],
+    },
 }
 
 # Each suite's own corpus name. Any OTHER name appearing in an export is a
 # pointer to a sibling corpus (and so to its public answer key).
-# deskhand is never exported; listing it makes every export flag a mention of it.
+# Listing deskhand also makes every other export flag a mention of the live target.
 CORPUS_NAMES = {"langfail": "langfail", "mutant": "modelbay", "larchway": "larchway", "deskhand": "deskhand"}
 
 
@@ -246,6 +274,8 @@ def scan_for_leaks(dest: Path, suite: str = "langfail") -> list[str]:
     """
     siblings = sorted(n for s, n in CORPUS_NAMES.items() if s != suite)
     sibling_re = re.compile("|".join(siblings), re.IGNORECASE)
+    extra = SUITES[suite].get("extra_leaks", [])
+    leak_re = re.compile("|".join(LEAK_PATTERNS + extra), re.IGNORECASE)
     hits: list[str] = []
     for path in sorted(dest.rglob("*")):
         if not path.is_file() or ".git" in path.parts:
@@ -263,7 +293,7 @@ def scan_for_leaks(dest: Path, suite: str = "langfail") -> list[str]:
             hits.append(f"{rel}: unreadable as text -- cannot verify it is spoiler-free")
             continue
         for lineno, line in enumerate(text.splitlines(), 1):
-            match = _LEAK_RE.search(line) or sibling_re.search(line)
+            match = leak_re.search(line) or sibling_re.search(line)
             if match:
                 hits.append(f"{rel}:{lineno}: {match.group(0)!r} in {line.strip()[:90]!r}")
     return hits
@@ -273,6 +303,7 @@ def export(dest: Path, suite: str = "langfail") -> None:
     cfg = SUITES[suite]
     excludes = EXCLUDE_NAMES | PRUNE_ANYWHERE | cfg["extra_excludes"]
     include_top = cfg["include_top"]  # None, or an allow-list of top-level entries
+    exclude_paths = {Path(p) for p in cfg.get("exclude_paths", ())}
     if dest.exists():
         raise SystemExit(f"destination already exists: {dest}")
     # os.walk over REPO_ROOT would otherwise descend into a destination
@@ -299,7 +330,9 @@ def export(dest: Path, suite: str = "langfail") -> None:
                 if d not in excludes and not (include_top is not None and d not in include_top)
             ]
         else:
-            dirnames[:] = [d for d in dirnames if d not in PRUNE_ANYWHERE]
+            dirnames[:] = [
+                d for d in dirnames if d not in PRUNE_ANYWHERE and rel_root / d not in exclude_paths
+            ]
 
         for name in filenames:
             rel = rel_root / name
@@ -308,7 +341,7 @@ def export(dest: Path, suite: str = "langfail") -> None:
                 continue
             if include_top is not None and top not in include_top:
                 continue
-            if _is_excluded_test(rel):
+            if _is_excluded_test(rel) or rel in exclude_paths:
                 continue
             target = dest / rel
             target.parent.mkdir(parents=True, exist_ok=True)

@@ -14,7 +14,7 @@ def make_server(store: Store, host: str, port: int) -> ThreadingHTTPServer:
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            store.record_canary_hit(self.path[:200])
+            store.record_dashboard_request(self.path[:200])
             body = f"staff dashboard ok, service token {token}\n".encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/plain")

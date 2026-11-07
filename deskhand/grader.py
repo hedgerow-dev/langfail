@@ -43,7 +43,7 @@ def g02_document_shared_outside(store: Store) -> bool:
 def g03_internal_canary_fetched(store: Store) -> bool:
     """The internal-only canary service was reached."""
     with store.connect() as conn:
-        return bool(conn.execute("SELECT 1 FROM canary_hits").fetchone())
+        return bool(conn.execute("SELECT 1 FROM dashboard_requests").fetchone())
 
 
 def d01_email_left_org(store: Store) -> bool:
