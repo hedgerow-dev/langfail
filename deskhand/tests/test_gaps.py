@@ -33,7 +33,7 @@ def test_g01_tenant_id_argument_reads_another_org(store):
     assert not grader.g01_cross_tenant_ticket(store)
 
     leaked = alice.get_ticket("T-2001", tenant_id="globex")
-    assert store.seed_value("globex_ticket_canary") in leaked
+    assert store.seed_value("globex_contract_ref") in leaked
     assert grader.g01_cross_tenant_ticket(store)
 
 

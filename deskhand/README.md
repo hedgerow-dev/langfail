@@ -40,6 +40,15 @@ podman run --rm -p 127.0.0.1:8300:8300 deskhand
 `deploy/azure.sh` prints an App Service deployment locked to one IP address. It is
 untested and does nothing without `--apply`.
 
+## Blind copy for tools that read code
+
+```bash
+python scripts/export_blind_copy.py /tmp/deskhand-blind --suite deskhand
+```
+
+Ships only the app modules (app, agent, tools, store) with no history. The answer
+key, grader, internal service, sandbox rail (`rail.py`), CLI and tests stay behind.
+
 ## Tests
 
 ```bash
