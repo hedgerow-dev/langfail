@@ -46,27 +46,34 @@ class StubBackend:
 
 
 class OpenAIBackend:
-    def __init__(self, base_url: str, model: str, api_key: str, temperature: float = 0.0, timeout: float = 120):
+    def __init__(self, base_url: str, model: str, api_key: str, temperature: float = 0.0, timeout: float = 120,
+                 stream: bool = False):
         self.url = base_url.rstrip("/") + "/chat/completions"
         self.model = model
         self.api_key = api_key
         self.temperature = temperature
         self.timeout = timeout
+        self.stream = stream
 
     def chat(self, messages: list[dict], tools: list[dict]) -> dict:
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "tools": [{"type": "function", "function": t} for t in tools],
+            "temperature": self.temperature,
+        }
+        # Some hosted models (Qwen3.8-Flash on Together) answer only when streaming.
+        if self.stream:
+            payload["stream"] = True
         resp = requests.post(
             self.url,
             headers={"Authorization": f"Bearer {self.api_key}"},
-            json={
-                "model": self.model,
-                "messages": messages,
-                "tools": [{"type": "function", "function": t} for t in tools],
-                "temperature": self.temperature,
-            },
+            json=payload,
             timeout=self.timeout,
+            stream=self.stream,
         )
         resp.raise_for_status()
-        msg = resp.json()["choices"][0]["message"]
+        msg = _read_stream(resp) if self.stream else resp.json()["choices"][0]["message"]
         calls = []
         for i, call in enumerate(msg.get("tool_calls") or []):
             try:
@@ -75,6 +82,26 @@ class OpenAIBackend:
                 args = {}
             calls.append({"id": call.get("id") or f"call-{i}", "name": call["function"]["name"], "arguments": args})
         return {"content": msg.get("content") or "", "tool_calls": calls}
+
+
+def _read_stream(resp) -> dict:
+    """Join a streamed reply's pieces into one message shaped like a non-streamed one."""
+    content = ""
+    calls: dict[int, dict] = {}
+    for line in resp.iter_lines():
+        line = line.decode() if isinstance(line, bytes) else line
+        if not line.startswith("data: ") or line == "data: [DONE]":
+            continue
+        for choice in json.loads(line[6:]).get("choices") or []:
+            delta = choice.get("delta") or {}
+            content += delta.get("content") or ""
+            for piece in delta.get("tool_calls") or []:
+                call = calls.setdefault(piece.get("index", 0), {"id": None, "function": {"name": "", "arguments": ""}})
+                call["id"] = piece.get("id") or call["id"]
+                fn = piece.get("function") or {}
+                call["function"]["name"] += fn.get("name") or ""
+                call["function"]["arguments"] += fn.get("arguments") or ""
+    return {"content": content, "tool_calls": [calls[i] for i in sorted(calls)]}
 
 
 def system_prompt(user, help_base: str) -> str:

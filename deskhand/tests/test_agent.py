@@ -141,3 +141,43 @@ def test_reply_is_also_a_top_level_field(live):
     # Hosted scanners whose response path cannot index a list (Enoki) read this field.
     body = chat(live, "hi").json()
     assert body["response"] == body["choices"][0]["message"]["content"]
+
+
+def test_openai_backend_streaming_joins_text_and_tool_call_pieces(monkeypatch):
+    # Some hosted models (Qwen3.8-Flash on Together) answer only when streaming.
+    chunks = [
+        {"choices": [{"delta": {"content": "Look"}}]},
+        {"choices": [{"delta": {"content": "ing."}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "id": "c1", "function": {"name": "get_ticket", "arguments": '{"ticket'}}]}}]},
+        {"choices": [{"delta": {"tool_calls": [{"index": 0, "function": {"arguments": '_id": "T-1"}'}}]}}]},
+        {"choices": []},
+    ]
+    lines = [b": keep-alive", b""] + [b"data: " + json.dumps(c).encode() for c in chunks] + [b"data: [DONE]"]
+    sent = []
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def iter_lines(self):
+            return iter(lines)
+
+    monkeypatch.setattr(agent.requests, "post", lambda url, **kw: sent.append(kw) or _Resp())
+    out = agent.OpenAIBackend("http://x/v1", "m", "k", stream=True).chat([], [])
+    assert sent[0]["json"]["stream"] is True and sent[0]["stream"] is True
+    assert out == {"content": "Looking.", "tool_calls": [{"id": "c1", "name": "get_ticket", "arguments": {"ticket_id": "T-1"}}]}
+
+
+def test_openai_backend_does_not_stream_by_default(monkeypatch):
+    sent = []
+
+    class _Resp:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"choices": [{"message": {"content": "hi"}}]}
+
+    monkeypatch.setattr(agent.requests, "post", lambda url, **kw: sent.append(kw) or _Resp())
+    assert agent.OpenAIBackend("http://x/v1", "m", "k").chat([], [])["content"] == "hi"
+    assert "stream" not in sent[0]["json"] and not sent[0].get("stream")
