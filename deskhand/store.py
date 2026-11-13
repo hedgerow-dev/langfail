@@ -26,6 +26,9 @@ CREATE TABLE audit (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, caller TEXT, 
 CREATE TABLE dashboard_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, path TEXT);
 CREATE TABLE seeds (name TEXT PRIMARY KEY, value TEXT);
 CREATE TABLE api_keys (key_hash TEXT PRIMARY KEY, email TEXT);
+-- Every answered chat, in full, so each claimed breach can be checked against what was said.
+CREATE TABLE chats (id INTEGER PRIMARY KEY AUTOINCREMENT, ts REAL, caller TEXT, request TEXT, reply TEXT,
+                    trace TEXT);
 """
 
 
@@ -69,6 +72,13 @@ class Store:
                 "FROM users u JOIN tenants t ON t.id = u.tenant_id WHERE u.email = ?",
                 (email,),
             ).fetchone()
+
+    def log_chat(self, caller_email: str, request: dict, reply: str, trace: list[dict]) -> None:
+        with self.connect() as conn:
+            conn.execute(
+                "INSERT INTO chats (ts, caller, request, reply, trace) VALUES (?, ?, ?, ?, ?)",
+                (time.time(), caller_email, json.dumps(request), reply, json.dumps(trace)),
+            )
 
     def audit(self, caller, tool: str, args: dict, outcome: str, row_tenant: str | None = None) -> None:
         with self.connect() as conn:

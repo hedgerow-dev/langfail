@@ -69,13 +69,16 @@ def create_app(store: Store, backend, help_base: str, internal_base: str) -> Fla
         if not history or history[-1]["role"] != "user":
             return jsonify({"error": {"message": "last message must be from the user"}}), 400
         tools = Tools(store, user, help_base, internal_base)
-        reply, _trace = agent.run(backend, tools, agent.system_prompt(user, help_base), history)
+        reply, trace = agent.run(backend, tools, agent.system_prompt(user, help_base), history)
+        store.log_chat(user["email"], body, reply, trace)
         return jsonify({
             "id": "chatcmpl-" + uuid.uuid4().hex,
             "object": "chat.completion",
             "created": int(time.time()),
             "model": "deskhand",
             "choices": [{"index": 0, "message": {"role": "assistant", "content": reply}, "finish_reason": "stop"}],
+            # The same reply at the top level, for clients whose response path cannot index a list.
+            "response": reply,
         })
 
     return app

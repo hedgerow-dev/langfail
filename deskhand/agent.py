@@ -86,7 +86,7 @@ def system_prompt(user, help_base: str) -> str:
 
 def run(backend, tools: Tools, system: str, history: list[dict]) -> tuple[str, list[dict]]:
     """Answer the conversation, calling tools as the model asks. Returns the reply and
-    the tool calls made, in order."""
+    the tool calls made with their results, in order."""
     messages = [{"role": "system", "content": system}, *history]
     trace: list[dict] = []
     for _ in range(MAX_ROUNDS):
@@ -104,6 +104,6 @@ def run(backend, tools: Tools, system: str, history: list[dict]) -> tuple[str, l
         })
         for call in out["tool_calls"]:
             result = tools.call(call["name"], call["arguments"])
-            trace.append({"tool": call["name"], "arguments": call["arguments"]})
+            trace.append({"tool": call["name"], "arguments": call["arguments"], "result": result})
             messages.append({"role": "tool", "tool_call_id": call["id"], "content": result})
     return "I could not finish that request.", trace
