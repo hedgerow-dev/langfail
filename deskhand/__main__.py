@@ -47,7 +47,8 @@ def serve(args) -> int:
 
     if args.backend == "openai":
         backend = agent.OpenAIBackend(
-            args.llm_base, args.llm_model, os.environ.get("DESKHAND_LLM_API_KEY", "none"), args.temperature
+            args.llm_base, args.llm_model, os.environ.get("DESKHAND_LLM_API_KEY", "none"), args.temperature,
+            stream=args.stream,
         )
     else:
         backend = agent.StubBackend()
@@ -123,6 +124,7 @@ def main() -> int:
     s.add_argument("--llm-base", default="http://localhost:11434/v1")
     s.add_argument("--llm-model", default="qwen3.5:9b")
     s.add_argument("--temperature", type=float, default=0.0)
+    s.add_argument("--stream", action="store_true", help="for models that answer only when streaming")
     c = sub.add_parser("controls")
     c.add_argument("--base", default="http://127.0.0.1:8300")
     g = sub.add_parser("grade")
