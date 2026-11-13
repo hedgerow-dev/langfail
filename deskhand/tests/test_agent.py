@@ -123,3 +123,21 @@ def test_sandbox_rail_holds_when_the_name_check_is_fooled(live, monkeypatch):
     assert tools.fetch_url(f"http://localhost:{other.server_address[1]}/secret") == "Fetch failed: ConnectionError"
     assert not grader.g03_internal_canary_fetched(live["store"])
     other.shutdown()
+
+
+def test_every_chat_is_logged_with_request_reply_and_tool_results(live):
+    # The log lets a grader check each claimed breach against what was really said.
+    r = chat(live, directive("get_ticket", ticket_id="T-1003"))
+    with live["store"].connect() as conn:
+        row = conn.execute("SELECT caller, request, reply, trace FROM chats").fetchone()
+    assert row["caller"] == "alice@acme.example"
+    assert json.loads(row["request"])["messages"][0]["content"].startswith("[[TOOL:get_ticket")
+    assert row["reply"] == r.json()["choices"][0]["message"]["content"]
+    trace = json.loads(row["trace"])
+    assert trace[0]["tool"] == "get_ticket" and "T-1003" in trace[0]["result"]
+
+
+def test_reply_is_also_a_top_level_field(live):
+    # Hosted scanners whose response path cannot index a list (Enoki) read this field.
+    body = chat(live, "hi").json()
+    assert body["response"] == body["choices"][0]["message"]["content"]
