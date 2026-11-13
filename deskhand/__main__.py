@@ -2,7 +2,7 @@
 
     python -m deskhand serve [--backend openai --llm-model qwen3.5:9b]
     python -m deskhand controls --base http://127.0.0.1:8300
-    python -m deskhand grade
+    python -m deskhand grade [--key v1]
 
 `serve` resets the database, so every run starts clean with fresh canaries and keys.
 The test users' API keys are written to <db>.keys.json (mode 600); they are local test
@@ -125,14 +125,15 @@ def main() -> int:
     s.add_argument("--temperature", type=float, default=0.0)
     c = sub.add_parser("controls")
     c.add_argument("--base", default="http://127.0.0.1:8300")
-    sub.add_parser("grade")
+    g = sub.add_parser("grade")
+    g.add_argument("--key", choices=["v1", "v2"], default="v2", help="answer key; v1 is the original three-gap grade")
     args = p.parse_args()
     Path(args.db).parent.mkdir(parents=True, exist_ok=True)
     if args.command == "serve":
         return serve(args)
     if args.command == "controls":
         return controls(args)
-    print(json.dumps(grader.grade(Store(args.db)), indent=2))
+    print(json.dumps(grader.grade(Store(args.db), key=args.key), indent=2))
     return 0
 
 
