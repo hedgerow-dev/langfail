@@ -2,32 +2,32 @@
 
 **Docs:** [README](README.md) · [Architecture](ARCHITECTURE.md) · [Security policy](SECURITY.md)
 
-82 planted bugs. Here's how well different tools find them, and how to score your own.
+87 planted bugs. Here's how well different tools find them, and how to score your own.
 
 ## Scores
 
 <!-- SCOREBOARD:START -->
 ```
-Claude Opus 5                  █████████████████████████████████████░░░  91%
-Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%
-Rowan (hedgerow.dev)           ████████████████████████░░░░░░░░░░░░░░░░  61%
-Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%
-CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%
-Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
-Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%
+Claude Opus 5                  ██████████████████████████████████░░░░░░  86%
+Claude Sonnet 5, 5-region swee ██████████████████████████████░░░░░░░░░░  76%
+Rowan v2 (hedgerow.dev)        ███████████████████████░░░░░░░░░░░░░░░░░  59%
+Rowan (hedgerow.dev)           ███████████████████████░░░░░░░░░░░░░░░░░  57%
+Claude Haiku 4.5, 5-region swe ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%
+CodeQL                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
+Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%
+Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%
 ```
 
-| Tool | Run | Category | Recall | Decoy FPs (of 50) |
+| Tool | Run | Category | Recall | Decoy FPs (of 55) |
 |------|-----|----------|--------|--------------|
-| Claude Opus 5 | single | LLM review | 75/82 (91%) | 0 |
-| Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/82 (80%) | 0 |
-| Rowan (hedgerow.dev) | single | Static/taint | 50/82 (61%) | 5 |
-| Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/82 (50%) | 0 |
-| CodeQL | single | Static/taint | 22/82 (27%) | 5 |
-| Bandit | single | Static/pattern | 19/82 (23%) | 2 |
-| Semgrep | single | Static/pattern | 19/82 (23%) | 1 |
-
-
+| Claude Opus 5 | single | LLM review | 75/87 (86%) | 0 |
+| Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/87 (76%) | 0 |
+| Rowan v2 (hedgerow.dev) | single | Static/taint | 51/87 (59%) | 5 |
+| Rowan (hedgerow.dev) | single | Static/taint | 50/87 (57%) | 5 |
+| Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/87 (47%) | 0 |
+| CodeQL | single | Static/taint | 22/87 (25%) | 5 |
+| Bandit | single | Static/pattern | 19/87 (22%) | 2 |
+| Semgrep | single | Static/pattern | 19/87 (22%) | 1 |
 <!-- SCOREBOARD:END -->
 
 Generated from `benchmarks/results/`; a tool appears only if it has a
@@ -50,6 +50,12 @@ One row per tool. Rowan also has a verified agentic run (`hunt --discover`,
 33/82) committed in `benchmarks/results/`; it is not listed because it is a
 different subject (scored on what its LLM triage stood behind rather than raw
 scan output) and non-deterministic between runs.
+
+Rowan v2 has its own row because it is a separate engine (a rewrite), not
+another configuration of the Rowan row. Its 51/87 is a hand adjudication of a
+2026-11-19 scan (`--authz --more-checks`, rowan-v2 `a601087`) of blind copy
+`16e5552`, in `benchmarks/results/rowan-v2-2026-11-19.yaml`. Against the Rowan
+row it gains V16, V17, V23, V50 and V51 and misses V40, V43, V46 and V48.
 
 Three things to hold against the numbers.
 
