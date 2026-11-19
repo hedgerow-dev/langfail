@@ -18,14 +18,14 @@ review highly.
 
 ---
 
-## The best deterministic scanner finds 57% of the 87 planted bugs.
+## The best deterministic scanner finds 59% of the 87 planted bugs.
 
 <!-- SCOREBOARD:START -->
 ```
 Claude Opus 5                  ██████████████████████████████████░░░░░░  86%  (single)
 Claude Sonnet 5, 5-region swee ██████████████████████████████░░░░░░░░░░  76%  (sweep)
+Rowan v2 (hedgerow.dev)        ███████████████████████░░░░░░░░░░░░░░░░░  59%  (single)
 Rowan (hedgerow.dev)           ███████████████████████░░░░░░░░░░░░░░░░░  57%  (single)
-Rowan v2 (hedgerow.dev)        ███████████████████████░░░░░░░░░░░░░░░░░  57%  (single)
 Claude Haiku 4.5, 5-region swe ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%  (sweep)
 CodeQL                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%  (single)
 Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%  (single)

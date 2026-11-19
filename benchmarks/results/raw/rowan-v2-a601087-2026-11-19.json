@@ -14955,6 +14955,145 @@
       "cwe": "CWE-94",
       "entries": [
         {
+          "field": "repo",
+          "framework": "flask",
+          "kind": "http",
+          "location": "json",
+          "methods": [
+            "POST"
+          ],
+          "path": "/api/models/import_hub",
+          "tool": null
+        }
+      ],
+      "evidence_tier": "taint-flow",
+      "flow": [
+        {
+          "column": 12,
+          "file": "langfail/api/models.py",
+          "kind": "source",
+          "line": 182,
+          "note": null,
+          "snippet": "request.get_json(force=True, silent=True)"
+        },
+        {
+          "column": 5,
+          "file": "langfail/api/models.py",
+          "kind": "propagate",
+          "line": 182,
+          "note": null,
+          "snippet": "data"
+        },
+        {
+          "column": 5,
+          "file": "langfail/api/models.py",
+          "kind": "propagate",
+          "line": 183,
+          "note": null,
+          "snippet": "repo"
+        },
+        {
+          "column": 37,
+          "file": "langfail/api/models.py",
+          "kind": "propagate",
+          "line": 185,
+          "note": "argument to langfail.ml.hub.load_from_hub",
+          "snippet": "repo"
+        },
+        {
+          "column": 19,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 43,
+          "note": null,
+          "snippet": "repo_name"
+        },
+        {
+          "column": 22,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 48,
+          "note": "argument to langfail.ml.hub._repo_dir",
+          "snippet": "repo_name"
+        },
+        {
+          "column": 15,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 33,
+          "note": null,
+          "snippet": "repo_name"
+        },
+        {
+          "column": 12,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 36,
+          "note": "returned by langfail.ml.hub._repo_dir",
+          "snippet": "HUB_DIR / repo_name"
+        },
+        {
+          "column": 12,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 48,
+          "note": null,
+          "snippet": "_repo_dir(repo_name)"
+        },
+        {
+          "column": 5,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 48,
+          "note": null,
+          "snippet": "dest"
+        },
+        {
+          "column": 5,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 52,
+          "note": null,
+          "snippet": "hubconf"
+        },
+        {
+          "column": 5,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 55,
+          "note": null,
+          "snippet": "spec"
+        },
+        {
+          "column": 5,
+          "file": "langfail/ml/hub.py",
+          "kind": "propagate",
+          "line": 58,
+          "note": null,
+          "snippet": "module"
+        },
+        {
+          "column": 29,
+          "file": "langfail/ml/hub.py",
+          "kind": "sink",
+          "line": 59,
+          "note": null,
+          "snippet": "module"
+        }
+      ],
+      "id": "c7d6a558d7b91da9",
+      "message": "Untrusted input reaches a call that runs it as Python code. Never execute model output or request data; parse data with ast.literal_eval or json, and map names to code through an explicit allow-list.",
+      "rule": "py-code-execution.http_input",
+      "sanitizers_seen": [],
+      "severity": "critical",
+      "source_kind": "http_input"
+    },
+    {
+      "assumptions": [],
+      "base_severity": "critical",
+      "cwe": "CWE-94",
+      "entries": [
+        {
           "field": "metric",
           "framework": "flask",
           "kind": "http",
@@ -19773,5 +19912,5 @@
     }
   ],
   "input_hash": "6ec33e2302ef0de61fc317ca468bbf97cfded15f8023f58a380c7bd0f96f58b3",
-  "rules_version": "sha256:de6cd7ee31b656ee"
+  "rules_version": "sha256:ff083546172fcf35"
 }

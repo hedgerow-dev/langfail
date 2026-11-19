@@ -10,8 +10,8 @@
 ```
 Claude Opus 5                  ██████████████████████████████████░░░░░░  86%
 Claude Sonnet 5, 5-region swee ██████████████████████████████░░░░░░░░░░  76%
+Rowan v2 (hedgerow.dev)        ███████████████████████░░░░░░░░░░░░░░░░░  59%
 Rowan (hedgerow.dev)           ███████████████████████░░░░░░░░░░░░░░░░░  57%
-Rowan v2 (hedgerow.dev)        ███████████████████████░░░░░░░░░░░░░░░░░  57%
 Claude Haiku 4.5, 5-region swe ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%
 CodeQL                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%
 Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%
@@ -22,8 +22,8 @@ Semgrep                        █████████░░░░░░░�
 |------|-----|----------|--------|--------------|
 | Claude Opus 5 | single | LLM review | 75/87 (86%) | 0 |
 | Claude Sonnet 5, 5-region sweep | sweep | LLM review (partitioned) | 66/87 (76%) | 0 |
+| Rowan v2 (hedgerow.dev) | single | Static/taint | 51/87 (59%) | 5 |
 | Rowan (hedgerow.dev) | single | Static/taint | 50/87 (57%) | 5 |
-| Rowan v2 (hedgerow.dev) | single | Static/taint | 50/87 (57%) | 5 |
 | Claude Haiku 4.5, 5-region sweep | sweep | LLM review (partitioned) | 41/87 (47%) | 0 |
 | CodeQL | single | Static/taint | 22/87 (25%) | 5 |
 | Bandit | single | Static/pattern | 19/87 (22%) | 2 |
@@ -52,10 +52,10 @@ different subject (scored on what its LLM triage stood behind rather than raw
 scan output) and non-deterministic between runs.
 
 Rowan v2 has its own row because it is a separate engine (a rewrite), not
-another configuration of the Rowan row. Its 50/87 is a hand adjudication of a
-2026-11-19 scan (`--authz --more-checks`, rowan-v2 `2b16884`) of blind copy
+another configuration of the Rowan row. Its 51/87 is a hand adjudication of a
+2026-11-19 scan (`--authz --more-checks`, rowan-v2 `a601087`) of blind copy
 `16e5552`, in `benchmarks/results/rowan-v2-2026-11-19.yaml`. Against the Rowan
-row it gains V16, V17, V23, V50 and V51 and misses V40, V43, V46, V48 and V53.
+row it gains V16, V17, V23, V50 and V51 and misses V40, V43, V46 and V48.
 
 Three things to hold against the numbers.
 
