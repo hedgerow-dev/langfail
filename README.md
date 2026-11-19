@@ -25,7 +25,7 @@ review highly.
 Claude Opus 5                  ██████████████████████████████████░░░░░░  86%  (single)
 Claude Sonnet 5, 5-region swee ██████████████████████████████░░░░░░░░░░  76%  (sweep)
 Rowan (hedgerow.dev)           ███████████████████████░░░░░░░░░░░░░░░░░  57%  (single)
-Rowan v2 (hedgerow.dev)        ██████████████████████░░░░░░░░░░░░░░░░░░  55%  (single)
+Rowan v2 (hedgerow.dev)        ███████████████████████░░░░░░░░░░░░░░░░░  57%  (single)
 Claude Haiku 4.5, 5-region swe ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%  (sweep)
 CodeQL                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%  (single)
 Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%  (single)
