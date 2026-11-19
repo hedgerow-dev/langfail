@@ -1,9 +1,11 @@
 """Pluggable model backend for the Modelbay assistant.
 
-Two backends are supported, selected by ``MODELBAY_ASSISTANT_BACKEND``:
+Three backends are supported, selected by ``MODELBAY_ASSISTANT_BACKEND``:
 
 * ``offline`` -- deterministic, no network. Used in CI and for reproducible demos.
 * ``remote``  -- a local model server speaking the Ollama chat protocol.
+* ``messages`` -- Anthropic Messages, streamed, at ``MODELBAY_ASSISTANT_ENDPOINT`` with
+  ``MODELBAY_ASSISTANT_KEY`` (a Briar model gateway's front and sentinel).
 
 Both expose the same :func:`complete` contract and return
 ``{"content": str, "tool_calls": [{"name": str, "arguments": dict}]}``.
@@ -116,9 +118,63 @@ def _remote_complete(messages: list[dict], tools: list[dict] | None) -> dict:
     return {"content": msg.get("content", ""), "tool_calls": calls}
 
 
+def _messages_complete(messages: list[dict], tools: list[dict] | None) -> dict:
+    """Anthropic Messages, streamed (a Briar model gateway carries nothing
+    else). System turns become the system field; a tool result becomes a
+    user turn, since the loop keeps no tool-use ids; turns of one role are
+    merged, as the API wants them alternating."""
+    system = "\n\n".join(m["content"] for m in messages if m.get("role") == "system")
+    turns: list[dict] = []
+    for m in messages:
+        role = m.get("role")
+        if role == "system":
+            continue
+        role = "assistant" if role == "assistant" else "user"
+        text = str(m.get("content", ""))
+        if role == "user" and m.get("role") == "tool":
+            text = f"[tool result]\n{text}"
+        if turns and turns[-1]["role"] == role:
+            turns[-1]["content"] += "\n\n" + text
+        else:
+            turns.append({"role": role, "content": text})
+    payload = {"model": Settings.ASSISTANT_MODEL, "max_tokens": 4096, "messages": turns, "stream": True}
+    if system:
+        payload["system"] = system
+    if tools:
+        payload["tools"] = [{"name": t["function"]["name"],
+                             "description": t["function"]["description"] or t["function"]["name"],
+                             "input_schema": t["function"]["parameters"]} for t in tools]
+    text, blocks = "", {}
+    with requests.post(f"{Settings.ASSISTANT_ENDPOINT}/v1/messages", json=payload, timeout=300,
+                       stream=True, headers={"x-api-key": Settings.ASSISTANT_KEY,
+                                             "anthropic-version": "2023-06-01"}) as resp:
+        resp.raise_for_status()
+        for line in resp.iter_lines():
+            if not line.startswith(b"data:"):
+                continue
+            event = json.loads(line[5:])
+            kind = event.get("type")
+            if kind == "error":
+                # A gateway refusal or upstream failure; read as an empty reply
+                # it would look like the model declining.
+                raise RuntimeError(f"model stream error: {event.get('error', {}).get('message')}")
+            if kind == "content_block_start" and event["content_block"].get("type") == "tool_use":
+                blocks[event["index"]] = {"name": event["content_block"]["name"], "json": ""}
+            elif kind == "content_block_delta":
+                delta = event["delta"]
+                if delta.get("type") == "text_delta":
+                    text += delta["text"]
+                elif delta.get("type") == "input_json_delta" and event["index"] in blocks:
+                    blocks[event["index"]]["json"] += delta["partial_json"]
+    calls = [{"name": b["name"], "arguments": _parse_args(b["json"] or "{}")} for b in blocks.values()]
+    return {"content": text, "tool_calls": calls}
+
+
 def complete(messages: list[dict], tools: list[dict] | None = None) -> dict:
     if Settings.ASSISTANT_BACKEND == "remote":
         return _remote_complete(messages, tools)
+    if Settings.ASSISTANT_BACKEND == "messages":
+        return _messages_complete(messages, tools)
     return _offline_complete(messages, tools)
 
 
@@ -142,7 +198,7 @@ def draft_sql(question: str, table: str = "runs") -> str:
     then runs directly. The offline backend mimics an under-constrained model
     that reproduces the request's SQL-like phrasing verbatim into the condition.
     """
-    if Settings.ASSISTANT_BACKEND == "remote":
+    if Settings.ASSISTANT_BACKEND != "offline":
         reply = complete([
             {"role": "system", "content": (
                 f"Write a single SQL WHERE-clause condition (no SELECT, no "
@@ -167,7 +223,7 @@ def draft_code(question: str, columns: list[str] | None = None) -> str:
     backend emits the request's code-like phrasing verbatim, which keeps the
     deterministic path stable.
     """
-    if Settings.ASSISTANT_BACKEND == "remote":
+    if Settings.ASSISTANT_BACKEND != "offline":
         cols = ", ".join(columns or []) or "the provided columns"
         reply = complete([
             {"role": "system", "content": (
