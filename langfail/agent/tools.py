@@ -28,7 +28,10 @@ def run_sql(input: str = "", **_) -> str:
 
 def read_file(input: str = "", **_) -> str:
     """Read a model card or documentation file referenced by a model."""
-    with open(input, "r", errors="replace") as fh:
+    path = os.path.realpath(os.path.join(ARTIFACT_DIR, input))
+    if os.path.commonpath([path, os.path.realpath(ARTIFACT_DIR)]) != os.path.realpath(ARTIFACT_DIR):
+        return "Only files under the artifact folder can be read."
+    with open(path, "r", errors="replace") as fh:
         return fh.read()[:5000]
 
 
