@@ -43,6 +43,7 @@ class Settings:
     ASSISTANT_BACKEND = os.environ.get("MODELBAY_ASSISTANT_BACKEND", "offline")
     ASSISTANT_MODEL = os.environ.get("MODELBAY_ASSISTANT_MODEL", "llama3.1")
     ASSISTANT_ENDPOINT = os.environ.get("MODELBAY_ASSISTANT_ENDPOINT", "http://localhost:11434")
+    ASSISTANT_KEY = os.environ.get("MODELBAY_ASSISTANT_KEY", "")
 
     # Action-bridge over SSE/HTTP (modelbay bridge-serve-http). Binds every
     # interface and requires no credential by default -- operators opt in to
