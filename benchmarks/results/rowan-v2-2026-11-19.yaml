@@ -1,0 +1,135 @@
+tool: Rowan v2 (hedgerow.dev)
+version: "rowan2 2.0.0 (rowan-v2 f86bc28)"
+category: Static/taint
+protocol: single-run
+date: "2026-11-19"
+
+manifest_size: 87
+blind_copy_commit: 16e5552
+raw_output: raw/rowan-v2-f86bc28-2026-11-19.json
+
+notes: >
+  Rowan v2 (the rowan2 package: Opengrep taint rules, cross-file Python walk,
+  second-order stores, syntax-only authorization checks) at rowan-v2 commit
+  f86bc28. Fresh blind export with scripts/export_blind_copy.py --suite langfail,
+  run from a clean `git archive` of Langfail 16e5552 so untracked working-tree
+  files could not enter the copy. Command:
+  `rowan scan <blind> --authz --more-checks --no-cache -f json`. Both flags are
+  documented opt-ins; no rule or config was written for this run.
+
+  146 raw findings, adjudicated by hand against ground_truth.yaml (87 entries)
+  by reading the blind copy at each finding's flow. Anchoring rule as in
+  open-rowan.yaml: a finding credits an entry only when it is anchored in that
+  entry's declared source or sink function AND describes that entry's defect.
+  One line per entry: duplicates of a credited bug (the same sink reached from
+  another route, or the same agent tool reached from another chat endpoint) are
+  dropped, not listed. Raw finding numbers are given as [NNN], the index into
+  the raw JSON findings array.
+
+  Result: 48/87 V ids. Decoy FPs: 5 (D06, D10, D22, D48, D49). 30 further
+  findings are listed with id ~: 22 missing-ownership-check hits on handlers the
+  key does not enumerate (key candidates, not adjudicated as FPs), and 8 other
+  claims, some real (KU03 exception text, which score.py has no id for) and
+  some false (plugin name is regex-checked; /ui/admin checks the role inside).
+
+  Not credited although the flow touches the entry: V32 (ask -> run_sql, but
+  the claim says nothing about the smuggling bypass of the filter), V30
+  (session -> run_sql does not go through stored memory), V83 (search results
+  are tainted by the query, not traced from the stored model name), V55/V56
+  (ownership-check hits on predict_proba/row_loss, not the disclosure defect).
+
+  The scan ran without --sca, so no dependency findings are in the raw output.
+  Same caveat as every Rowan row: this repo's authors maintain the tool and did
+  this adjudication. It has not been through an independent re-adjudication.
+
+findings:
+  # --- credited ---
+  - {id: V01, claim: "[105] py-unsafe-deserialization.store: create_model artifact stored, read back at predict, reaches pickle/torch/joblib load in ml/model_loader.py:28 _deserialize"}
+  - {id: V02, claim: "[115] py-unsafe-deserialization.http_input: create_experiment config text reaches yaml full loader at services/config_loader.py:20"}
+  - {id: V03, claim: "[126] py-path-traversal.http_input: get_blob ?path reaches services/registry.py:30 read_artifact os.path.join after sanitize_path"}
+  - {id: V04, claim: "[095] py-path-traversal.http_input: create_dataset archive members reach extract target in ml/dataset.py:31 extract_archive (zip slip)"}
+  - {id: V05, claim: "[131] py-template-injection.http_input: models.report template reaches from_string in services/reports.py:31 render_report"}
+  - {id: V06, claim: "[122] py-ssrf.store: stored Dataset.source_url fetched by services/fetcher.py:23 fetch"}
+  - {id: V07, claim: "[104] py-unsafe-deserialization.store: Dataset.source_url fetched by the worker, bytes passed to load_model_bytes -> _deserialize (ml/model_loader.py:28)"}
+  - {id: V08, claim: "[116] py-sql-injection.http_input: search ?tag/sort concatenated into SQL at services/experiments.py:34 search_experiments"}
+  - {id: V09, claim: "[094] py-command-injection.store: stored model name reaches shell command in ml/convert.py:25 convert_model"}
+  - {id: V10, claim: "[129] py-path-traversal.http_input: create_model metadata storage_path joined under ARTIFACT_DIR and written in services/registry.py:67 save_with_metadata"}
+  - {id: V11, claim: "[144] py-command-injection.store: stored dataset name reaches shell command in workers/tasks.py:65 _inspect_async"}
+  - {id: V12, claim: "[077] py-object-without-owner-check: api/models.py:65 download_artifact fetches Model by id with no ownership check"}
+  - {id: V13, claim: "[100] py-unsafe-deserialization.http_input: predict feature-cache path reaches np.load/pickle in ml/features.py:37 load_feature_cache"}
+  - {id: V15, claim: "[103] py-code-execution.http_input: evaluate metric spec reaches eval in ml/metrics.py:30 evaluate_metric"}
+  - {id: V16, claim: "[002] py-sql-injection.http_input: /api/agent/chat message -> LLM -> tool call dispatched to agent/tools.py:25 run_sql (direct prompt injection to tool)"}
+  - {id: V17, claim: "[009] py-sql-injection.store: Model.model_card stored at create_model, read back as agent context, LLM tool call reaches agent/tools.py:25 run_sql"}
+  - {id: V18, claim: "[024] py-code-execution.http_input: /api/agent/chat -> LLM tool call reaches eval in agent/tools.py:42 calc"}
+  - {id: V19, claim: "[087] py-xss.store: stored model name rendered into the page shell by services/reports.py render_page (autoescape off), returned as text/html at api/reports.py:41"}
+  - {id: V20, claim: "[123] py-code-execution.http_input: run pipeline step name reaches importlib in services/pipeline.py:25 _resolve"}
+  - {id: V22, claim: "[119] py-sql-injection.http_input: count ?owner interpolated into SQL at services/experiments.py:46 count_by_owner"}
+  - {id: V23, claim: "[058] py-ssrf.http_input: create_dataset webhook_url posted to at api/datasets.py:55 with no allow-list"}
+  - {id: V24, claim: "[128] py-path-traversal.http_input: raw_artifact ?name joined under ARTIFACT_DIR in services/registry.py:40 read_raw"}
+  - {id: V25, claim: "[111] py-xxe.http_input: upload_config request body parsed with entity resolution in ml/modelconfig.py:25 parse_model_config"}
+  - {id: V27, claim: "[132] py-path-traversal.http_input: custom_report template_name opened in services/reports.py:38 load_template_file"}
+  - {id: V28, claim: "[135] py-command-injection.store: stored dataset value reaches rm shell command in services/retention.py:15 purge"}
+  - {id: V29, claim: "[044] py-privileged-route-login-only: POST /api/admin/tool_notes (set_tool_note) requires login only, while the GET is require_admin"}
+  - {id: V33, claim: "[120] py-sql-injection.http_input: ask question -> generated SQL executed at services/experiments.py:69 ask_experiments"}
+  - {id: V34, claim: "[114] py-code-execution.http_input: analyze_dataset question -> generated code exec'd at services/analysis.py:36 run_analysis"}
+  - {id: V37, claim: "[099] py-code-execution.store: stored dataset loader script exec'd at ml/dataset.py:85 run_loader_script"}
+  - {id: V41, claim: "[113] py-unsafe-deserialization.http_input: predict_remote payload reaches pickle.loads in ml/runner.py:24 handle_runner_call"}
+  - {id: V44, claim: "[091] py-jwt-unverified.http_input: service_exchange token decoded without signature check in core/security.py:70 verify_service_token"}
+  - {id: V45, claim: "[046] py-open-redirect.http_input: redirect_after_login redirects to raw ?next at api/auth.py:98"}
+  - {id: V47, claim: "[092] py-weak-password-hash.http_input: password hashed with unsalted md5 in core/security.py:96 (legacy access key)"}
+  - {id: V50, claim: "[093] py-secret-compare-eq: mcp_server.py:177 check_http_auth compares the bearer header with =="}
+  - {id: V51, claim: "[067] py-unsafe-deserialization.http_input: import_experiment payload decoded by jsonpickle at api/experiments.py:149"}
+  - {id: V58, claim: "[035] py-code-execution.http_input: /api/agent/chat -> LLM tool call reaches pip install of a model-chosen package at agent/tools.py:75 install_package"}
+  - {id: V65, claim: "[048] py-object-without-owner-check: authz_demo.py get_note fetches PrivateNote by id with no owner check"}
+  - {id: V66, claim: "[049] py-object-without-owner-check: authz_demo.py get_note_branchy"}
+  - {id: V68, claim: "[050] py-object-without-owner-check: authz_demo.py get_team_note"}
+  - {id: V69, claim: "[051] py-object-without-owner-check: authz_demo.py get_team_note_branchy"}
+  - {id: V70, claim: "[052] py-object-without-owner-check: authz_demo.py get_task"}
+  - {id: V71, claim: "[053] py-object-without-owner-check: authz_demo.py get_task_under_project"}
+  - {id: V72, claim: "[054] py-object-without-owner-check: authz_demo.py get_article"}
+  - {id: V73, claim: "[055] py-object-without-owner-check: authz_demo.py get_article_branchy"}
+  - {id: V74, claim: "[136] py-open-redirect.http_input: dashboard login redirects to raw form next at ui/views.py:87"}
+  - {id: V75, claim: "[141] py-xss.http_input: search ?q passed to highlight() and rendered |safe in search.html (ui/views.py:134)"}
+  - {id: V76, claim: "[139] py-xss.store: stored model card rendered unescaped as card_html at ui/views.py:115 model_detail"}
+  - {id: V80, claim: "[137] py-session-cookie-flags: session JWT cookie set without HttpOnly at ui/views.py:88"}
+
+  # --- decoy false positives ---
+  - {id: D06, claim: "[133] py-template-injection.http_input: render_builtin_report kind -> literal BUILTIN_KINDS filename -> template (safe twin of V27)"}
+  - {id: D10, claim: "[121] py-sql-injection.http_input: ask_experiments_structured f-string (column is allow-listed, value is bound)"}
+  - {id: D22, claim: "[047] py-open-redirect.http_input: redirect_after_login_local (only same-site relative paths kept)"}
+  - {id: D48, claim: "[056] py-object-without-owner-check: get_article_gated (status checked after the fetch)"}
+  - {id: D49, claim: "[057] py-object-without-owner-check: get_article_fused (status=published fused into the query)"}
+
+  # --- unmatched: ownership-check hits on handlers the key does not enumerate ---
+  - {id: ~, claim: "[060] py-object-without-owner-check: datasets.get_dataset"}
+  - {id: ~, claim: "[061] py-object-without-owner-check: datasets.analyze_dataset"}
+  - {id: ~, claim: "[062] py-object-without-owner-check: datasets.prepare_dataset"}
+  - {id: ~, claim: "[063] py-object-without-owner-check: datasets.submit_feedback"}
+  - {id: ~, claim: "[064] py-object-without-owner-check: datasets.schedule_cleanup"}
+  - {id: ~, claim: "[065] py-object-without-owner-check: experiments.run"}
+  - {id: ~, claim: "[066] py-object-without-owner-check: experiments.export_experiment"}
+  - {id: ~, claim: "[068] py-object-without-owner-check: experiments.evaluate"}
+  - {id: ~, claim: "[069] py-object-without-owner-check: inference.predict"}
+  - {id: ~, claim: "[071] py-object-without-owner-check: inference.predict_proba"}
+  - {id: ~, claim: "[072] py-object-without-owner-check: inference.predict_label"}
+  - {id: ~, claim: "[073] py-object-without-owner-check: inference.train_row"}
+  - {id: ~, claim: "[074] py-object-without-owner-check: inference.row_loss"}
+  - {id: ~, claim: "[075] py-object-without-owner-check: inference.predict_remote"}
+  - {id: ~, claim: "[078] py-object-without-owner-check: models.report"}
+  - {id: ~, claim: "[079] py-object-without-owner-check: models.convert"}
+  - {id: ~, claim: "[080] py-object-without-owner-check: models.annotate"}
+  - {id: ~, claim: "[081] py-object-without-owner-check: models.render_annotation"}
+  - {id: ~, claim: "[082] py-object-without-owner-check: models.fetch_artifact"}
+  - {id: ~, claim: "[083] py-object-without-owner-check: models.load_verified"}
+  - {id: ~, claim: "[085] py-object-without-owner-check: models.upload_config"}
+  - {id: ~, claim: "[138] py-object-without-owner-check: ui views.model_detail"}
+
+  # --- unmatched: other claims ---
+  - {id: ~, claim: "[007]/[008] stored dataset and experiment names read into agent context, LLM tool call reaches run_sql/read_file/calc/install_package (indirect injection, no key entry)"}
+  - {id: ~, claim: "[010]/[021]/[032]/[043] MCP tool arguments reach run_sql, read_file, calc and install_package (no key entry; V40/V63 describe other defects)"}
+  - {id: ~, claim: "[045]/[070] py-error-exposure.exception: exception text returned in agent native and inference responses (this is KU03, which has no scorable id)"}
+  - {id: ~, claim: "[084]/[110] py-path-traversal.store: metadata-controlled Model.artifact_path opened at models.load_verified and ml/model_loader.py:37"}
+  - {id: ~, claim: "[125] py-path-traversal.http_input: model name through sanitize_path into store_artifact write path (services/registry.py:22)"}
+  - {id: ~, claim: "[097]/[098] py-path-traversal: find_table path under the extracted dataset dir (dir is built from ds.id; false)"}
+  - {id: ~, claim: "[112] py-path-traversal.http_input: plugin name into ml/plugins.py _store path (name is regex-checked first; false)"}
+  - {id: ~, claim: "[142]/[143] /ui/admin flagged as login-only (it checks the admin role inside; false) and worker out_path from the URL's last segment (cannot hold a slash; false)"}

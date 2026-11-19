@@ -1,7 +1,7 @@
 # Langfail
 
 **A deliberately vulnerable MLOps platform, built to be broken.** A realistic
-Flask application with 82 security bugs planted in it on purpose: target
+Flask application with 87 security bugs planted in it on purpose: target
 practice for scanners, for agents, and for anyone who rates their own code
 review highly.
 
@@ -9,7 +9,7 @@ review highly.
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-013D5A?style=flat-square&labelColor=013D5A)](pyproject.toml)
 [![Security benchmark](https://img.shields.io/badge/type-security_benchmark-013D5A?style=flat-square&labelColor=013D5A)](SECURITY.md)
 [![Tests 153 passing](https://img.shields.io/badge/tests-153_passing-708C69?style=flat-square&labelColor=013D5A)](tests/)
-[![Planted vulnerabilities 82](https://img.shields.io/badge/planted_vulnerabilities-82-F4A25B?style=flat-square&labelColor=013D5A)](benchmarks/ground_truth.yaml)
+[![Planted vulnerabilities 87](https://img.shields.io/badge/planted_vulnerabilities-87-F4A25B?style=flat-square&labelColor=013D5A)](benchmarks/ground_truth.yaml)
 
 > **Never deploy this, and never point it at anything you care about.** Every
 > bug in it is real and exploitable. It is for local research and teaching.
@@ -18,23 +18,22 @@ review highly.
 
 ---
 
-## The best deterministic scanner finds 61% of the 82 planted bugs.
+## The best deterministic scanner finds 57% of the 87 planted bugs.
 
 <!-- SCOREBOARD:START -->
 ```
-Claude Opus 5                  █████████████████████████████████████░░░  91%  (single)
-Claude Sonnet 5, 5-region swee ████████████████████████████████░░░░░░░░  80%  (sweep)
-Rowan (hedgerow.dev)           ████████████████████████░░░░░░░░░░░░░░░░  61%  (single)
-Claude Haiku 4.5, 5-region swe ████████████████████░░░░░░░░░░░░░░░░░░░░  50%  (sweep)
-CodeQL                         ███████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  27%  (single)
-Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%  (single)
-Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  23%  (single)
+Claude Opus 5                  ██████████████████████████████████░░░░░░  86%  (single)
+Claude Sonnet 5, 5-region swee ██████████████████████████████░░░░░░░░░░  76%  (sweep)
+Rowan (hedgerow.dev)           ███████████████████████░░░░░░░░░░░░░░░░░  57%  (single)
+Rowan v2 (hedgerow.dev)        ██████████████████████░░░░░░░░░░░░░░░░░░  55%  (single)
+Claude Haiku 4.5, 5-region swe ███████████████████░░░░░░░░░░░░░░░░░░░░░  47%  (sweep)
+CodeQL                         ██████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  25%  (single)
+Bandit                         █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%  (single)
+Semgrep                        █████████░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  22%  (single)
 ```
-
-
 <!-- SCOREBOARD:END -->
 
-Every one of the 82 bugs is real and has a test that proves it's exploitable.
+Every one of the 87 bugs is real and has a test that proves it's exploitable.
 
 Every score above is **verified**: raw output committed, every finding mapped
 to a manifest id, arithmetic done by
