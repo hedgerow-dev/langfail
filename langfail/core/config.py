@@ -43,6 +43,8 @@ class Config:
     LLM_BACKEND = os.environ.get("LANGFAIL_LLM_BACKEND", "stub")
     LLM_MODEL = os.environ.get("LANGFAIL_LLM_MODEL", "llama3.1")
     LLM_OLLAMA_URL = os.environ.get("LANGFAIL_LLM_OLLAMA_URL", "http://localhost:11434")
+    LLM_ANTHROPIC_URL = os.environ.get("LANGFAIL_LLM_ANTHROPIC_URL", "http://localhost:9444")
+    LLM_API_KEY = os.environ.get("LANGFAIL_LLM_API_KEY", "")
 
     # MCP-over-HTTP/SSE transport (langfail mcp-serve-http, optional mcp+http extra).
     # Binds every interface and requires no credential by default -- operators

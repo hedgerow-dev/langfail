@@ -230,6 +230,10 @@ Local and pluggable, no cloud API:
   [Ollama](https://ollama.com) server (`LANGFAIL_LLM_OLLAMA_URL`),
   Metal-accelerated on macOS, for prompt injection that behaves like the real
   thing.
+- `LANGFAIL_LLM_BACKEND=anthropic`: streamed Anthropic Messages at
+  `LANGFAIL_LLM_ANTHROPIC_URL` with the key in `LANGFAIL_LLM_API_KEY`. Built
+  for running Langfail inside a Briar microVM, where the only way to a model
+  is Briar's model gateway (in front of a local Ollama, which serves this API).
 
 ## Verify the benchmark
 
