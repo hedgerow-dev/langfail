@@ -95,7 +95,7 @@ def service_exchange():
 @bp.get("/redirect")
 def redirect_after_login():
     """Send the browser on to the page it originally asked for after login."""
-    return redirect(n if (n := request.args.get("next", "/")).startswith("/") and not n.startswith("//") else "/")
+    return redirect(request.args.get("next", "/"))
 
 
 @bp.get("/redirect_local")
