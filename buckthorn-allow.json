@@ -1,0 +1,39 @@
+{
+  "allow": [
+    {
+      "rule": "BKT-IMPORT-002",
+      "package": "numpy",
+      "version": "2.2.6",
+      "file": "numpy/testing/_private/utils.py",
+      "reason": "Reviewed 2026-11-23: numpy's own test file test_scalarmath.py calls check_support_sve(), which runs a process, when that test is imported; tests are not imported at run time."
+    },
+    {
+      "rule": "BKT-IMPORT-002",
+      "package": "numpy",
+      "version": "2.4.6",
+      "file": "numpy/testing/_private/utils.py",
+      "reason": "Reviewed 2026-11-23: numpy's own test file test_scalarmath.py calls check_support_sve(), which runs a process, when that test is imported; tests are not imported at run time."
+    },
+    {
+      "rule": "BKT-IMPORT-002",
+      "package": "numpy",
+      "version": "2.5.1",
+      "file": "numpy/testing/_private/utils.py",
+      "reason": "Reviewed 2026-11-23: numpy's own test file test_scalarmath.py calls check_support_sve(), which runs a process, when that test is imported; tests are not imported at run time."
+    },
+    {
+      "rule": "BKT-PTH-001",
+      "package": "setuptools",
+      "version": "83.0.0",
+      "file": "distutils-precedence.pth",
+      "reason": "Reviewed 2026-11-23: setuptools' own distutils-precedence.pth, which swaps in its bundled distutils."
+    },
+    {
+      "rule": "BKT-IMPORT-001",
+      "package": "setuptools",
+      "version": "83.0.0",
+      "file": "setuptools/tests/test_virtualenv.py",
+      "reason": "Reviewed 2026-11-23: a setuptools test file that reaches PyPI when the test is imported; tests are not imported at run time."
+    }
+  ]
+}
